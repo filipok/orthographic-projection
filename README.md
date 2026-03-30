@@ -57,12 +57,18 @@ Packages present in the local virtual environment include:
 
 ## Setup
 
-If you want to recreate the environment from scratch:
+Install from the lock file:
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
-pip install cartopy matplotlib numpy pyproj shapely scipy pillow
+pip install -r requirements.txt
+```
+
+Or install as an editable package (includes a console `ortho` command):
+
+```powershell
+pip install -e ".[dev]"
 ```
 
 ## Usage
@@ -111,6 +117,7 @@ python ortho.py --city london --provider google_satellite --zoom 2 --output-dir 
 | `--dpi DPI` | Output resolution | `600` |
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
 | `--output-dir` | Directory for auto-named output files | `.` |
+| `--cache-dir` | Tile cache directory | `~/.cache/ortho_tiles` |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
 
@@ -146,14 +153,25 @@ generate_orthographic_map(
 )
 ```
 
+## Testing
+
+Run the test suite (requires the `[dev]` extra or `pip install pytest`):
+
+```powershell
+python -m pytest tests/ -v
+```
+
 ## Notes
 
 - Lower zoom levels are safer for full-globe renders. The script recommends keeping zoom roughly between `2` and `4` to avoid excessive tile downloads.
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
 - Google tile backends depend on Cartopy tile services and may be subject to provider availability or usage limits.
 - If tile fetching fails due to network issues, the map will still be saved with fallback land/ocean features.
+- Downloaded tiles are cached in `~/.cache/ortho_tiles` by default. Use `--cache-dir` to change the location. Subsequent runs reuse cached tiles, avoiding redundant downloads.
 
 ## Project Files
 
 - [ortho.py](ortho.py): main script and reusable map-generation functions
-- `orthographic_map_paris_osm_z5.png`: sample rendered output
+- [requirements.txt](requirements.txt): pinned dependencies
+- [pyproject.toml](pyproject.toml): project metadata and `console_scripts` entry point
+- [tests/test_ortho.py](tests/test_ortho.py): unit test suite (24 tests)

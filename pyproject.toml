@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "orthographic-projection"
+version = "1.0.0"
+description = "Generate high-resolution orthographic globe maps from web map tiles."
+requires-python = ">=3.12"
+license = "MIT"
+readme = "README.md"
+
+dependencies = [
+    "cartopy>=0.25.0",
+    "matplotlib>=3.10.0",
+    "numpy>=2.4.0",
+    "pyproj>=3.7.0",
+    "shapely>=2.1.0",
+    "scipy>=1.17.0",
+    "pillow>=12.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+ortho = "ortho:main"

@@ -2,11 +2,31 @@ import argparse
 import os
 import sys
 
+import cartopy
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.io.img_tiles as cimgt
 import cartopy.feature as cfeature
 from cartopy.mpl.geoaxes import GeoAxes
+
+# ---------------------------------------------------------------------------
+# Tile cache configuration
+# ---------------------------------------------------------------------------
+
+DEFAULT_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "ortho_tiles")
+
+
+def configure_tile_cache(cache_dir=None):
+    """Point Cartopy's download cache at *cache_dir* (created if needed).
+
+    Cartopy already caches tiles internally, but its default location is
+    buried under ``~/.local/share/cartopy``.  This helper lets users and
+    the CLI control where that cache lives.
+    """
+    cache_dir = cache_dir or DEFAULT_CACHE_DIR
+    os.makedirs(cache_dir, exist_ok=True)
+    cartopy.config["data_dir"] = cache_dir
+    return cache_dir
 
 
 MAJOR_METROPOLISES = {
@@ -168,10 +188,7 @@ def generate_orthographic_map(
     print("Map successfully created!")
 
 
-def generate_orthographic_osm_map(*args, **kwargs):
-    """Backward-compatible wrapper for existing callers."""
-    kwargs.setdefault("tile_provider", "osm")
-    return generate_orthographic_map(*args, **kwargs)
+
 
 
 def prompt_for_selection(prompt_text, options):
@@ -288,6 +305,11 @@ def build_cli_parser():
         "--output-dir",
         help="Directory to save auto-named files into (default: current dir)",
     )
+    parser.add_argument(
+        "--cache-dir",
+        default=None,
+        help=f"Tile cache directory (default: {DEFAULT_CACHE_DIR})",
+    )
 
     return parser
 
@@ -337,11 +359,16 @@ def run_interactive():
 
 def run_cli(args):
     """Non-interactive CLI mode driven by argparse namespace."""
+    # Validate coordinate pairing first
+    if args.lon is not None and args.lat is None:
+        print("Error: --lon requires --lat.", file=sys.stderr)
+        sys.exit(1)
+    if args.lat is not None and args.lon is None:
+        print("Error: --lat requires --lon.", file=sys.stderr)
+        sys.exit(1)
+
     # Resolve coordinates
     if args.lat is not None:
-        if args.lon is None:
-            print("Error: --lat requires --lon.", file=sys.stderr)
-            sys.exit(1)
         if not (-90 <= args.lat <= 90):
             print("Error: --lat must be between -90 and 90.", file=sys.stderr)
             sys.exit(1)
@@ -364,10 +391,8 @@ def run_cli(args):
         print("Error: provide --city or --lat/--lon.", file=sys.stderr)
         sys.exit(1)
 
-    # Check lone --lon without --lat
-    if args.lon is not None and args.lat is None:
-        print("Error: --lon requires --lat.", file=sys.stderr)
-        sys.exit(1)
+    # Configure tile cache
+    configure_tile_cache(args.cache_dir)
 
     # Determine output filename
     if args.output:
@@ -393,11 +418,16 @@ def run_cli(args):
     )
 
 
-if __name__ == "__main__":
-    # No arguments → interactive mode; any arguments → CLI mode
+def main():
+    """Entry point for console_scripts and direct invocation."""
     if len(sys.argv) == 1:
+        configure_tile_cache()
         run_interactive()
     else:
         parser = build_cli_parser()
         parsed_args = parser.parse_args()
         run_cli(parsed_args)
+
+
+if __name__ == "__main__":
+    main()
