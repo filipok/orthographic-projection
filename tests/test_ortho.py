@@ -209,3 +209,48 @@ class TestRunCLIValidation:
         args = self._make_args(lat=50.0, lon=200.0)
         with pytest.raises(SystemExit):
             ortho.run_cli(args)
+
+
+# ===================================================================
+# Integration: full render pipeline (offline, mocked tiles)
+# ===================================================================
+
+
+class TestGenerateOrthographicMapIntegration:
+    """End-to-end render with tile fetching stubbed out.
+
+    This confirms Matplotlib + Cartopy produce a valid PNG without
+    hitting the network.  Uses the lowest practical settings to keep
+    the test fast (~2-3 s).
+    """
+
+    def test_renders_valid_png(self, tmp_path):
+        """generate_orthographic_map should produce a non-empty PNG file."""
+        output_file = "test_map.png"
+
+        # Stub add_image so no network access occurs
+        with mock.patch.object(
+            ortho.GeoAxes, "add_image", return_value=None,
+        ):
+            result = ortho.generate_orthographic_map(
+                lat=48.8566,
+                lon=2.3522,
+                output_filename=output_file,
+                tile_provider="osm",
+                zoom=1,
+                dpi=50,
+                output_dir=str(tmp_path),
+            )
+
+        out_path = tmp_path / output_file
+        assert out_path.exists(), "Output PNG was not created"
+        assert out_path.stat().st_size > 0, "Output PNG is empty"
+
+        # Verify the return value is the absolute path
+        assert os.path.isabs(result)
+        assert result == str(out_path.resolve())
+
+        # Verify it's a valid PNG (starts with the PNG magic bytes)
+        with open(out_path, "rb") as f:
+            header = f.read(8)
+        assert header[:4] == b"\x89PNG", "File does not have a valid PNG header"

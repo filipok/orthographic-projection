@@ -1,6 +1,10 @@
+from __future__ import annotations
+
 import argparse
+import logging
 import os
 import sys
+from typing import Any
 
 import cartopy
 import matplotlib.pyplot as plt
@@ -9,6 +13,8 @@ import cartopy.io.img_tiles as cimgt
 import cartopy.feature as cfeature
 from cartopy.mpl.geoaxes import GeoAxes
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Tile cache configuration
 # ---------------------------------------------------------------------------
@@ -16,7 +22,7 @@ from cartopy.mpl.geoaxes import GeoAxes
 DEFAULT_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "ortho_tiles")
 
 
-def configure_tile_cache(cache_dir=None):
+def configure_tile_cache(cache_dir: str | None = None) -> str:
     """Point Cartopy's download cache at *cache_dir* (created if needed).
 
     Cartopy already caches tiles internally, but its default location is
@@ -26,6 +32,7 @@ def configure_tile_cache(cache_dir=None):
     cache_dir = cache_dir or DEFAULT_CACHE_DIR
     os.makedirs(cache_dir, exist_ok=True)
     cartopy.config["data_dir"] = cache_dir
+    logger.debug("Tile cache directory: %s", cache_dir)
     return cache_dir
 
 
@@ -54,15 +61,15 @@ TILE_PROVIDERS = [
 class BufferedTileSource:
     """Fetch an extra ring of Web Mercator tiles to avoid edge underfill."""
 
-    def __init__(self, tile_source, tile_buffer_factor=0.5):
+    def __init__(self, tile_source: Any, tile_buffer_factor: float = 0.5) -> None:
         self.tile_source = tile_source
         self.tile_buffer_factor = tile_buffer_factor
         self.crs = tile_source.crs
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self.tile_source, name)
 
-    def image_for_domain(self, target_domain, target_z):
+    def image_for_domain(self, target_domain: Any, target_z: int) -> Any:
         x0, x1 = self.crs.x_limits
         world_width = x1 - x0
         tile_width = world_width / (2 ** target_z)
@@ -70,7 +77,11 @@ class BufferedTileSource:
         return self.tile_source.image_for_domain(buffered_domain, target_z)
 
 
-def create_tile_source(tile_provider="osm", tile_buffer_factor=2, **tile_kwargs):
+def create_tile_source(
+    tile_provider: str = "osm",
+    tile_buffer_factor: float = 2,
+    **tile_kwargs: Any,
+) -> BufferedTileSource:
     """Create a Cartopy tile source from a simple provider name."""
     provider = tile_provider.lower()
 
@@ -86,32 +97,55 @@ def create_tile_source(tile_provider="osm", tile_buffer_factor=2, **tile_kwargs)
             "osm, google, google_satellite."
         )
 
+    logger.debug("Created tile source: %s (buffer_factor=%.1f)", provider, tile_buffer_factor)
     return BufferedTileSource(tile_source, tile_buffer_factor=tile_buffer_factor)
 
 
 def generate_orthographic_map(
-    lat,
-    lon,
-    output_filename,
-    zoom=3,
-    dpi=300,
-    background_color="#a6d3e0",
-    tile_provider="osm",
-    tile_kwargs=None,
-    tile_buffer_factor=2,
-    max_regrid_shape=4096,
-    output_dir=None,
-):
+    lat: float,
+    lon: float,
+    output_filename: str,
+    zoom: int = 3,
+    dpi: int = 300,
+    background_color: str = "#a6d3e0",
+    tile_provider: str = "osm",
+    tile_kwargs: dict[str, Any] | None = None,
+    tile_buffer_factor: float = 2,
+    max_regrid_shape: int = 4096,
+    output_dir: str | None = None,
+) -> str:
     """
-    Generates an orthographic map projection centered at a specific point using web map tiles.
+    Generate an orthographic map projection centered at a specific point.
 
-    Parameters:
-    - lat (float): The central latitude (e.g., 40.7128 for New York).
-    - lon (float): The central longitude (e.g., -74.0060 for New York).
-    - output_filename (str): The name/path of the output PNG file.
-    - zoom (int): The tile zoom level. Keep between 2 and 4 for a full globe to avoid massive downloads.
-    - dpi (int): Dots per inch for the output image. 300+ is considered high resolution.
-    - output_dir (str|None): Optional directory to save the output file into. Created if needed.
+    Parameters
+    ----------
+    lat : float
+        Central latitude (e.g. 40.7128 for New York).
+    lon : float
+        Central longitude (e.g. -74.0060 for New York).
+    output_filename : str
+        Name/path of the output PNG file.
+    zoom : int
+        Tile zoom level. Keep between 2 and 4 to avoid massive downloads.
+    dpi : int
+        Dots per inch for the output image. 300+ is high resolution.
+    background_color : str
+        Hex colour for ocean / figure background.
+    tile_provider : str
+        One of ``"osm"``, ``"google"``, ``"google_satellite"``.
+    tile_kwargs : dict, optional
+        Extra keyword arguments forwarded to the Cartopy tile constructor.
+    tile_buffer_factor : float
+        How aggressively to over-fetch tiles near the globe edge.
+    max_regrid_shape : int
+        Upper bound on the re-gridding resolution (pixels).
+    output_dir : str or None
+        Optional directory to save the output file into. Created if needed.
+
+    Returns
+    -------
+    str
+        Absolute path of the saved PNG.
     """
 
     # Resolve output path
@@ -119,7 +153,7 @@ def generate_orthographic_map(
         os.makedirs(output_dir, exist_ok=True)
         output_filename = os.path.join(output_dir, output_filename)
 
-    print(f"Setting up the map centered at Latitude: {lat}, Longitude: {lon}...")
+    logger.info("Setting up the map centred at lat=%.4f, lon=%.4f", lat, lon)
 
     # Step 1: Initialize the requested image tile source
     tile_kwargs = tile_kwargs or {}
@@ -130,38 +164,32 @@ def generate_orthographic_map(
     )
 
     # Step 2: Define the Orthographic projection
-    # We pass the user-defined latitude and longitude as the center of the "globe"
     ortho_proj = ccrs.Orthographic(central_longitude=lon, central_latitude=lat)
 
-    # Step 3: Create a high-resolution figure and axes using matplotlib
-    # Using subplot_kw with projection ensures 'ax' is a GeoAxes object.
-    # figsize=(10, 10) sets the base size of the image in inches.
+    # Step 3: Create a high-resolution figure and axes
     fig, ax = plt.subplots(figsize=(20, 20), subplot_kw={"projection": ortho_proj})
     fig.patch.set_facecolor(background_color)
-    
-    # Cast or type hint 'ax' as GeoAxes to help IDE resolve Cartopy-specific methods
+
     if not isinstance(ax, GeoAxes):
         raise RuntimeError("Failed to create GeoAxes")
 
     ax.set_facecolor(background_color)
 
-    # Step 4: Make the map show the entire visible hemisphere (a full globe view)
+    # Step 4: Full hemisphere view
     ax.set_global()
 
-    # Cartopy reprojects raster tiles through imshow(); its default
-    # regrid_shape is only 750 px, which makes large exports look blurry.
+    # Dynamic regrid_shape for sharp exports
     regrid_shape = min(
         max(750, int(min(fig.get_size_inches()) * dpi)),
         max_regrid_shape,
     )
 
-    # Add a base globe color so areas not covered by imagery do not render blank.
+    # Fallback land/ocean so blank areas aren't white
     ax.add_feature(cfeature.OCEAN, facecolor=background_color, edgecolor="none", zorder=0)
     ax.add_feature(cfeature.LAND, facecolor="#f1efe6", edgecolor="none", zorder=0)
 
-    # Step 5: Add the background tiles to the map
-    print(f"Fetching '{tile_provider}' tiles at zoom level {zoom}. This may take a moment...")
-    # zoom is passed as a positional argument to add_image
+    # Step 5: Fetch and add tiles
+    logger.info("Fetching '%s' tiles at zoom level %d …", tile_provider, zoom)
     try:
         ax.add_image(
             tiles,
@@ -170,28 +198,26 @@ def generate_orthographic_map(
             interpolation="nearest",
         )
     except Exception as e:
-        print(f"WARNING: Failed to fetch map tiles: {e}")
-        print("The map will be saved with fallback land/ocean features only.")
+        logger.warning("Failed to fetch map tiles: %s", e)
+        logger.warning("The map will be saved with fallback land/ocean features only.")
 
-    # Step 6: Add a grid (latitude/longitude lines) to make the globe look more spherical
+    # Step 6: Gridlines
     ax.gridlines(draw_labels=False, color='black', alpha=0.3, linestyle='--')
 
-    # Step 7: Export the result as a high-resolution PNG
-    print(f"Saving high-resolution map to '{output_filename}' at {dpi} DPI...")
-
-    # bbox_inches='tight' ensures that no extra whitespace is saved around the globe
+    # Step 7: Export
+    logger.info("Saving high-resolution map to '%s' at %d DPI …", output_filename, dpi)
     plt.savefig(output_filename, dpi=dpi, bbox_inches="tight", transparent=True)
-
-    # Close the plot to free up memory
     plt.close(fig)
 
-    print("Map successfully created!")
+    output_path = os.path.abspath(output_filename)
+    logger.info("Map successfully created: %s", output_path)
+    return output_path
 
 
 
 
 
-def prompt_for_selection(prompt_text, options):
+def prompt_for_selection(prompt_text: str, options: list[str]) -> str:
     """Prompt the user to choose one option from a numbered list."""
     while True:
         print(prompt_text)
@@ -210,7 +236,7 @@ def prompt_for_selection(prompt_text, options):
         print("Choice out of range. Try again.\n")
 
 
-def prompt_for_zoom(default_zoom=3, min_zoom=1, max_zoom=8):
+def prompt_for_zoom(default_zoom: int = 3, min_zoom: int = 1, max_zoom: int = 8) -> int:
     """Prompt the user for a zoom level within a safe range."""
     while True:
         raw_zoom = input(
@@ -228,7 +254,8 @@ def prompt_for_zoom(default_zoom=3, min_zoom=1, max_zoom=8):
         print(f"Please enter an integer between {min_zoom} and {max_zoom}.\n")
 
 
-def build_output_filename(city_slug, tile_provider, zoom):
+def build_output_filename(city_slug: str, tile_provider: str, zoom: int) -> str:
+    """Build a descriptive output filename from the render parameters."""
     sanitized_provider = tile_provider.replace(" ", "_")
     return f"orthographic_map_{city_slug}_{sanitized_provider}_z{zoom}.png"
 
@@ -236,7 +263,7 @@ def build_output_filename(city_slug, tile_provider, zoom):
 # --- Custom coordinate prompt ---
 
 
-def prompt_for_coordinates():
+def prompt_for_coordinates() -> tuple[float, float]:
     """Prompt the user for custom latitude and longitude."""
     while True:
         try:
@@ -252,7 +279,7 @@ def prompt_for_coordinates():
 # --- CLI argument parser ---
 
 
-def build_cli_parser():
+def build_cli_parser() -> argparse.ArgumentParser:
     """Build and return the argparse parser."""
     parser = argparse.ArgumentParser(
         description="Generate high-resolution orthographic globe maps.",
@@ -317,8 +344,8 @@ def build_cli_parser():
 # --- Entry point modes ---
 
 
-def run_interactive():
-    """Original interactive prompt flow, now with custom coordinate support."""
+def run_interactive() -> None:
+    """Interactive prompt flow with custom coordinate support."""
     city_options = ["[Custom coordinates]"] + list(MAJOR_METROPOLISES.keys())
     selection = prompt_for_selection(
         "Choose a location to center the orthographic map on:",
@@ -357,23 +384,23 @@ def run_interactive():
     )
 
 
-def run_cli(args):
+def run_cli(args: argparse.Namespace) -> None:
     """Non-interactive CLI mode driven by argparse namespace."""
     # Validate coordinate pairing first
     if args.lon is not None and args.lat is None:
-        print("Error: --lon requires --lat.", file=sys.stderr)
+        logger.error("--lon requires --lat.")
         sys.exit(1)
     if args.lat is not None and args.lon is None:
-        print("Error: --lat requires --lon.", file=sys.stderr)
+        logger.error("--lat requires --lon.")
         sys.exit(1)
 
     # Resolve coordinates
     if args.lat is not None:
         if not (-90 <= args.lat <= 90):
-            print("Error: --lat must be between -90 and 90.", file=sys.stderr)
+            logger.error("--lat must be between -90 and 90.")
             sys.exit(1)
         if not (-180 <= args.lon <= 180):
-            print("Error: --lon must be between -180 and 180.", file=sys.stderr)
+            logger.error("--lon must be between -180 and 180.")
             sys.exit(1)
         lat, lon = args.lat, args.lon
         city_slug = "custom"
@@ -388,7 +415,7 @@ def run_cli(args):
         city_slug = city["slug"]
         city_label = city_name
     else:
-        print("Error: provide --city or --lat/--lon.", file=sys.stderr)
+        logger.error("Provide --city or --lat/--lon.")
         sys.exit(1)
 
     # Configure tile cache
@@ -402,10 +429,11 @@ def run_cli(args):
         output_file = build_output_filename(city_slug, args.provider, args.zoom)
         output_dir = args.output_dir
 
-    print(
-        f"\nGenerating map for {city_label} using '{args.provider}' at zoom level {args.zoom}."
+    logger.info(
+        "Generating map for %s using '%s' at zoom level %d.",
+        city_label, args.provider, args.zoom,
     )
-    print(f"Output file: {output_file}\n")
+    logger.info("Output file: %s", output_file)
 
     generate_orthographic_map(
         lat=lat,
@@ -418,8 +446,13 @@ def run_cli(args):
     )
 
 
-def main():
+def main() -> None:
     """Entry point for console_scripts and direct invocation."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s: %(message)s",
+    )
+
     if len(sys.argv) == 1:
         configure_tile_cache()
         run_interactive()
