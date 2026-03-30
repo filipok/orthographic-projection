@@ -1,3 +1,7 @@
+import argparse
+import os
+import sys
+
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.io.img_tiles as cimgt
@@ -76,6 +80,7 @@ def generate_orthographic_map(
     tile_kwargs=None,
     tile_buffer_factor=2,
     max_regrid_shape=4096,
+    output_dir=None,
 ):
     """
     Generates an orthographic map projection centered at a specific point using web map tiles.
@@ -86,7 +91,13 @@ def generate_orthographic_map(
     - output_filename (str): The name/path of the output PNG file.
     - zoom (int): The tile zoom level. Keep between 2 and 4 for a full globe to avoid massive downloads.
     - dpi (int): Dots per inch for the output image. 300+ is considered high resolution.
+    - output_dir (str|None): Optional directory to save the output file into. Created if needed.
     """
+
+    # Resolve output path
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        output_filename = os.path.join(output_dir, output_filename)
 
     print(f"Setting up the map centered at Latitude: {lat}, Longitude: {lon}...")
 
@@ -131,12 +142,16 @@ def generate_orthographic_map(
     # Step 5: Add the background tiles to the map
     print(f"Fetching '{tile_provider}' tiles at zoom level {zoom}. This may take a moment...")
     # zoom is passed as a positional argument to add_image
-    ax.add_image(
-        tiles,
-        zoom,
-        regrid_shape=regrid_shape,
-        interpolation="nearest",
-    )
+    try:
+        ax.add_image(
+            tiles,
+            zoom,
+            regrid_shape=regrid_shape,
+            interpolation="nearest",
+        )
+    except Exception as e:
+        print(f"WARNING: Failed to fetch map tiles: {e}")
+        print("The map will be saved with fallback land/ocean features only.")
 
     # Step 6: Add a grid (latitude/longitude lines) to make the globe look more spherical
     ax.gridlines(draw_labels=False, color='black', alpha=0.3, linestyle='--')
@@ -201,32 +216,188 @@ def build_output_filename(city_slug, tile_provider, zoom):
     return f"orthographic_map_{city_slug}_{sanitized_provider}_z{zoom}.png"
 
 
-# --- Interactive entry point ---
+# --- Custom coordinate prompt ---
 
-if __name__ == "__main__":
-    city_name = prompt_for_selection(
-        "Choose a metropolis to center the orthographic map on:",
-        list(MAJOR_METROPOLISES.keys()),
+
+def prompt_for_coordinates():
+    """Prompt the user for custom latitude and longitude."""
+    while True:
+        try:
+            lat = float(input("Enter latitude (-90 to 90): ").strip())
+            lon = float(input("Enter longitude (-180 to 180): ").strip())
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                return lat, lon
+            print("Values out of range.\n")
+        except ValueError:
+            print("Please enter valid numbers.\n")
+
+
+# --- CLI argument parser ---
+
+
+def build_cli_parser():
+    """Build and return the argparse parser."""
+    parser = argparse.ArgumentParser(
+        description="Generate high-resolution orthographic globe maps.",
+        epilog="Run without arguments for interactive mode.",
     )
-    city = MAJOR_METROPOLISES[city_name]
+
+    location = parser.add_mutually_exclusive_group()
+    location.add_argument(
+        "--city",
+        choices=[k.lower() for k in MAJOR_METROPOLISES],
+        metavar="CITY",
+        help=f"Pre-defined city ({', '.join(MAJOR_METROPOLISES.keys())})",
+    )
+    location.add_argument(
+        "--lat",
+        type=float,
+        help="Custom latitude (-90 to 90). Must be used with --lon.",
+    )
+
+    parser.add_argument(
+        "--lon",
+        type=float,
+        help="Custom longitude (-180 to 180). Must be used with --lat.",
+    )
+    parser.add_argument(
+        "--provider",
+        choices=TILE_PROVIDERS,
+        default="osm",
+        help="Tile provider (default: osm)",
+    )
+    parser.add_argument(
+        "--zoom",
+        type=int,
+        default=3,
+        choices=range(1, 9),
+        metavar="ZOOM",
+        help="Tile zoom level 1-8 (default: 3)",
+    )
+    parser.add_argument(
+        "--dpi",
+        type=int,
+        default=600,
+        help="Output DPI (default: 600)",
+    )
+    parser.add_argument(
+        "-o", "--output",
+        help="Explicit output filepath (overrides auto-naming)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        help="Directory to save auto-named files into (default: current dir)",
+    )
+
+    return parser
+
+
+# --- Entry point modes ---
+
+
+def run_interactive():
+    """Original interactive prompt flow, now with custom coordinate support."""
+    city_options = ["[Custom coordinates]"] + list(MAJOR_METROPOLISES.keys())
+    selection = prompt_for_selection(
+        "Choose a location to center the orthographic map on:",
+        city_options,
+    )
+
+    if selection == "[Custom coordinates]":
+        lat, lon = prompt_for_coordinates()
+        city_slug = "custom"
+        city_label = f"({lat}, {lon})"
+    else:
+        city = MAJOR_METROPOLISES[selection]
+        lat, lon = city["lat"], city["lon"]
+        city_slug = city["slug"]
+        city_label = selection
 
     tile_provider = prompt_for_selection(
         "Choose a tile provider:",
         TILE_PROVIDERS,
     )
     zoom = prompt_for_zoom(default_zoom=3)
-    output_file = build_output_filename(city["slug"], tile_provider, zoom)
+    output_file = build_output_filename(city_slug, tile_provider, zoom)
 
     print(
-        f"\nGenerating map for {city_name} using '{tile_provider}' at zoom level {zoom}."
+        f"\nGenerating map for {city_label} using '{tile_provider}' at zoom level {zoom}."
     )
     print(f"Output file: {output_file}\n")
 
     generate_orthographic_map(
-        lat=city["lat"],
-        lon=city["lon"],
+        lat=lat,
+        lon=lon,
         output_filename=output_file,
         tile_provider=tile_provider,
         zoom=zoom,
         dpi=600,
     )
+
+
+def run_cli(args):
+    """Non-interactive CLI mode driven by argparse namespace."""
+    # Resolve coordinates
+    if args.lat is not None:
+        if args.lon is None:
+            print("Error: --lat requires --lon.", file=sys.stderr)
+            sys.exit(1)
+        if not (-90 <= args.lat <= 90):
+            print("Error: --lat must be between -90 and 90.", file=sys.stderr)
+            sys.exit(1)
+        if not (-180 <= args.lon <= 180):
+            print("Error: --lon must be between -180 and 180.", file=sys.stderr)
+            sys.exit(1)
+        lat, lon = args.lat, args.lon
+        city_slug = "custom"
+        city_label = f"({lat}, {lon})"
+    elif args.city:
+        # Find the city (case-insensitive match)
+        city_name = next(
+            k for k in MAJOR_METROPOLISES if k.lower() == args.city.lower()
+        )
+        city = MAJOR_METROPOLISES[city_name]
+        lat, lon = city["lat"], city["lon"]
+        city_slug = city["slug"]
+        city_label = city_name
+    else:
+        print("Error: provide --city or --lat/--lon.", file=sys.stderr)
+        sys.exit(1)
+
+    # Check lone --lon without --lat
+    if args.lon is not None and args.lat is None:
+        print("Error: --lon requires --lat.", file=sys.stderr)
+        sys.exit(1)
+
+    # Determine output filename
+    if args.output:
+        output_file = args.output
+        output_dir = None  # explicit path, don't prepend output_dir
+    else:
+        output_file = build_output_filename(city_slug, args.provider, args.zoom)
+        output_dir = args.output_dir
+
+    print(
+        f"\nGenerating map for {city_label} using '{args.provider}' at zoom level {args.zoom}."
+    )
+    print(f"Output file: {output_file}\n")
+
+    generate_orthographic_map(
+        lat=lat,
+        lon=lon,
+        output_filename=output_file,
+        tile_provider=args.provider,
+        zoom=args.zoom,
+        dpi=args.dpi,
+        output_dir=output_dir,
+    )
+
+
+if __name__ == "__main__":
+    # No arguments → interactive mode; any arguments → CLI mode
+    if len(sys.argv) == 1:
+        run_interactive()
+    else:
+        parser = build_cli_parser()
+        parsed_args = parser.parse_args()
+        run_cli(parsed_args)

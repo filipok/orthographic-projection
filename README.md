@@ -2,15 +2,18 @@
 
 This project generates high-resolution orthographic globe images centered on a selected major city using Cartopy, Matplotlib, and online web map tiles.
 
-The main script is [ortho.py](/C:/Users/fgadi/PyCharmMiscProject/ortho.py). A sample generated output is `orthographic_map_paris_osm_z5.png`.
+The main script is [ortho.py](ortho.py). A sample generated output is `orthographic_map_paris_osm_z5.png`.
 
 ## Features
 
 - Interactive city selection from a built-in list of major metropolitan areas
-- Orthographic globe projection centered on the chosen city
+- Custom latitude/longitude input for arbitrary locations
+- Orthographic globe projection centered on the chosen location
 - Support for multiple tile providers
 - High-resolution PNG export with transparent background
 - Buffered tile fetching to reduce missing imagery near the edge of the globe
+- Non-interactive CLI mode with `argparse` for scripting and automation
+- Graceful error handling for network tile fetch failures
 
 ## Supported Cities
 
@@ -64,7 +67,9 @@ pip install cartopy matplotlib numpy pyproj shapely scipy pillow
 
 ## Usage
 
-Run the script:
+### Interactive Mode
+
+Run the script with no arguments to enter interactive mode:
 
 ```powershell
 python ortho.py
@@ -72,11 +77,46 @@ python ortho.py
 
 You will be prompted to choose:
 
-1. A city
+1. A location (pre-defined city **or** custom coordinates)
 2. A tile provider
 3. A zoom level
 
-The script then writes a PNG named like:
+### CLI Mode
+
+Pass arguments directly for non-interactive use:
+
+```powershell
+# Pre-defined city
+python ortho.py --city NYC --provider google --zoom 3 --dpi 600
+
+# Custom coordinates (Tokyo)
+python ortho.py --lat 35.6762 --lon 139.6503 --provider osm --zoom 2
+
+# Explicit output path
+python ortho.py --city paris --provider osm --zoom 3 -o my_globe.png
+
+# Save to a specific directory
+python ortho.py --city london --provider google_satellite --zoom 2 --output-dir renders/
+```
+
+#### CLI Flags
+
+| Flag | Description | Default |
+|---|---|---|
+| `--city CITY` | Pre-defined city (case-insensitive) | — |
+| `--lat LAT` | Custom latitude (-90 to 90) | — |
+| `--lon LON` | Custom longitude (-180 to 180) | — |
+| `--provider` | Tile provider: `osm`, `google`, `google_satellite` | `osm` |
+| `--zoom ZOOM` | Tile zoom level (1–8) | `3` |
+| `--dpi DPI` | Output resolution | `600` |
+| `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
+| `--output-dir` | Directory for auto-named output files | `.` |
+
+> **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
+
+### Output Naming
+
+The script writes a PNG named like:
 
 ```text
 orthographic_map_<city>_<provider>_z<zoom>.png
@@ -102,6 +142,7 @@ generate_orthographic_map(
     tile_provider="osm",
     zoom=3,
     dpi=600,
+    output_dir="renders",  # optional: save to a specific directory
 )
 ```
 
@@ -110,8 +151,9 @@ generate_orthographic_map(
 - Lower zoom levels are safer for full-globe renders. The script recommends keeping zoom roughly between `2` and `4` to avoid excessive tile downloads.
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
 - Google tile backends depend on Cartopy tile services and may be subject to provider availability or usage limits.
+- If tile fetching fails due to network issues, the map will still be saved with fallback land/ocean features.
 
 ## Project Files
 
-- [ortho.py](/C:/Users/fgadi/PyCharmMiscProject/ortho.py): main script and reusable map-generation functions
+- [ortho.py](ortho.py): main script and reusable map-generation functions
 - `orthographic_map_paris_osm_z5.png`: sample rendered output
