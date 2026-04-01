@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.io.img_tiles as cimgt
 import cartopy.feature as cfeature
+import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ MAJOR_METROPOLISES = {
     "Lagos": {"lat": 6.5244, "lon": 3.3792, "slug": "lagos"},
     "Johannesburg": {"lat": -26.2041, "lon": 28.0473, "slug": "johannesburg"},
     "Sydney": {"lat": -33.8688, "lon": 151.2093, "slug": "sydney"},
+    "Lisbon": {"lat": 38.7223, "lon": -9.1393, "slug": "lisbon"},
 }
 
 TILE_PROVIDERS = [
@@ -116,6 +118,7 @@ def generate_orthographic_map(
     tile_buffer_factor: float = 2,
     max_regrid_shape: int = 4096,
     output_dir: str | None = None,
+    city_name: str | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -129,7 +132,7 @@ def generate_orthographic_map(
     output_filename : str
         Name/path of the output PNG file.
     zoom : int
-        Tile zoom level. Keep between 2 and 4 to avoid massive downloads.
+        Tile zoom level (1–4). Higher values fetch exponentially more tiles.
     dpi : int
         Dots per inch for the output image. 300+ is high resolution.
     background_color : str
@@ -144,6 +147,8 @@ def generate_orthographic_map(
         Upper bound on the re-gridding resolution (pixels).
     output_dir : str or None
         Optional directory to save the output file into. Created if needed.
+    city_name : str or None
+        If provided, a marker and label are drawn at the centre point.
 
     Returns
     -------
@@ -207,7 +212,25 @@ def generate_orthographic_map(
     # Step 6: Gridlines
     ax.gridlines(draw_labels=False, color='black', alpha=0.3, linestyle='--')
 
-    # Step 7: Export
+    # Step 7: City marker & label
+    if city_name:
+        ax.plot(
+            lon, lat,
+            marker="o", markersize=10, markeredgewidth=2,
+            color="#e74c3c", markeredgecolor="white",
+            transform=ccrs.PlateCarree(), zorder=10,
+        )
+        ax.text(
+            lon, lat, f"  {city_name}",
+            transform=ccrs.PlateCarree(),
+            fontsize=14, fontweight="bold", color="white",
+            va="center", ha="left", zorder=10,
+            path_effects=[
+                pe.withStroke(linewidth=3, foreground="black")
+            ],
+        )
+
+    # Step 8: Export
     logger.info("Saving high-resolution map to '%s' at %d DPI …", output_filename, dpi)
     plt.savefig(output_filename, dpi=dpi, bbox_inches="tight", transparent=True)
     plt.close(fig)
@@ -239,7 +262,7 @@ def prompt_for_selection(prompt_text: str, options: list[str]) -> str:
         print("Choice out of range. Try again.\n")
 
 
-def prompt_for_zoom(default_zoom: int = 3, min_zoom: int = 1, max_zoom: int = 8) -> int:
+def prompt_for_zoom(default_zoom: int = 3, min_zoom: int = 1, max_zoom: int = 4) -> int:
     """Prompt the user for a zoom level within a safe range."""
     while True:
         raw_zoom = input(
@@ -317,9 +340,9 @@ def build_cli_parser() -> argparse.ArgumentParser:
         "--zoom",
         type=int,
         default=3,
-        choices=range(1, 9),
+        choices=range(1, 5),
         metavar="ZOOM",
-        help="Tile zoom level 1-8 (default: 3)",
+        help="Tile zoom level 1-4 (default: 3)",
     )
     parser.add_argument(
         "--dpi",
@@ -384,6 +407,7 @@ def run_interactive() -> None:
         tile_provider=tile_provider,
         zoom=zoom,
         dpi=600,
+        city_name=city_label if city_slug != "custom" else None,
     )
 
 
@@ -446,6 +470,7 @@ def run_cli(args: argparse.Namespace) -> None:
         zoom=args.zoom,
         dpi=args.dpi,
         output_dir=output_dir,
+        city_name=city_label if city_slug != "custom" else None,
     )
 
 

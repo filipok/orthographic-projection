@@ -13,6 +13,7 @@ The main script is [ortho.py](ortho.py). A sample generated output is `orthograp
 - High-resolution PNG export with transparent background
 - Buffered tile fetching to reduce missing imagery near the edge of the globe
 - Non-interactive CLI mode with `argparse` for scripting and automation
+- City marker and label overlay on the globe for named locations
 - Graceful error handling for network tile fetch failures
 
 ## Supported Cities
@@ -20,17 +21,21 @@ The main script is [ortho.py](ortho.py). A sample generated output is `orthograp
 The script currently includes:
 
 - NYC
-- DC
 - Moscow
 - Shanghai
-- Singapore
 - London
 - Paris
 - Berlin
 - Ankara
-- Tehran
 - New Delhi
-- Jerusalem
+- Tokyo
+- Jakarta
+- Manila
+- Sao Paulo
+- Lagos
+- Johannesburg
+- Sydney
+- Lisbon
 
 ## Supported Tile Providers
 
@@ -113,7 +118,7 @@ python ortho.py --city london --provider google_satellite --zoom 2 --output-dir 
 | `--lat LAT` | Custom latitude (-90 to 90) | — |
 | `--lon LON` | Custom longitude (-180 to 180) | — |
 | `--provider` | Tile provider: `osm`, `google`, `google_satellite` | `osm` |
-| `--zoom ZOOM` | Tile zoom level (1–8) | `3` |
+| `--zoom ZOOM` | Tile zoom level (1–4) | `3` |
 | `--dpi DPI` | Output resolution | `600` |
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
 | `--output-dir` | Directory for auto-named output files | `.` |
@@ -150,6 +155,7 @@ generate_orthographic_map(
     zoom=3,
     dpi=600,
     output_dir="renders",  # optional: save to a specific directory
+    city_name="Paris",     # optional: adds a marker and label on the map
 )
 ```
 
@@ -163,11 +169,12 @@ python -m pytest tests/ -v
 
 ## Notes
 
-- Lower zoom levels are safer for full-globe renders. The script recommends keeping zoom roughly between `2` and `4` to avoid excessive tile downloads.
+- Zoom is capped at level `4` to avoid excessive tile downloads. Lower zoom levels are safer for full-globe renders.
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
 - Google tile backends depend on Cartopy tile services and may be subject to provider availability or usage limits.
 - If tile fetching fails due to network issues, the map will still be saved with fallback land/ocean features.
 - Downloaded tiles are cached in `~/.cache/ortho_tiles` by default. Use `--cache-dir` to change the location. Subsequent runs reuse cached tiles, avoiding redundant downloads.
+- When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
 
 ## Project Files
 
