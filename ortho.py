@@ -38,17 +38,20 @@ def configure_tile_cache(cache_dir: str | None = None) -> str:
 
 MAJOR_METROPOLISES = {
     "NYC": {"lat": 40.7128, "lon": -74.0060, "slug": "nyc"},
-    "DC": {"lat": 38.9072, "lon": -77.0369, "slug": "dc"},
     "Moscow": {"lat": 55.7558, "lon": 37.6173, "slug": "moscow"},
     "Shanghai": {"lat": 31.2304, "lon": 121.4737, "slug": "shanghai"},
-    "Singapore": {"lat": 1.3521, "lon": 103.8198, "slug": "singapore"},
     "London": {"lat": 51.5074, "lon": -0.1278, "slug": "london"},
     "Paris": {"lat": 48.8566, "lon": 2.3522, "slug": "paris"},
     "Berlin": {"lat": 52.5200, "lon": 13.4050, "slug": "berlin"},
     "Ankara": {"lat": 39.9334, "lon": 32.8597, "slug": "ankara"},
-    "Tehran": {"lat": 35.6892, "lon": 51.3890, "slug": "tehran"},
     "New Delhi": {"lat": 28.6139, "lon": 77.2090, "slug": "new_delhi"},
-    "Jerusalem": {"lat": 31.7683, "lon": 35.2137, "slug": "jerusalem"},
+    "Tokyo": {"lat": 35.6762, "lon": 139.6503, "slug": "tokyo"},
+    "Jakarta": {"lat": -6.2088, "lon": 106.8456, "slug": "jakarta"},
+    "Manila": {"lat": 14.5995, "lon": 120.9842, "slug": "manila"},
+    "Sao Paulo": {"lat": -23.5505, "lon": -46.6333, "slug": "sao_paulo"},
+    "Lagos": {"lat": 6.5244, "lon": 3.3792, "slug": "lagos"},
+    "Johannesburg": {"lat": -26.2041, "lon": 28.0473, "slug": "johannesburg"},
+    "Sydney": {"lat": -33.8688, "lon": 151.2093, "slug": "sydney"},
 }
 
 TILE_PROVIDERS = [
