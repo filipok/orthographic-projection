@@ -6,13 +6,17 @@ import os
 import sys
 from typing import Any
 
+import numpy as np
+
 import cartopy
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.io.img_tiles as cimgt
 import cartopy.feature as cfeature
 import matplotlib.patheffects as pe
+from cartopy.geodesic import Geodesic
 from cartopy.mpl.geoaxes import GeoAxes
+from shapely.geometry import Polygon
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +234,9 @@ def generate_orthographic_map(
             ],
         )
 
+    # Step 7b: Concentric distance circles (2 500 km and 5 000 km)
+    _draw_distance_circles(ax, lon, lat)
+
     # Step 8: Export
     logger.info("Saving high-resolution map to '%s' at %d DPI …", output_filename, dpi)
     plt.savefig(output_filename, dpi=dpi, bbox_inches="tight", transparent=True)
@@ -241,6 +248,58 @@ def generate_orthographic_map(
 
 
 
+def _geodesic_circle(lon: float, lat: float, radius_m: float, n_points: int = 180) -> Polygon:
+    """Return a Shapely Polygon tracing a geodesic circle on WGS-84.
+
+    Parameters
+    ----------
+    lon, lat : float
+        Centre of the circle in degrees.
+    radius_m : float
+        Radius in **metres**.
+    n_points : int
+        Number of vertices (more = smoother).
+    """
+    geod = Geodesic()
+    coords = geod.circle(lon=lon, lat=lat, radius=radius_m, n_samples=n_points, endpoint=False)
+    return Polygon(coords)
+
+
+def _draw_distance_circles(
+    ax: GeoAxes,
+    lon: float,
+    lat: float,
+    radii_km: tuple[float, ...] = (2_500, 5_000),
+) -> None:
+    """Draw concentric geodesic circles on *ax* at the given radii."""
+    plate = ccrs.PlateCarree()
+    colors = ["#ffffff", "#ffffff"]
+    alphas = [0.7, 0.5]
+
+    for idx, radius_km in enumerate(radii_km):
+        circle_poly = _geodesic_circle(lon, lat, radius_km * 1_000)
+        ax.add_geometries(
+            [circle_poly],
+            crs=plate,
+            facecolor="none",
+            edgecolor=colors[idx % len(colors)],
+            linewidth=1.4,
+            linestyle="--",
+            alpha=alphas[idx % len(alphas)],
+            zorder=9,
+        )
+        # Place a small label on the circle (at the top, i.e. northward)
+        ring = np.array(circle_poly.exterior.coords)
+        # Pick the point closest to due-north (max latitude)
+        top_idx = int(np.argmax(ring[:, 1]))
+        label_lon, label_lat = ring[top_idx]
+        ax.text(
+            label_lon, label_lat, f" {int(radius_km):,} km",
+            transform=plate,
+            fontsize=9, color="white", alpha=alphas[idx % len(alphas)],
+            fontweight="bold", va="bottom", ha="center", zorder=10,
+            path_effects=[pe.withStroke(linewidth=2, foreground="black")],
+        )
 
 
 def prompt_for_selection(prompt_text: str, options: list[str]) -> str:

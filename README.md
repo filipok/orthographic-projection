@@ -2,7 +2,15 @@
 
 This project generates high-resolution orthographic globe images centered on a selected major city using Cartopy, Matplotlib, and online web map tiles.
 
-The main script is [ortho.py](ortho.py). A sample generated output is `orthographic_map_paris_osm_z5.png`.
+The main script is [ortho.py](ortho.py).
+
+## Sample Output
+
+<p align="center">
+  <img src="sample_sao_paulo.png" alt="Orthographic globe centred on São Paulo with 2,500 km and 5,000 km distance circles" width="600">
+</p>
+
+*Orthographic globe centred on São Paulo (Google Satellite, zoom 3) showing concentric geodesic distance circles at 2,500 km and 5,000 km.*
 
 ## Features
 
@@ -14,6 +22,7 @@ The main script is [ortho.py](ortho.py). A sample generated output is `orthograp
 - Buffered tile fetching to reduce missing imagery near the edge of the globe
 - Non-interactive CLI mode with `argparse` for scripting and automation
 - City marker and label overlay on the globe for named locations
+- Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
 - Graceful error handling for network tile fetch failures
 
 ## Supported Cities
@@ -175,6 +184,7 @@ python -m pytest tests/ -v
 - If tile fetching fails due to network issues, the map will still be saved with fallback land/ocean features.
 - Downloaded tiles are cached in `~/.cache/ortho_tiles` by default. Use `--cache-dir` to change the location. Subsequent runs reuse cached tiles, avoiding redundant downloads.
 - When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
+- Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at their northernmost point.
 
 ## Project Files
 
