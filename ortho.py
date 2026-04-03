@@ -60,6 +60,7 @@ MAJOR_METROPOLISES = {
     "Lisbon": {"lat": 38.7223, "lon": -9.1393, "slug": "lisbon"},
     "Honolulu": {"lat": 21.3069, "lon": -157.8583, "slug": "honolulu"},
     "Papeete": {"lat": -17.5516, "lon": -149.5585, "slug": "papeete"},
+    "San Francisco": {"lat": 37.7749, "lon": -122.4194, "slug": "san_francisco"},
 }
 
 TILE_PROVIDERS = [
