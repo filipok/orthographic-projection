@@ -58,6 +58,8 @@ MAJOR_METROPOLISES = {
     "Johannesburg": {"lat": -26.2041, "lon": 28.0473, "slug": "johannesburg"},
     "Sydney": {"lat": -33.8688, "lon": 151.2093, "slug": "sydney"},
     "Lisbon": {"lat": 38.7223, "lon": -9.1393, "slug": "lisbon"},
+    "Honolulu": {"lat": 21.3069, "lon": -157.8583, "slug": "honolulu"},
+    "Papeete": {"lat": -17.5516, "lon": -149.5585, "slug": "papeete"},
 }
 
 TILE_PROVIDERS = [
