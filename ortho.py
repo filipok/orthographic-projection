@@ -273,16 +273,29 @@ def _draw_distance_circles(
     lat: float,
     radii_km: tuple[float, ...] = (2_500, 5_000),
 ) -> None:
-    """Draw concentric geodesic circles on *ax* at the given radii."""
-    plate = ccrs.PlateCarree()
+    """Draw concentric geodesic circles on *ax* at the given radii.
+
+    A ``PlateCarree`` CRS centred on *lon* is used so that geodesic arcs
+    crossing the antimeridian (±180°) don't produce degenerate polygons.
+    """
+    # Centre the source CRS on the circle origin so the polygon never
+    # straddles the ±180° boundary of the coordinate system.
+    source_crs = ccrs.PlateCarree(central_longitude=lon)
     colors = ["#ffffff", "#ffffff"]
     alphas = [0.7, 0.5]
 
     for idx, radius_km in enumerate(radii_km):
         circle_poly = _geodesic_circle(lon, lat, radius_km * 1_000)
+
+        # Re-centre longitudes relative to *lon* so they stay in [-180, 180]
+        # within the shifted CRS and never straddle its boundary.
+        ring = np.array(circle_poly.exterior.coords)
+        ring[:, 0] = ((ring[:, 0] - lon + 180) % 360) - 180
+        shifted_poly = Polygon(ring)
+
         ax.add_geometries(
-            [circle_poly],
-            crs=plate,
+            [shifted_poly],
+            crs=source_crs,
             facecolor="none",
             edgecolor=colors[idx % len(colors)],
             linewidth=1.4,
@@ -291,13 +304,12 @@ def _draw_distance_circles(
             zorder=9,
         )
         # Place a small label on the circle (at the top, i.e. northward)
-        ring = np.array(circle_poly.exterior.coords)
         # Pick the point closest to due-north (max latitude)
         top_idx = int(np.argmax(ring[:, 1]))
-        label_lon, label_lat = ring[top_idx]
+        label_x, label_lat = ring[top_idx]
         ax.text(
-            label_lon, label_lat, f" {int(radius_km):,} km",
-            transform=plate,
+            label_x, label_lat, f" {int(radius_km):,} km",
+            transform=source_crs,
             fontsize=9, color="white", alpha=alphas[idx % len(alphas)],
             fontweight="bold", va="bottom", ha="center", zorder=10,
             path_effects=[pe.withStroke(linewidth=2, foreground="black")],
