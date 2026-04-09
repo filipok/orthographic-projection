@@ -181,6 +181,7 @@ class TestRunCLIValidation:
             city=None, lat=None, lon=None,
             provider="osm", zoom=3, dpi=300,
             output=None, output_dir=None, cache_dir=None,
+            koppen=False, koppen_alpha=0.45,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)

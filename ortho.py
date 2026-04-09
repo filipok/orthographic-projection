@@ -18,6 +18,8 @@ from cartopy.geodesic import Geodesic
 from cartopy.mpl.geoaxes import GeoAxes
 from shapely.geometry import Polygon
 
+from koppen import add_koppen_overlay, add_koppen_legend
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -126,6 +128,8 @@ def generate_orthographic_map(
     max_regrid_shape: int = 4096,
     output_dir: str | None = None,
     city_name: str | None = None,
+    koppen: bool = False,
+    koppen_alpha: float = 0.45,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -156,6 +160,10 @@ def generate_orthographic_map(
         Optional directory to save the output file into. Created if needed.
     city_name : str or None
         If provided, a marker and label are drawn at the centre point.
+    koppen : bool
+        When True, render a Köppen-Geiger climate classification overlay.
+    koppen_alpha : float
+        Opacity of the Köppen-Geiger overlay (0–1).
 
     Returns
     -------
@@ -215,6 +223,12 @@ def generate_orthographic_map(
     except Exception as e:
         logger.warning("Failed to fetch map tiles: %s", e)
         logger.warning("The map will be saved with fallback land/ocean features only.")
+
+    # Step 5b: Köppen-Geiger overlay (above tiles, below gridlines)
+    if koppen:
+        logger.info("Applying Köppen-Geiger climate overlay (alpha=%.2f) …", koppen_alpha)
+        add_koppen_overlay(ax, alpha=koppen_alpha)
+        add_koppen_legend(plt.gcf(), ax)
 
     # Step 6: Gridlines
     ax.gridlines(draw_labels=False, color='black', alpha=0.3, linestyle='--')
@@ -437,6 +451,19 @@ def build_cli_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"Tile cache directory (default: {DEFAULT_CACHE_DIR})",
     )
+    parser.add_argument(
+        "--koppen",
+        action="store_true",
+        default=False,
+        help="Enable Köppen-Geiger climate classification overlay.",
+    )
+    parser.add_argument(
+        "--koppen-alpha",
+        type=float,
+        default=0.45,
+        metavar="ALPHA",
+        help="Opacity of the Köppen-Geiger overlay (0-1, default: 0.45).",
+    )
 
     return parser
 
@@ -474,6 +501,23 @@ def run_interactive() -> None:
     )
     print(f"Output file: {output_file}\n")
 
+    # Köppen-Geiger overlay prompt
+    koppen_input = input("Enable Köppen-Geiger climate overlay? [y/N]: ").strip().lower()
+    enable_koppen = koppen_input in ("y", "yes")
+
+    koppen_alpha = 0.45
+    if enable_koppen:
+        raw_alpha = input("Köppen overlay opacity (0-1) [default: 0.45]: ").strip()
+        if raw_alpha:
+            try:
+                val = float(raw_alpha)
+                if 0.0 <= val <= 1.0:
+                    koppen_alpha = val
+                else:
+                    print("Out of range. Using default 0.45.")
+            except ValueError:
+                print("Invalid number. Using default 0.45.")
+
     generate_orthographic_map(
         lat=lat,
         lon=lon,
@@ -482,6 +526,8 @@ def run_interactive() -> None:
         zoom=zoom,
         dpi=600,
         city_name=city_label if city_slug != "custom" else None,
+        koppen=enable_koppen,
+        koppen_alpha=koppen_alpha,
     )
 
 
@@ -545,6 +591,8 @@ def run_cli(args: argparse.Namespace) -> None:
         dpi=args.dpi,
         output_dir=output_dir,
         city_name=city_label if city_slug != "custom" else None,
+        koppen=args.koppen,
+        koppen_alpha=args.koppen_alpha,
     )
 
 

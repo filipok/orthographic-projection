@@ -7,10 +7,12 @@ The main script is [ortho.py](ortho.py).
 ## Sample Output
 
 <p align="center">
-  <img src="sample_sao_paulo.png" alt="Orthographic globe centred on São Paulo with 2,500 km and 5,000 km distance circles" width="600">
+  <img src="sample_sao_paulo.png" alt="Orthographic globe centred on São Paulo with 2,500 km and 5,000 km distance circles" width="48%">
+  <img src="sample_london_koppen.png" alt="Orthographic globe centred on London with Köppen-Geiger climate overlay" width="48%">
 </p>
 
-*Orthographic globe centred on São Paulo (Google Satellite, zoom 3) showing concentric geodesic distance circles at 2,500 km and 5,000 km.*
+*Left: Orthographic globe centred on São Paulo (Google Satellite, zoom 3) showing concentric geodesic distance circles.*<br>
+*Right: Orthographic globe centred on London (OSM, zoom 3) featuring the Köppen-Geiger climate classification overlay.*
 
 ## Features
 
@@ -23,6 +25,7 @@ The main script is [ortho.py](ortho.py).
 - Non-interactive CLI mode with `argparse` for scripting and automation
 - City marker and label overlay on the globe for named locations
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
+- Optional Köppen-Geiger climate classification overlay with compact legend
 - Graceful error handling for network tile fetch failures
 
 ## Supported Cities
@@ -45,6 +48,9 @@ The script currently includes:
 - Johannesburg
 - Sydney
 - Lisbon
+- Honolulu
+- Papeete
+- San Francisco
 
 ## Supported Tile Providers
 
@@ -100,6 +106,7 @@ You will be prompted to choose:
 1. A location (pre-defined city **or** custom coordinates)
 2. A tile provider
 3. A zoom level
+4. Optional Köppen-Geiger climate overlay and opacity/alpha (0–1)
 
 ### CLI Mode
 
@@ -132,6 +139,8 @@ python ortho.py --city london --provider google_satellite --zoom 2 --output-dir 
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
 | `--output-dir` | Directory for auto-named output files | `.` |
 | `--cache-dir` | Tile cache directory | `~/.cache/ortho_tiles` |
+| `--koppen` | Enable Köppen-Geiger climate classification overlay | off |
+| `--koppen-alpha ALPHA` | Opacity of the climate overlay (0–1) | `0.45` |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
 
@@ -186,9 +195,37 @@ python -m pytest tests/ -v
 - When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
 - Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at their northernmost point.
 
+## Köppen-Geiger Climate Overlay
+
+Pass `--koppen` (CLI) or `koppen=True` (API) to render a semi-transparent
+Köppen-Geiger climate classification layer on top of the globe.
+
+```powershell
+python ortho.py --city paris --provider osm --zoom 3 --koppen
+python ortho.py --city tokyo --provider google_satellite --zoom 3 --koppen --koppen-alpha 0.6
+```
+
+The overlay uses the 30-class colour scheme from the official dataset and adds
+a compact legend strip below the globe. An attribution line
+(*Climate data: Beck et al. (2023) · CC BY 4.0*) is automatically placed at
+the bottom of the image.
+
+## Data Sources & Licensing
+
+| Data | Authors | License | Reference |
+|---|---|---|---|
+| Köppen-Geiger climate classification (1 km) | Beck, H. E. et al. | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-023-02549-6](https://doi.org/10.1038/s41597-023-02549-6) |
+| Natural Earth (land / ocean fallback) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
+| OpenStreetMap tiles | OpenStreetMap contributors | [ODbL](https://www.openstreetmap.org/copyright) | [openstreetmap.org](https://www.openstreetmap.org/) |
+
+When distributing maps generated with the `--koppen` flag, you must retain the
+attribution line or otherwise credit the original authors as required by the
+CC BY 4.0 license.
+
 ## Project Files
 
 - [ortho.py](ortho.py): main script and reusable map-generation functions
+- [koppen.py](koppen.py): Köppen-Geiger climate overlay and legend
 - [requirements.txt](requirements.txt): pinned dependencies
 - [pyproject.toml](pyproject.toml): project metadata and `console_scripts` entry point
 - [tests/test_ortho.py](tests/test_ortho.py): unit test suite (24 tests)
