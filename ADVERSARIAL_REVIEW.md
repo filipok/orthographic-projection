@@ -1,0 +1,236 @@
+0# Adversarial Review: orthographic-projection
+
+**Date:** 2026-10-02
+**Scope:** `ortho.py`, `koppen.py`, `tests/test_ortho.py`, `pyproject.toml`, `requirements.txt`, `README.md`, plus the uncommitted diff to `ortho.py`.
+**Baseline:** `main` @ `71bdbfb` + working-tree changes.
+**Updated:** 2026-10-02 against `main` @ `dfb65d2`. #1 and #3 are resolved, and `ortho.py` line references are re-mapped to the current code.
+**Method:** Read all source, then tried to break each claim the code, docstrings and README make. Every finding marked **[verified]** was reproduced in this environment (Python 3.14.3, cartopy 0.25.0). The rest come from reading the code and have a concrete failure path.
+
+Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the route and packaging fixes. The tests pass, but most of the findings below are bugs the suite cannot see.
+
+---
+
+## Summary
+
+| # | Severity | Finding |
+|---|---|---|
+| 1 | ~~Critical~~ Resolved | `pip install` / `pip install -e .` is broken: invalid build backend |
+| 2 | **Critical** | Köppen auto-download can never succeed (AWS WAF challenge); it hangs about 5 min and then crashes |
+| 3 | ~~High~~ Resolved | Uncommitted change draws a hard-coded red route on **every** map |
+| 4 | **High** | Tile caching does not exist; `--cache-dir` moves Natural Earth data instead |
+| 5 | **High** | README's own CLI example `--city NYC` is rejected by the parser |
+| 6 | **High** | Köppen data is attributed to the wrong paper (license compliance) |
+| 7 | **High** | No attribution for OSM/Google tiles; Google tiles are used without an API key |
+| 8 | Medium | Köppen failure aborts the whole render after the tiles were already fetched |
+| 9 | Medium | Partial or corrupt Köppen downloads get cached permanently (no atomic write) |
+| 10 | Medium | Download retries 30× on permanent errors (404, DNS, etc.) |
+| 11 | Medium | `--koppen-alpha` is not validated in CLI mode; crashes late |
+| 12 | Medium | `-o` into a missing directory crashes after all the work is done |
+| 13 | Medium | Default 600 DPI × 20 in figure gives about 144 MP output; regrid is capped at 4096, so the extra DPI is upscaling |
+| 14 | Medium | Köppen overlay is regridded at cartopy's default 750 px and comes out blocky |
+| 15 | Medium | Figures leak on any exception (no `try/finally` around `plt.close`) |
+| 16 | Low | Distance circles draw chords across the far side for radii ≳ 10 000 km |
+| 17 | Low | Cache scan can pick up a `_conf_` (confidence) raster |
+| 18 | Low | Dead code, unused imports and contradictory comments in `koppen.py` |
+| 19 | Low | Docstring and README statements that are false |
+| 20 | Low | Test-suite gaps and test pollution |
+| 21 | Low | Packaging/metadata inconsistencies |
+
+---
+
+## Critical
+
+### 1. Package cannot be built or installed **[verified]**
+> **Resolved 2026-10-02:** backend set to `setuptools.build_meta` (setuptools>=77 for the SPDX `license` string) with explicit `py-modules`; wheel build and editable install verified.
+
+`pyproject.toml:3`
+```toml
+build-backend = "setuptools.backends._legacy:_Backend"
+```
+This module does not exist in setuptools. Running `pip wheel . --no-deps` gives:
+```
+pip._vendor.pyproject_hooks._impl.BackendUnavailable: Cannot import 'setuptools.backends._legacy'
+```
+So the README's `pip install -e ".[dev]"` instructions and the `ortho` console script cannot work.
+**Fix:** `build-backend = "setuptools.build_meta"`. Also add `[tool.setuptools] py-modules = ["ortho", "koppen"]` so discovery does not depend on flat-layout heuristics.
+
+### 2. Köppen auto-download is dead on arrival **[verified]**
+`koppen.py:39`, `koppen.py:117-175`, `koppen.py:205-211`
+
+`Beck_KG_V1/` is git-ignored (`.gitignore:13`), so any fresh clone falls through to the Figshare download. Figshare now sits behind an AWS WAF bot challenge:
+```
+HTTP/1.1 202 Accepted
+Content-Length: 0
+x-amzn-waf-action: challenge
+```
+The code treats `202` as "file still generating" and sleeps 10 s per attempt for 30 attempts. A non-browser client never passes the challenge, so `--koppen` on a clean machine hangs for **about 5 minutes** and then raises `RuntimeError`. Finding #8 means that error kills the whole render.
+
+Two more problems in the same path:
+- File ID `10808306` is saved as `Beck_KG_V1_{period}_{resolution}.tif` without checking what it is. If it is the V1 ZIP (the existence of `_find_tif_in_zip` suggests someone expected a ZIP), PIL will fail on a ZIP named `.tif`, and #9 means that file then stays in the cache.
+- The only success check is `size > 100_000`.
+
+**Fix:** document the manual download as the supported path and fail fast with a clear message. Alternatively, use a mirror that serves the file directly (GloH2O hosts the V1/V2 data), verify a SHA-256, and extract from the ZIP when needed.
+
+---
+
+## High
+
+### 3. Hard-coded route drawn on every map (uncommitted) **[verified in diff]**
+> **Resolved 2026-10-02:** moved to `routes/gibraltar_ascension_falklands.geojson`; routes are now opt-in via `--route` / `routes=` (`routes.py`).
+
+`ortho.py:257-271`
+```python
+# Step 7c: plot hard-coded line on map
+ax.plot([-5.35, -9.5, ... -56.933], [36.14, 33.5, ... -53.067], color="red", ...)
+```
+A 39-point red polyline (roughly Gibraltar → Ascension Island → Falklands) is added to **every** render, whatever the centre, with no flag, parameter, docstring or test. For a Tokyo or Sydney render it appears as a stray red line on the limb or is clipped away; for anything near the Atlantic it covers the map. The point `(-14.36, -7.95)` is listed twice in a row, which creates a zero-length segment. The continuation lines are also mis-indented.
+
+This looks like experiment code that would leak into `main` on the next `git commit -a`.
+**Fix:** remove it, or turn it into an opt-in `routes: list[list[tuple[float, float]]] | None` parameter with a CLI flag such as `--route-file`.
+
+### 4. "Tile cache" is fictional **[verified]**
+`ortho.py:31-45`, README "Notes"
+
+- Cartopy tile sources only cache when constructed with `cache=True`. The signature is `GoogleWTS.__init__(self, desired_tile_form='RGB', user_agent='CartoPy/0.25.0', cache=False)`, and `create_tile_source` never passes `cache`, so **every run re-downloads every tile**.
+- Even with `cache=True`, cartopy reads `cartopy.config["cache_dir"]`. `configure_tile_cache` sets `cartopy.config["data_dir"]`.
+- `data_dir` is where cartopy stores **Natural Earth shapefiles** (the `cfeature.LAND/OCEAN` fallback). So `--cache-dir` only moves the Natural Earth data, which then downloads again into the new location.
+
+The README states: *"Subsequent runs reuse cached tiles, avoiding redundant downloads."* That is false.
+**Fix:** pass `cache=cache_dir` (cartopy accepts a path) into the tile constructors, and stop overwriting `data_dir`.
+
+### 5. README's first CLI example fails **[verified]**
+`ortho.py:425-430`, `README.md` ("`python ortho.py --city NYC ...`", "Pre-defined city (case-insensitive)")
+```
+error: argument --city: invalid choice: 'NYC' (choose from nyc, moscow, ...)
+```
+`choices` are lower-cased, but argparse compares the raw string. The case-insensitive lookup at `ortho.py:593-595` can therefore never see a non-lowercase value, so it is dead code.
+**Fix:** add `type=str.lower` to the `--city` argument.
+
+### 6. Köppen data attributed to the wrong paper (CC BY 4.0 compliance) **[verified]**
+`koppen.py:1-11`, `koppen.py:356`, README "Data Sources"
+
+The raster actually loaded is `Beck_KG_V1_present_0p083.tif` (about 10 km, 2160×4320). Its own `legend.txt` says:
+> Please cite Beck et al. [2018] … Nature Scientific Data, 2018.
+
+The image footer, module docstring and README all credit **Beck et al. (2023)**, "1 km", "CMIP6", and doi `10.1038/s41597-023-02549-6`. That is a different dataset. CC BY requires correct attribution, so every published `--koppen` render currently misattributes its data. The README also overstates the resolution by 10×.
+**Fix:** credit Beck et al. (2018), *Sci. Data* 5, 180214, doi `10.1038/sdata.2018.214`, and state "0.083° (~10 km)".
+
+### 7. Tile licensing / Terms of Service
+`ortho.py:104-109`, `ortho.py:266-268`
+
+- OSM tiles require visible "© OpenStreetMap contributors" attribution on the output. None is drawn, even though the code already adds a footer for Köppen.
+- `GoogleTiles` reads Google's internal tile endpoints without an API key. That is against Google Maps Platform ToS, and the endpoint can be rate-limited or blocked at any time. The README only says "may be subject to provider availability."
+- The README describes OSM tiles as "ODbL". The data is ODbL; the rendered tiles need attribution under OSMF's tile usage policy.
+
+**Fix:** draw a provider-specific attribution footer for every render. Either drop the Google providers or label them clearly as unofficial and against ToS.
+
+---
+
+## Medium
+
+### 8. Köppen failure kills the render; tile failure does not
+`ortho.py:221-236`
+
+Tile fetching is wrapped in `try/except` and degrades gracefully. `add_koppen_overlay` is not wrapped. Any download, PIL or alpha error happens *after* the expensive tile fetch and loses all of that work. Combined with #2, this is the default outcome for `--koppen` on a fresh clone.
+
+### 9. Non-atomic download poisons the cache
+`koppen.py:138-143`, `koppen.py:199-203`, `koppen.py:209`
+
+The download writes directly to the final `.tif` path. If the process is interrupted (Ctrl+C, crash, power loss, or two concurrent runs), a truncated file is left behind. On the next run, the cache scan at line 199 returns **any** `.tif` whose name matches, with no size or integrity check, so the render fails every time until the user finds and deletes the file. `tempfile` is imported (line 18) but never used, which suggests this was intended.
+**Fix:** download to `dest + ".part"` (or a `NamedTemporaryFile` in the same directory), verify it, then `os.replace`.
+
+### 10. Retry loop retries non-retryable errors
+`koppen.py:168-173`
+
+`except Exception` covers `HTTPError 404/403`, DNS failure, SSL errors, disk-full `OSError`, and so on. Each is retried 30 times with a 10 s sleep, so a typo in the URL costs 5 minutes. There is also no `timeout=` on `urlopen`, so one stalled connection can hang forever.
+**Fix:** retry only on 5xx/202/`URLError` timeouts, use exponential backoff with a small cap, and pass `urlopen(req, timeout=30)`.
+
+### 11. `--koppen-alpha` unvalidated in CLI **[verified]**
+`ortho.py:481-487`
+
+Interactive mode clamps alpha to 0–1 (`ortho.py:547`), but CLI mode passes it straight through. `--koppen-alpha 5` fetches all tiles and then dies with `ValueError: alpha (5) is outside 0-1 range`. `--dpi` has the same problem (no lower or upper bound): `--dpi 0` crashes and `--dpi 5000` will run out of memory.
+**Fix:** validate in `run_cli` alongside lat/lon, or use a custom argparse `type=`.
+
+### 12. `-o` into a non-existent directory fails at the last step
+`ortho.py:180-182`, `ortho.py:615-617`
+
+`output_dir` gets `os.makedirs`, but an explicit `-o renders/x.png` does not. `savefig` raises `FileNotFoundError` only after all tiles are downloaded and regridded. `--output-dir` is also silently ignored when `-o` is given.
+**Fix:** `os.makedirs(os.path.dirname(os.path.abspath(output_filename)), exist_ok=True)` before rendering, and warn or error on `-o` combined with `--output-dir`.
+
+### 13. Default output size is excessive and mostly upscaled
+`ortho.py:198`, `ortho.py:210-213`, `ortho.py:459`, `ortho.py:562`
+
+`figsize=(20, 20)` at the CLI/interactive default of `dpi=600` is about **12 000 × 12 000 px (~144 MP)**, roughly a 576 MB RGBA canvas before PNG encoding. Meanwhile `regrid_shape = min(max(750, 20*dpi), 4096)` saturates at 4096 for any DPI above ~205. Above that point the "dynamic" regrid is a constant, and the extra pixels are nearest-neighbour upscaling of a 4096 px warp: larger files with no extra detail. Defaults also disagree (library 300, CLI 600, interactive hard-coded 600 with no prompt).
+**Fix:** pick one default (e.g. 300), derive `max_regrid_shape` from the target pixel size, or expose `figsize`.
+
+### 14. Köppen overlay rendered at low resolution
+`koppen.py:296-306`
+
+`GeoAxes.imshow` with a `transform` that differs from the axes projection warps through `regrid_shape`, which defaults to **750**. On a 6 000–12 000 px globe, the climate layer is visibly blocky next to the 4096 px tiles. Pass the same `regrid_shape` the tiles use.
+
+### 15. Figure leak on exceptions
+`ortho.py:198-269`
+
+`plt.subplots` creates a pyplot-managed 20×20 in figure. Any exception before `plt.close(fig)` (#8, #11, #12) leaves it registered in pyplot's global state. In programmatic or batch use (the README advertises `from ortho import generate_orthographic_map`), memory grows with every failure, and matplotlib eventually warns about >20 open figures.
+**Fix:** wrap the body in `try/finally: plt.close(fig)`, or use `matplotlib.figure.Figure` directly and avoid pyplot. Also use `fig` instead of `plt.gcf()` at line 236 and `fig.savefig` instead of `plt.savefig` at line 268, since both depend on hidden global "current figure" state.
+
+---
+
+## Low
+
+### 16. Distance-circle chord artefact for large radii
+`ortho.py:315-329`
+
+Non-finite (far-side) vertices are removed and the remaining points are joined with a single `plot`. For any radius past the visible limb (≈10 000 km), the gap becomes a straight chord across the globe. The default radii (2 500/5 000 km) are safe, but `radii_km` is a public parameter. Splitting the line into runs at the NaN gaps (or keeping NaNs, which matplotlib breaks lines at) fixes it. The label code (`argmax(y)`) also assumes at least one visible vertex near the top.
+
+### 17. Cache scan does not exclude confidence rasters
+`koppen.py:199-201` vs `koppen.py:189`
+
+The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `os.listdir` order arbitrary, a confidence raster (values 0–100) could be picked and rendered as climate classes. `_find_tif_in_zip` sorts by length for this reason, but it is never called.
+
+### 18. Dead code and contradictory comments in `koppen.py`
+- Unused imports: `re`, `tempfile`, `Any`; `zipfile` is only used by the dead function below.
+- `_find_tif_in_zip` (line 101) is never called.
+- Line 36 says *"V3 archive (Beck et al. 2023)"*; line 39 says *"Beck et al. (2018) V1"*.
+- `ensure_koppen_data` duplicates `DEFAULT_RESOLUTION`/`DEFAULT_PERIOD` as literals in its signature.
+- `add_koppen_legend` docstring says the legend is *"organised by major climate group (A–E)"*, but `_group_letter`/`_group_name` are discarded and the result is a flat 15×2 grid.
+- Mixing `print(...)` progress output with `logging` means `--quiet` style control is impossible.
+
+### 19. Docs and docstrings that are false
+| Claim | Reality |
+|---|---|
+| `background_color`: "ocean / figure background" (`ortho.py:153`) | `savefig(..., transparent=True)` discards the figure facecolor; only the OCEAN feature uses it |
+| `configure_tile_cache`: "Cartopy already caches tiles internally" | False by default (#4) |
+| README: circles labelled "at their northernmost point" | Labelled at max projected *y*, which differs once a circle encloses a pole |
+| README: `requirements.txt` is a "lock file" / "pinned dependencies" | All entries are `>=` ranges, so nothing is pinned |
+| ~~README: "unit test suite (24 tests)"~~ | ~~29 tests~~ Resolved: README no longer states a count |
+| README: "Requirements: Python 3.14" | `pyproject.toml` says `>=3.12` |
+| README: Köppen "1 km" | 0.083° (~10 km) (#6) |
+| `BufferedTileSource` docstring: "extra ring" (class default 0.5) | Callers default to `tile_buffer_factor=2`, i.e. two tile widths |
+| Integration test: "without hitting the network" | `cfeature.LAND/OCEAN` download Natural Earth on first use if not already present |
+
+### 20. Test-suite gaps
+- **No tests for `koppen.py` at all.** Colormap/norm mapping, `ensure_koppen_data` lookup order, download retry behaviour and legend construction are untested.
+- Nothing covers #5 (`--city NYC`), #11 (alpha range) or #12 (`-o` dir); each is a one-line test. (#3 is now covered by `test_no_routes_drawn_by_default`.)
+- `test_image_for_domain_calls_inner` only checks that a call happened, not that the domain was buffered by the right amount.
+- `test_spaces_in_provider` uses `zoom=5`, which the CLI rejects, so it tests an impossible input.
+- `test_default_when_none` mutates global `cartopy.config["data_dir"]` and never restores it, so later tests run with a modified global.
+- The integration test stubs `add_image`, so the `BufferedTileSource` → cartopy contract is never exercised. A cartopy API change to `image_for_domain` would pass CI.
+- `_draw_distance_circles` tests assert `len(ax.lines) == 2`, which is coupled to implementation details rather than behaviour.
+
+### 21. Packaging / repo hygiene
+- `license = "MIT"` but there is no `LICENSE` file.
+- `pyproject.toml` has no `[tool.pytest.ini_options]`, so tests rely on `sys.path.insert` hacking (`tests/test_ortho.py:14`).
+- `.obsidian/` is untracked and not ignored.
+- `BufferedTileSource.__getattr__` recurses infinitely if `tile_source` is ever accessed before `__init__` (e.g. `copy.copy`, unpickling). Guard with `if name == "tile_source": raise AttributeError`.
+
+---
+
+## Recommended order of work
+1. ~~Delete or flag-gate the hard-coded route (#3) **before committing**.~~ Done in `05e937a`.
+2. ~~Fix the build backend (#1)~~ (done in `dfb65d2`) and `--city` casing (#5). These are one-line fixes for user-facing breakage.
+3. Correct the Köppen attribution (#6) and add tile attribution (#7). These are legal.
+4. Make Köppen failure fast and non-fatal, with an atomic download (#2, #8, #9, #10).
+5. Make tile caching real (#4).
+6. Validate CLI inputs and create the `-o` parent directory (#11, #12), and add tests for each.
+7. Revisit the default DPI and regrid shapes (#13, #14), and add `try/finally` for figure cleanup (#15).
