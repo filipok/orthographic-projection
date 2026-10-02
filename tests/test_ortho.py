@@ -167,6 +167,13 @@ class TestCLIParser:
         with pytest.raises(SystemExit):
             self._parse(["--city", "nyc", "--lat", "40.0"])
 
+    def test_route_defaults_to_none(self):
+        assert self._parse(["--city", "nyc"]).route is None
+
+    def test_route_is_repeatable(self):
+        args = self._parse(["--city", "nyc", "--route", "a.geojson", "--route", "b.geojson"])
+        assert args.route == ["a.geojson", "b.geojson"]
+
 
 # ===================================================================
 # run_cli validation
@@ -181,7 +188,7 @@ class TestRunCLIValidation:
             city=None, lat=None, lon=None,
             provider="osm", zoom=3, dpi=300,
             output=None, output_dir=None, cache_dir=None,
-            koppen=False, koppen_alpha=0.45,
+            koppen=False, koppen_alpha=0.45, route=None,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -210,6 +217,25 @@ class TestRunCLIValidation:
         args = self._make_args(lat=50.0, lon=200.0)
         with pytest.raises(SystemExit):
             ortho.run_cli(args)
+
+    def test_missing_route_file_exits_before_render(self, tmp_path):
+        args = self._make_args(city="paris", route=[str(tmp_path / "nope.geojson")])
+        with mock.patch.object(ortho, "generate_orthographic_map") as render:
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+
+    def test_routes_passed_to_renderer(self, tmp_path):
+        route_file = tmp_path / "r.geojson"
+        route_file.write_text(
+            '{"type": "LineString", "coordinates": [[0, 0], [1, 1]]}', encoding="utf-8"
+        )
+        args = self._make_args(city="paris", route=[str(route_file)])
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        (route,) = render.call_args.kwargs["routes"]
+        assert route.name == "r"
 
 
 # ===================================================================
@@ -255,6 +281,16 @@ class TestGenerateOrthographicMapIntegration:
         with open(out_path, "rb") as f:
             header = f.read(8)
         assert header[:4] == b"\x89PNG", "File does not have a valid PNG header"
+
+    def test_no_routes_drawn_by_default(self, tmp_path):
+        """Without routes, nothing but the two distance circles is plotted."""
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "draw_routes") as draw:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path),
+            )
+        draw.assert_not_called()
 
 
 # ===================================================================

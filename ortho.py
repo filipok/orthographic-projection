@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -19,6 +20,7 @@ from cartopy.mpl.geoaxes import GeoAxes
 from shapely.geometry import Polygon
 
 from koppen import add_koppen_overlay, add_koppen_legend
+from routes import Route, draw_routes, load_routes
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +132,7 @@ def generate_orthographic_map(
     city_name: str | None = None,
     koppen: bool = False,
     koppen_alpha: float = 0.45,
+    routes: Sequence[Route] | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -164,6 +167,8 @@ def generate_orthographic_map(
         When True, render a Köppen-Geiger climate classification overlay.
     koppen_alpha : float
         Opacity of the Köppen-Geiger overlay (0–1).
+    routes : sequence of Route, optional
+        Polylines to draw on the globe, e.g. from :func:`routes.load_routes`.
 
     Returns
     -------
@@ -253,6 +258,10 @@ def generate_orthographic_map(
 
     # Step 7b: Concentric distance circles (2 500 km and 5 000 km)
     _draw_distance_circles(ax, lon, lat)
+
+    # Step 7c: Route overlays
+    if routes:
+        draw_routes(ax, routes)
 
     # Step 8: Export
     logger.info("Saving high-resolution map to '%s' at %d DPI …", output_filename, dpi)
@@ -390,6 +399,18 @@ def prompt_for_coordinates() -> tuple[float, float]:
             print("Please enter valid numbers.\n")
 
 
+def prompt_for_routes() -> list[Route]:
+    """Prompt for an optional GeoJSON route file; blank skips."""
+    while True:
+        path = input("Route GeoJSON file to overlay [blank for none]: ").strip().strip('"')
+        if not path:
+            return []
+        try:
+            return load_routes(path)
+        except (OSError, ValueError) as e:
+            print(f"Could not load route: {e}\n")
+
+
 # --- CLI argument parser ---
 
 
@@ -464,8 +485,20 @@ def build_cli_parser() -> argparse.ArgumentParser:
         metavar="ALPHA",
         help="Opacity of the Köppen-Geiger overlay (0-1, default: 0.45).",
     )
+    parser.add_argument(
+        "--route",
+        action="append",
+        default=None,
+        metavar="GEOJSON",
+        help="GeoJSON file of LineString routes to draw. Repeat for multiple files.",
+    )
 
     return parser
+
+
+def load_route_files(paths: Sequence[str]) -> list[Route]:
+    """Load and concatenate the routes from every file in *paths*."""
+    return [route for path in paths for route in load_routes(path)]
 
 
 # --- Entry point modes ---
@@ -518,6 +551,8 @@ def run_interactive() -> None:
             except ValueError:
                 print("Invalid number. Using default 0.45.")
 
+    routes = prompt_for_routes()
+
     generate_orthographic_map(
         lat=lat,
         lon=lon,
@@ -528,6 +563,7 @@ def run_interactive() -> None:
         city_name=city_label if city_slug != "custom" else None,
         koppen=enable_koppen,
         koppen_alpha=koppen_alpha,
+        routes=routes,
     )
 
 
@@ -565,6 +601,13 @@ def run_cli(args: argparse.Namespace) -> None:
         logger.error("Provide --city or --lat/--lon.")
         sys.exit(1)
 
+    # Load routes up front so a bad file fails before any tiles are fetched
+    try:
+        routes = load_route_files(args.route or [])
+    except (OSError, ValueError) as e:
+        logger.error("Could not load route: %s", e)
+        sys.exit(1)
+
     # Configure tile cache
     configure_tile_cache(args.cache_dir)
 
@@ -593,6 +636,7 @@ def run_cli(args: argparse.Namespace) -> None:
         city_name=city_label if city_slug != "custom" else None,
         koppen=args.koppen,
         koppen_alpha=args.koppen_alpha,
+        routes=routes,
     )
 
 

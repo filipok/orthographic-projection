@@ -26,6 +26,7 @@ The main script is [ortho.py](ortho.py).
 - City marker and label overlay on the globe for named locations
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
 - Optional Köppen-Geiger climate classification overlay with compact legend
+- Optional route overlays loaded from GeoJSON files, drawn as great-circle polylines
 - Graceful error handling for network tile fetch failures
 
 ## Supported Cities
@@ -107,6 +108,7 @@ You will be prompted to choose:
 2. A tile provider
 3. A zoom level
 4. Optional Köppen-Geiger climate overlay and opacity/alpha (0–1)
+5. An optional GeoJSON route file to overlay (leave blank to skip)
 
 ### CLI Mode
 
@@ -124,6 +126,9 @@ python ortho.py --city paris --provider osm --zoom 3 -o my_globe.png
 
 # Save to a specific directory
 python ortho.py --city london --provider google_satellite --zoom 2 --output-dir renders/
+
+# Draw a route from a GeoJSON file (repeat --route for more)
+python ortho.py --city lisbon --zoom 3 --route routes/gibraltar_ascension_falklands.geojson
 ```
 
 #### CLI Flags
@@ -141,6 +146,7 @@ python ortho.py --city london --provider google_satellite --zoom 2 --output-dir 
 | `--cache-dir` | Tile cache directory | `~/.cache/ortho_tiles` |
 | `--koppen` | Enable Köppen-Geiger climate classification overlay | off |
 | `--koppen-alpha ALPHA` | Opacity of the climate overlay (0–1) | `0.45` |
+| `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
 
@@ -174,6 +180,7 @@ generate_orthographic_map(
     dpi=600,
     output_dir="renders",  # optional: save to a specific directory
     city_name="Paris",     # optional: adds a marker and label on the map
+    routes=None,           # optional: list of Route objects, see "Route Overlays"
 )
 ```
 
@@ -194,6 +201,49 @@ python -m pytest tests/ -v
 - Downloaded tiles are cached in `~/.cache/ortho_tiles` by default. Use `--cache-dir` to change the location. Subsequent runs reuse cached tiles, avoiding redundant downloads.
 - When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
 - Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at their northernmost point.
+
+## Route Overlays
+
+Pass one or more GeoJSON files with `--route` (CLI), at the interactive prompt,
+or as `routes=` (API) to draw routes on the globe:
+
+```powershell
+python ortho.py --city lisbon --route routes/gibraltar_ascension_falklands.geojson
+```
+
+```python
+from ortho import generate_orthographic_map
+from routes import load_routes
+
+generate_orthographic_map(
+    lat=38.7223, lon=-9.1393, output_filename="lisbon.png",
+    routes=load_routes("routes/gibraltar_ascension_falklands.geojson"),
+)
+```
+
+Route files live in [routes/](routes/). Each file is a GeoJSON `FeatureCollection`,
+`Feature` or bare geometry containing `LineString` or `MultiLineString` geometries.
+Coordinates are `[lon, lat]` in degrees, and segments between vertices are drawn
+along the great circle. Styling uses the
+[simplestyle-spec](https://github.com/mapbox/simplestyle-spec) properties, so
+files also render correctly on GitHub and [geojson.io](https://geojson.io):
+
+| Property | Meaning | Default |
+|---|---|---|
+| `name` | Route name (used in logs) | file name |
+| `stroke` | Line colour (any Matplotlib colour) | `#ff0000` |
+| `stroke-width` | Line width in points | `2` |
+
+```json
+{
+  "type": "Feature",
+  "properties": {"name": "My route", "stroke": "#ff0000", "stroke-width": 2},
+  "geometry": {"type": "LineString", "coordinates": [[-5.35, 36.14], [-14.36, -7.95]]}
+}
+```
+
+Route files are validated before any tiles are fetched, so a missing or malformed
+file fails immediately.
 
 ## Köppen-Geiger Climate Overlay
 
@@ -226,6 +276,8 @@ CC BY 4.0 license.
 
 - [ortho.py](ortho.py): main script and reusable map-generation functions
 - [koppen.py](koppen.py): Köppen-Geiger climate overlay and legend
+- [routes.py](routes.py): GeoJSON route loading and drawing
+- [routes/](routes/): bundled route files
 - [requirements.txt](requirements.txt): pinned dependencies
 - [pyproject.toml](pyproject.toml): project metadata and `console_scripts` entry point
-- [tests/test_ortho.py](tests/test_ortho.py): unit test suite (24 tests)
+- [tests/](tests/): unit test suite
