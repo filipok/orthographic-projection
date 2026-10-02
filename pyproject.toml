@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=75.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+requires = ["setuptools>=77.0"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "orthographic-projection"
@@ -27,3 +27,6 @@ dev = [
 
 [project.scripts]
 ortho = "ortho:main"
+
+[tool.setuptools]
+py-modules = ["ortho", "koppen", "routes"]
