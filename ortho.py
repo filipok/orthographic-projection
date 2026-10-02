@@ -424,6 +424,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     location = parser.add_mutually_exclusive_group()
     location.add_argument(
         "--city",
+        type=str.lower,
         choices=[k.lower() for k in MAJOR_METROPOLISES],
         metavar="CITY",
         help=f"Pre-defined city ({', '.join(MAJOR_METROPOLISES.keys())})",

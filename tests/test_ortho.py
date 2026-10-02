@@ -163,6 +163,17 @@ class TestCLIParser:
         assert args.output_dir is None
         assert args.cache_dir is None
 
+    @pytest.mark.parametrize("raw", ["NYC", "Nyc", "nyc"])
+    def test_city_is_case_insensitive(self, raw):
+        assert self._parse(["--city", raw]).city == "nyc"
+
+    def test_multi_word_city_is_case_insensitive(self):
+        assert self._parse(["--city", "New Delhi"]).city == "new delhi"
+
+    def test_unknown_city_rejected(self):
+        with pytest.raises(SystemExit):
+            self._parse(["--city", "Atlantis"])
+
     def test_city_and_lat_mutually_exclusive(self):
         with pytest.raises(SystemExit):
             self._parse(["--city", "nyc", "--lat", "40.0"])
@@ -217,6 +228,15 @@ class TestRunCLIValidation:
         args = self._make_args(lat=50.0, lon=200.0)
         with pytest.raises(SystemExit):
             ortho.run_cli(args)
+
+    def test_mixed_case_city_resolves_to_display_name(self):
+        args = ortho.build_cli_parser().parse_args(["--city", "SAN FRANCISCO"])
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert kwargs["city_name"] == "San Francisco"
+        assert kwargs["output_filename"] == "orthographic_map_san_francisco_osm_z3.png"
 
     def test_missing_route_file_exits_before_render(self, tmp_path):
         args = self._make_args(city="paris", route=[str(tmp_path / "nope.geojson")])

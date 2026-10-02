@@ -3,7 +3,7 @@
 **Date:** 2026-10-02
 **Scope:** `ortho.py`, `koppen.py`, `tests/test_ortho.py`, `pyproject.toml`, `requirements.txt`, `README.md`, plus the uncommitted diff to `ortho.py`.
 **Baseline:** `main` @ `71bdbfb` + working-tree changes.
-**Updated:** 2026-10-02 against `main` @ `dfb65d2`. #1 and #3 are resolved, and `ortho.py` line references are re-mapped to the current code.
+**Updated:** 2026-10-02 against `main` @ `dfb65d2`. #1, #3 and #5 are resolved, and `ortho.py` line references are re-mapped to the current code.
 **Method:** Read all source, then tried to break each claim the code, docstrings and README make. Every finding marked **[verified]** was reproduced in this environment (Python 3.14.3, cartopy 0.25.0). The rest come from reading the code and have a concrete failure path.
 
 Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the route and packaging fixes. The tests pass, but most of the findings below are bugs the suite cannot see.
@@ -18,7 +18,7 @@ Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the ro
 | 2 | **Critical** | Köppen auto-download can never succeed (AWS WAF challenge); it hangs about 5 min and then crashes |
 | 3 | ~~High~~ Resolved | Uncommitted change draws a hard-coded red route on **every** map |
 | 4 | **High** | Tile caching does not exist; `--cache-dir` moves Natural Earth data instead |
-| 5 | **High** | README's own CLI example `--city NYC` is rejected by the parser |
+| 5 | ~~High~~ Resolved | README's own CLI example `--city NYC` is rejected by the parser |
 | 6 | **High** | Köppen data is attributed to the wrong paper (license compliance) |
 | 7 | **High** | No attribution for OSM/Google tiles; Google tiles are used without an API key |
 | 8 | Medium | Köppen failure aborts the whole render after the tiles were already fetched |
@@ -99,11 +99,13 @@ The README states: *"Subsequent runs reuse cached tiles, avoiding redundant down
 **Fix:** pass `cache=cache_dir` (cartopy accepts a path) into the tile constructors, and stop overwriting `data_dir`.
 
 ### 5. README's first CLI example fails **[verified]**
-`ortho.py:425-430`, `README.md` ("`python ortho.py --city NYC ...`", "Pre-defined city (case-insensitive)")
+> **Resolved 2026-10-02:** `--city` now uses `type=str.lower`, so any casing is accepted; covered by CLI parser and `run_cli` tests.
+
+`ortho.py:425-431`, `README.md` ("`python ortho.py --city NYC ...`", "Pre-defined city (case-insensitive)")
 ```
 error: argument --city: invalid choice: 'NYC' (choose from nyc, moscow, ...)
 ```
-`choices` are lower-cased, but argparse compares the raw string. The case-insensitive lookup at `ortho.py:593-595` can therefore never see a non-lowercase value, so it is dead code.
+`choices` are lower-cased, but argparse compares the raw string. The case-insensitive lookup at `ortho.py:594-596` can therefore never see a non-lowercase value, so it is dead code.
 **Fix:** add `type=str.lower` to the `--city` argument.
 
 ### 6. Köppen data attributed to the wrong paper (CC BY 4.0 compliance) **[verified]**
@@ -146,19 +148,19 @@ The download writes directly to the final `.tif` path. If the process is interru
 **Fix:** retry only on 5xx/202/`URLError` timeouts, use exponential backoff with a small cap, and pass `urlopen(req, timeout=30)`.
 
 ### 11. `--koppen-alpha` unvalidated in CLI **[verified]**
-`ortho.py:481-487`
+`ortho.py:482-488`
 
-Interactive mode clamps alpha to 0–1 (`ortho.py:547`), but CLI mode passes it straight through. `--koppen-alpha 5` fetches all tiles and then dies with `ValueError: alpha (5) is outside 0-1 range`. `--dpi` has the same problem (no lower or upper bound): `--dpi 0` crashes and `--dpi 5000` will run out of memory.
+Interactive mode clamps alpha to 0–1 (`ortho.py:548`), but CLI mode passes it straight through. `--koppen-alpha 5` fetches all tiles and then dies with `ValueError: alpha (5) is outside 0-1 range`. `--dpi` has the same problem (no lower or upper bound): `--dpi 0` crashes and `--dpi 5000` will run out of memory.
 **Fix:** validate in `run_cli` alongside lat/lon, or use a custom argparse `type=`.
 
 ### 12. `-o` into a non-existent directory fails at the last step
-`ortho.py:180-182`, `ortho.py:615-617`
+`ortho.py:180-182`, `ortho.py:616-618`
 
 `output_dir` gets `os.makedirs`, but an explicit `-o renders/x.png` does not. `savefig` raises `FileNotFoundError` only after all tiles are downloaded and regridded. `--output-dir` is also silently ignored when `-o` is given.
 **Fix:** `os.makedirs(os.path.dirname(os.path.abspath(output_filename)), exist_ok=True)` before rendering, and warn or error on `-o` combined with `--output-dir`.
 
 ### 13. Default output size is excessive and mostly upscaled
-`ortho.py:198`, `ortho.py:210-213`, `ortho.py:459`, `ortho.py:562`
+`ortho.py:198`, `ortho.py:210-213`, `ortho.py:460`, `ortho.py:563`
 
 `figsize=(20, 20)` at the CLI/interactive default of `dpi=600` is about **12 000 × 12 000 px (~144 MP)**, roughly a 576 MB RGBA canvas before PNG encoding. Meanwhile `regrid_shape = min(max(750, 20*dpi), 4096)` saturates at 4096 for any DPI above ~205. Above that point the "dynamic" regrid is a constant, and the extra pixels are nearest-neighbour upscaling of a 4096 px warp: larger files with no extra detail. Defaults also disagree (library 300, CLI 600, interactive hard-coded 600 with no prompt).
 **Fix:** pick one default (e.g. 300), derive `max_regrid_shape` from the target pixel size, or expose `figsize`.
@@ -211,7 +213,7 @@ The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `
 
 ### 20. Test-suite gaps
 - **No tests for `koppen.py` at all.** Colormap/norm mapping, `ensure_koppen_data` lookup order, download retry behaviour and legend construction are untested.
-- Nothing covers #5 (`--city NYC`), #11 (alpha range) or #12 (`-o` dir); each is a one-line test. (#3 is now covered by `test_no_routes_drawn_by_default`.)
+- Nothing covers #11 (alpha range) or #12 (`-o` dir); each is a one-line test. (#3 and #5 are now covered.)
 - `test_image_for_domain_calls_inner` only checks that a call happened, not that the domain was buffered by the right amount.
 - `test_spaces_in_provider` uses `zoom=5`, which the CLI rejects, so it tests an impossible input.
 - `test_default_when_none` mutates global `cartopy.config["data_dir"]` and never restores it, so later tests run with a modified global.
@@ -228,7 +230,7 @@ The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `
 
 ## Recommended order of work
 1. ~~Delete or flag-gate the hard-coded route (#3) **before committing**.~~ Done in `05e937a`.
-2. ~~Fix the build backend (#1)~~ (done in `dfb65d2`) and `--city` casing (#5). These are one-line fixes for user-facing breakage.
+2. ~~Fix the build backend (#1)~~ (done in `dfb65d2`) and ~~`--city` casing (#5)~~ (done). These are one-line fixes for user-facing breakage.
 3. Correct the Köppen attribution (#6) and add tile attribution (#7). These are legal.
 4. Make Köppen failure fast and non-fatal, with an atomic download (#2, #8, #9, #10).
 5. Make tile caching real (#4).
