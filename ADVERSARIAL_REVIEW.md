@@ -3,7 +3,7 @@
 **Date:** 2026-10-02
 **Scope:** `ortho.py`, `koppen.py`, `tests/test_ortho.py`, `pyproject.toml`, `requirements.txt`, `README.md`, plus the uncommitted diff to `ortho.py`.
 **Baseline:** `main` @ `71bdbfb` + working-tree changes.
-**Updated:** 2026-10-02 against the latest `main`. #1–#12 and #17 are resolved, #18 is partly resolved, #22 was added, and `ortho.py` line references are re-mapped to the current code.
+**Updated:** 2026-10-02 against the latest `main`. #1–#12, #17 and #22 are resolved, #18 is partly resolved, and `ortho.py` line references are re-mapped to the current code.
 **Method:** Read all source, then tried to break each claim the code, docstrings and README make. Every finding marked **[verified]** was reproduced in this environment (Python 3.14.3, cartopy 0.25.0). The rest come from reading the code and have a concrete failure path.
 
 Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the route and packaging fixes. The tests pass, but most of the findings below are bugs the suite cannot see.
@@ -35,7 +35,7 @@ Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the ro
 | 19 | Low | Docstring and README statements that are false |
 | 20 | Low | Test-suite gaps and test pollution |
 | 21 | Low | Packaging/metadata inconsistencies |
-| 22 | Medium | Tile download failures crash `savefig`; the `try/except` around `add_image` never fires |
+| 22 | ~~Medium~~ Resolved | Tile download failures crash `savefig`; the `try/except` around `add_image` never fires |
 
 ---
 
@@ -191,7 +191,7 @@ Interactive mode clamps alpha to 0–1 (`ortho.py:728`), but CLI mode passes it 
 **Fix:** `os.makedirs(os.path.dirname(os.path.abspath(output_filename)), exist_ok=True)` before rendering, and warn or error on `-o` combined with `--output-dir`.
 
 ### 13. Default output size is excessive and mostly upscaled
-`ortho.py:342`, `ortho.py:354-357`, `ortho.py:646`, `ortho.py:760`
+`ortho.py:386`, `ortho.py:398-401`, `ortho.py:706`, `ortho.py:820`
 
 `figsize=(20, 20)` at the CLI/interactive default of `dpi=600` is about **12 000 × 12 000 px (~144 MP)**, roughly a 576 MB RGBA canvas before PNG encoding. Meanwhile `regrid_shape = min(max(750, 20*dpi), 4096)` saturates at 4096 for any DPI above ~205. Above that point the "dynamic" regrid is a constant, and the extra pixels are nearest-neighbour upscaling of a 4096 px warp: larger files with no extra detail. Defaults also disagree (library 300, CLI 600, interactive hard-coded 600 with no prompt).
 **Fix:** pick one default (e.g. 300), derive `max_regrid_shape` from the target pixel size, or expose `figsize`.
@@ -202,12 +202,14 @@ Interactive mode clamps alpha to 0–1 (`ortho.py:728`), but CLI mode passes it 
 `GeoAxes.imshow` with a `transform` that differs from the axes projection warps through `regrid_shape`, which defaults to **750**. On a 6 000–12 000 px globe, the climate layer is visibly blocky next to the 4096 px tiles. Pass the same `regrid_shape` the tiles use.
 
 ### 15. Figure leak on exceptions
-`ortho.py:342-426`
+`ortho.py:386-467`
 
 `plt.subplots` creates a pyplot-managed 20×20 in figure. Any exception before `plt.close(fig)` (#8, #11, #12) leaves it registered in pyplot's global state. In programmatic or batch use (the README advertises `from ortho import generate_orthographic_map`), memory grows with every failure, and matplotlib eventually warns about >20 open figures.
-**Fix:** wrap the body in `try/finally: plt.close(fig)`, or use `matplotlib.figure.Figure` directly and avoid pyplot. Also use `fig.savefig` instead of `plt.savefig` at line 425, since it depends on hidden global "current figure" state. (The `plt.gcf()` call was removed with the attribution fix.)
+**Fix:** wrap the body in `try/finally: plt.close(fig)`, or use `matplotlib.figure.Figure` directly and avoid pyplot. Also use `fig.savefig` instead of `plt.savefig` at line 466, since it depends on hidden global "current figure" state. (The `plt.gcf()` call was removed with the attribution fix.)
 
 ### 22. Tile download failures are not handled **[verified]**
+> **Resolved 2026-10-02:** the full picture was worse than first described. Cartopy's `GoogleWTS.image_for_domain` silently drops any tile whose fetch raises `OSError` (which includes `URLError`, timeouts and resets), and `_merge_tiles` fills the hole with opaque white (`np.zeros(...) - 1`); if every tile fails it raises `ValueError` inside `savefig`. Tiles that fail inside `get_image` come back as opaque grey placeholders. So a network outage gave a white or grey globe, or a crash, never the fallback map. `BufferedTileSource.image_for_domain` now fetches the tiles itself and makes each failed tile fully transparent, so the Natural Earth land/ocean fallback shows through. `CachedOSM` and `GoogleMapTiles` raise on failure via `tile_fetch.download_tile` instead of returning placeholders. After saving, a warning reports how many tiles failed. The `try/except` around `add_image`, which never fired, was removed. Verified live by refusing every tile, and half the tiles, via a closed local port: both maps saved with the fallback showing where tiles were missing. Exceptions that are not tile failures still leak the figure (#15).
+
 `ortho.py:365-374`, `ortho.py:425`
 
 `GeoAxes.add_image` only registers the tile source (`self.img_factories.append(...)`); cartopy's `SlippyImageArtist.draw` fetches the tiles when the figure is drawn, i.e. inside `plt.savefig`. So the `try/except` around `add_image` never sees a network error. Simulating a failure in `image_for_domain` raises `ConnectionError` from `ortho.py:425` (`plt.savefig`), no map is saved, and the figure leaks (#15). Separately, cartopy's `GoogleWTS.get_image` catches `HTTPError`/`URLError` per tile and substitutes a blank grey tile, so HTTP-level failures (quota, 403, timeouts) don't raise at all and instead produce grey patches with only a printed message. The README's "Graceful error handling for network tile fetch failures" and "the map will still be saved with fallback land/ocean features" are both false.
@@ -218,7 +220,7 @@ Interactive mode clamps alpha to 0–1 (`ortho.py:728`), but CLI mode passes it 
 ## Low
 
 ### 16. Distance-circle chord artefact for large radii
-`ortho.py:487-501`
+`ortho.py:547-561`
 
 Non-finite (far-side) vertices are removed and the remaining points are joined with a single `plot`. For any radius past the visible limb (≈10 000 km), the gap becomes a straight chord across the globe. The default radii (2 500/5 000 km) are safe, but `radii_km` is a public parameter. Splitting the line into runs at the NaN gaps (or keeping NaNs, which matplotlib breaks lines at) fixes it. The label code (`argmax(y)`) also assumes at least one visible vertex near the top.
 
@@ -240,7 +242,7 @@ The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `
 ### 19. Docs and docstrings that are false
 | Claim | Reality |
 |---|---|
-| `background_color`: "ocean / figure background" (`ortho.py:289`) | `savefig(..., transparent=True)` discards the figure facecolor; only the OCEAN feature uses it |
+| `background_color`: "ocean / figure background" (`ortho.py:333`) | `savefig(..., transparent=True)` discards the figure facecolor; only the OCEAN feature uses it |
 | ~~`configure_tile_cache`: "Cartopy already caches tiles internally"~~ | ~~False by default (#4)~~ Resolved with #4 |
 | README: circles labelled "at their northernmost point" | Labelled at max projected *y*, which differs once a circle encloses a pole |
 | README: `requirements.txt` is a "lock file" / "pinned dependencies" | All entries are `>=` ranges, so nothing is pinned |
