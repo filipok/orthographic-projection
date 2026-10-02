@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import logging
 import os
 import sys
@@ -19,6 +20,13 @@ from cartopy.geodesic import Geodesic
 from cartopy.mpl.geoaxes import GeoAxes
 from shapely.geometry import Polygon
 
+from google_tiles import (
+    API_KEY_ENV,
+    API_KEY_ENVS,
+    GoogleMapTiles,
+    GoogleTilesError,
+    resolve_api_key,
+)
 from koppen import KOPPEN_ATTRIBUTION, add_koppen_overlay, add_koppen_legend
 from routes import Route, draw_routes, load_routes
 
@@ -43,6 +51,35 @@ def configure_tile_cache(cache_dir: str | None = None) -> str:
     cartopy.config["data_dir"] = cache_dir
     logger.debug("Tile cache directory: %s", cache_dir)
     return cache_dir
+
+
+def load_env_files() -> list[str]:
+    """Load API keys from .env-style files into the process environment.
+
+    Mirrors newsgrab's key handling so both tools share ``~/myapikeys.env``.
+    Existing environment variables are never overridden, so the first file
+    that sets a variable wins. Priority (highest first):
+
+      1. ``$ORTHO_ENV_FILE`` — explicit override
+      2. ``~/myapikeys.env`` — central key file
+      3. ``./.env``          — local fallback
+
+    Returns the files actually loaded.
+    """
+    from dotenv import load_dotenv
+
+    candidates = [
+        os.environ.get("ORTHO_ENV_FILE"),
+        os.path.expanduser("~/myapikeys.env"),
+        ".env",
+    ]
+    loaded: list[str] = []
+    for path in candidates:
+        if path and os.path.isfile(path):
+            load_dotenv(dotenv_path=path)
+            loaded.append(path)
+    logger.debug("Loaded env files: %s", loaded)
+    return loaded
 
 
 MAJOR_METROPOLISES = {
@@ -73,11 +110,12 @@ TILE_PROVIDERS = [
     "google_satellite"
 ]
 
-# Credit lines the tile providers require on every rendered map
+GOOGLE_MAP_TYPES = {"google": "roadmap", "google_satellite": "satellite"}
+
+# Fixed credit lines for providers that don't supply their own. Google's
+# credit depends on the data shown and comes from the Map Tiles API instead.
 TILE_ATTRIBUTIONS = {
     "osm": "Map tiles © OpenStreetMap contributors",
-    "google": "Map data © Google",
-    "google_satellite": "Imagery © Google",
 }
 
 
@@ -105,15 +143,17 @@ def create_tile_source(
     tile_buffer_factor: float = 2,
     **tile_kwargs: Any,
 ) -> BufferedTileSource:
-    """Create a Cartopy tile source from a simple provider name."""
+    """Create a Cartopy tile source from a simple provider name.
+
+    Google providers create a Map Tiles API session here, so a missing or
+    invalid API key raises :class:`GoogleTilesError` before any rendering.
+    """
     provider = tile_provider.lower()
 
     if provider == "osm":
         tile_source = cimgt.OSM(**tile_kwargs)
-    elif provider == "google":
-        tile_source = cimgt.GoogleTiles(style="street", **tile_kwargs)
-    elif provider == "google_satellite":
-        tile_source = cimgt.GoogleTiles(style="satellite", **tile_kwargs)
+    elif provider in GOOGLE_MAP_TYPES:
+        tile_source = GoogleMapTiles(map_type=GOOGLE_MAP_TYPES[provider], **tile_kwargs)
     else:
         raise ValueError(
             "Unsupported tile_provider. Choose one of: "
@@ -122,6 +162,13 @@ def create_tile_source(
 
     logger.debug("Created tile source: %s (buffer_factor=%.1f)", provider, tile_buffer_factor)
     return BufferedTileSource(tile_source, tile_buffer_factor=tile_buffer_factor)
+
+
+def tile_attribution_lines(tiles: BufferedTileSource, tile_provider: str, zoom: int) -> list[str]:
+    """Return the credit lines the tile provider requires for a render at *zoom*."""
+    if isinstance(tiles.tile_source, GoogleMapTiles):
+        return tiles.tile_source.attribution_lines(zoom)
+    return [TILE_ATTRIBUTIONS[tile_provider.lower()]]
 
 
 def generate_orthographic_map(
@@ -161,7 +208,9 @@ def generate_orthographic_map(
     tile_provider : str
         One of ``"osm"``, ``"google"``, ``"google_satellite"``.
     tile_kwargs : dict, optional
-        Extra keyword arguments forwarded to the Cartopy tile constructor.
+        Extra keyword arguments forwarded to the tile source constructor.
+        Google providers accept ``api_key`` (default: ``$GOOGLE_MAPS_API_KEY``),
+        ``language`` and ``region``.
     tile_buffer_factor : float
         How aggressively to over-fetch tiles near the globe edge.
     max_regrid_shape : int
@@ -271,7 +320,7 @@ def generate_orthographic_map(
         draw_routes(ax, routes)
 
     # Step 7d: Data credits required by the tile and dataset licences
-    credits = [TILE_ATTRIBUTIONS[tile_provider.lower()]]
+    credits = tile_attribution_lines(tiles, tile_provider, zoom)
     if koppen:
         credits.append(KOPPEN_ATTRIBUTION)
     _add_attribution(ax, credits)
@@ -427,6 +476,20 @@ def prompt_for_coordinates() -> tuple[float, float]:
             print("Please enter valid numbers.\n")
 
 
+def prompt_for_google_api_key() -> str:
+    """Return the Google Maps API key from the environment, or ask for it (hidden input)."""
+    try:
+        return resolve_api_key()
+    except GoogleTilesError:
+        pass
+    print(f"Google tiles need a Google Maps Platform API key ({' / '.join(API_KEY_ENVS)} not set).")
+    while True:
+        key = getpass.getpass("Google Maps API key (input hidden): ").strip()
+        if key:
+            return key
+        print("A key is required for Google tiles.\n")
+
+
 def prompt_for_routes() -> list[Route]:
     """Prompt for an optional GeoJSON route file; blank skips."""
     while True:
@@ -555,6 +618,9 @@ def run_interactive() -> None:
         "Choose a tile provider:",
         TILE_PROVIDERS,
     )
+    tile_kwargs = {}
+    if tile_provider in GOOGLE_MAP_TYPES:
+        tile_kwargs["api_key"] = prompt_for_google_api_key()
     zoom = prompt_for_zoom(default_zoom=3)
     output_file = build_output_filename(city_slug, tile_provider, zoom)
 
@@ -582,18 +648,23 @@ def run_interactive() -> None:
 
     routes = prompt_for_routes()
 
-    generate_orthographic_map(
-        lat=lat,
-        lon=lon,
-        output_filename=output_file,
-        tile_provider=tile_provider,
-        zoom=zoom,
-        dpi=600,
-        city_name=city_label if city_slug != "custom" else None,
-        koppen=enable_koppen,
-        koppen_alpha=koppen_alpha,
-        routes=routes,
-    )
+    try:
+        generate_orthographic_map(
+            lat=lat,
+            lon=lon,
+            output_filename=output_file,
+            tile_provider=tile_provider,
+            tile_kwargs=tile_kwargs,
+            zoom=zoom,
+            dpi=600,
+            city_name=city_label if city_slug != "custom" else None,
+            koppen=enable_koppen,
+            koppen_alpha=koppen_alpha,
+            routes=routes,
+        )
+    except GoogleTilesError as e:
+        print(f"\n{e}")
+        sys.exit(1)
 
 
 def run_cli(args: argparse.Namespace) -> None:
@@ -637,6 +708,13 @@ def run_cli(args: argparse.Namespace) -> None:
         logger.error("Could not load route: %s", e)
         sys.exit(1)
 
+    if args.provider in GOOGLE_MAP_TYPES:
+        try:
+            resolve_api_key()
+        except GoogleTilesError as e:
+            logger.error("%s", e)
+            sys.exit(1)
+
     # Configure tile cache
     configure_tile_cache(args.cache_dir)
 
@@ -654,19 +732,23 @@ def run_cli(args: argparse.Namespace) -> None:
     )
     logger.info("Output file: %s", output_file)
 
-    generate_orthographic_map(
-        lat=lat,
-        lon=lon,
-        output_filename=output_file,
-        tile_provider=args.provider,
-        zoom=args.zoom,
-        dpi=args.dpi,
-        output_dir=output_dir,
-        city_name=city_label if city_slug != "custom" else None,
-        koppen=args.koppen,
-        koppen_alpha=args.koppen_alpha,
-        routes=routes,
-    )
+    try:
+        generate_orthographic_map(
+            lat=lat,
+            lon=lon,
+            output_filename=output_file,
+            tile_provider=args.provider,
+            zoom=args.zoom,
+            dpi=args.dpi,
+            output_dir=output_dir,
+            city_name=city_label if city_slug != "custom" else None,
+            koppen=args.koppen,
+            koppen_alpha=args.koppen_alpha,
+            routes=routes,
+        )
+    except GoogleTilesError as e:
+        logger.error("%s", e)
+        sys.exit(1)
 
 
 def main() -> None:
@@ -675,6 +757,7 @@ def main() -> None:
         level=logging.INFO,
         format="%(levelname)s: %(message)s",
     )
+    load_env_files()
 
     if len(sys.argv) == 1:
         configure_tile_cache()

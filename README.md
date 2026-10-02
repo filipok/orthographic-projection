@@ -268,7 +268,7 @@ block in the bottom-right corner of the image (see below).
 | Köppen-Geiger climate classification V1, present day (1980–2016), used at 0.083° (~10 km) | Beck, H. E. et al. (2018) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/sdata.2018.214](https://doi.org/10.1038/sdata.2018.214) |
 | Natural Earth (land / ocean fallback) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | OpenStreetMap tiles | OpenStreetMap contributors | Data [ODbL](https://www.openstreetmap.org/copyright); attribution required by the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) | [openstreetmap.org](https://www.openstreetmap.org/) |
-| Google map / satellite tiles | Google | Proprietary, [Google Maps terms](https://cloud.google.com/maps-platform/terms) | [google.com/maps](https://www.google.com/maps) |
+| Google map / satellite tiles (Map Tiles API, API key required) | Google | Proprietary, [Google Maps terms](https://cloud.google.com/maps-platform/terms) | [google.com/maps](https://www.google.com/maps) |
 
 Every render carries an attribution block in its bottom-right corner, outside
 the globe:
@@ -276,15 +276,46 @@ the globe:
 | Layer | Credit line |
 |---|---|
 | `osm` tiles | *Map tiles © OpenStreetMap contributors* |
-| `google` tiles | *Map data © Google* |
-| `google_satellite` tiles | *Imagery © Google* |
+| `google`, `google_satellite` tiles | *Google Maps* plus the copyright string returned by the Map Tiles API |
 | `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |
 
 Keep this block (or credit the same sources elsewhere) when you share or publish
 a map; the OSM tile policy and the CC BY 4.0 licence both require it.
 
-> **Note:** the Google providers fetch tiles from Google's servers without an API
-> key, which Google's terms do not permit. Prefer `osm` for anything you publish.
+### Google tiles (API key required)
+
+The `google` and `google_satellite` providers use the official
+[Map Tiles API](https://developers.google.com/maps/documentation/tile/2d-tiles-overview).
+Enable the Map Tiles API (with billing) in a Google Cloud project and create an
+API key whose API restrictions allow the Map Tiles API.
+
+The key is read from `GOOGLE_MAPS_API_KEY`, or from `GOOGLE_API_KEY` if that is
+not set. Like newsgrab, the CLI loads keys from a central file before reading the
+environment, without overriding variables that are already set:
+
+1. `$ORTHO_ENV_FILE` (explicit override)
+2. `~/myapikeys.env` (central key file shared with newsgrab)
+3. `./.env`
+
+So the simplest setup is one line in `~/myapikeys.env`:
+
+```text
+GOOGLE_MAPS_API_KEY=your-key
+```
+
+```powershell
+python ortho.py --city tokyo --provider google_satellite
+```
+
+A Gemini key from AI Studio (`GOOGLE_API_KEY`) is usually restricted to the
+Gemini API, and Google answers with HTTP 403 "Requests to this API … are
+blocked". Use a separate Maps key in `GOOGLE_MAPS_API_KEY`, or add the Map Tiles
+API to that key's allowed APIs.
+
+Interactive mode asks for the key (input hidden) if neither variable is set.
+Google renders are credited with "Google Maps" plus the copyright string the
+API returns for the map. Google's policies also restrict caching and some uses
+of exported imagery; check the Map Tiles API policies before publishing.
 
 ## Project Files
 

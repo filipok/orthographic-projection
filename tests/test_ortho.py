@@ -87,13 +87,23 @@ class TestCreateTileSource:
         src = ortho.create_tile_source("osm")
         assert isinstance(src, ortho.BufferedTileSource)
 
-    def test_google(self):
-        src = ortho.create_tile_source("google")
+    @pytest.mark.parametrize(
+        "provider, map_type", [("google", "roadmap"), ("google_satellite", "satellite")]
+    )
+    def test_google_uses_map_tiles_api(self, provider, map_type):
+        with mock.patch("google_tiles.create_session", return_value="S") as create:
+            src = ortho.create_tile_source(provider, api_key="k")
         assert isinstance(src, ortho.BufferedTileSource)
+        assert isinstance(src.tile_source, ortho.GoogleMapTiles)
+        assert create.call_args.args[:2] == ("k", map_type)
 
-    def test_google_satellite(self):
-        src = ortho.create_tile_source("google_satellite")
-        assert isinstance(src, ortho.BufferedTileSource)
+    def test_google_without_key_raises(self, monkeypatch):
+        for name in ortho.API_KEY_ENVS:
+            monkeypatch.delenv(name, raising=False)
+        with mock.patch("google_tiles.create_session") as create:
+            with pytest.raises(ortho.GoogleTilesError, match="API key"):
+                ortho.create_tile_source("google")
+        create.assert_not_called()
 
     def test_invalid_raises(self):
         with pytest.raises(ValueError, match="Unsupported"):
@@ -133,6 +143,57 @@ class TestConfigureTileCache:
         with mock.patch("os.makedirs"):
             ortho.configure_tile_cache(None)
             assert cartopy.config["data_dir"] == ortho.DEFAULT_CACHE_DIR
+
+
+# ===================================================================
+# load_env_files
+# ===================================================================
+
+
+class TestLoadEnvFiles:
+    """Key files are loaded like newsgrab's: first file to set a variable wins."""
+
+    @pytest.fixture
+    def home(self, tmp_path, monkeypatch):
+        """Point ~ at an empty temp dir so the real ~/myapikeys.env is never read."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr(ortho.os.path, "expanduser",
+                            lambda p: p.replace("~", str(home), 1))
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ORTHO_ENV_FILE", raising=False)
+        for name in ("ORTHO_TEST_A", "ORTHO_TEST_B"):
+            monkeypatch.delenv(name, raising=False)
+        return home
+
+    def test_loads_central_key_file(self, home):
+        (home / "myapikeys.env").write_text("ORTHO_TEST_A=central\n", encoding="utf-8")
+        loaded = ortho.load_env_files()
+        assert [os.path.normpath(p) for p in loaded] == [str(home / "myapikeys.env")]
+        assert os.environ["ORTHO_TEST_A"] == "central"
+
+    def test_priority_and_no_override(self, home, tmp_path, monkeypatch):
+        explicit = tmp_path / "explicit.env"
+        explicit.write_text("ORTHO_TEST_A=explicit\n", encoding="utf-8")
+        (home / "myapikeys.env").write_text("ORTHO_TEST_A=central\nORTHO_TEST_B=central\n",
+                                            encoding="utf-8")
+        (tmp_path / ".env").write_text("ORTHO_TEST_B=local\n", encoding="utf-8")
+        monkeypatch.setenv("ORTHO_ENV_FILE", str(explicit))
+
+        loaded = ortho.load_env_files()
+
+        assert len(loaded) == 3
+        assert os.environ["ORTHO_TEST_A"] == "explicit"   # $ORTHO_ENV_FILE beats ~/myapikeys.env
+        assert os.environ["ORTHO_TEST_B"] == "central"    # ~/myapikeys.env beats ./.env
+
+    def test_existing_environment_wins(self, home, monkeypatch):
+        (home / "myapikeys.env").write_text("ORTHO_TEST_A=file\n", encoding="utf-8")
+        monkeypatch.setenv("ORTHO_TEST_A", "shell")
+        ortho.load_env_files()
+        assert os.environ["ORTHO_TEST_A"] == "shell"
+
+    def test_no_files_is_fine(self, home):
+        assert ortho.load_env_files() == []
 
 
 # ===================================================================
@@ -238,6 +299,26 @@ class TestRunCLIValidation:
         assert kwargs["city_name"] == "San Francisco"
         assert kwargs["output_filename"] == "orthographic_map_san_francisco_osm_z3.png"
 
+    @pytest.mark.parametrize("provider", ["google", "google_satellite"])
+    def test_google_without_key_exits_before_render(self, provider, monkeypatch):
+        for name in ortho.API_KEY_ENVS:
+            monkeypatch.delenv(name, raising=False)
+        args = self._make_args(city="paris", provider=provider)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render:
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+
+    def test_google_api_error_exits_cleanly(self, monkeypatch):
+        monkeypatch.setenv(ortho.API_KEY_ENV, "k")
+        args = self._make_args(city="paris", provider="google")
+        with mock.patch.object(ortho, "generate_orthographic_map",
+                               side_effect=ortho.GoogleTilesError("API key not valid")), \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            with pytest.raises(SystemExit) as excinfo:
+                ortho.run_cli(args)
+        assert excinfo.value.code == 1
+
     def test_missing_route_file_exits_before_render(self, tmp_path):
         args = self._make_args(city="paris", route=[str(tmp_path / "nope.geojson")])
         with mock.patch.object(ortho, "generate_orthographic_map") as render:
@@ -315,10 +396,20 @@ class TestGenerateOrthographicMapIntegration:
         attribution.assert_called_once()
         return attribution.call_args.args[1]
 
-    @pytest.mark.parametrize("provider", ortho.TILE_PROVIDERS)
-    def test_tile_provider_is_credited(self, tmp_path, provider):
-        credits = self._render_credits(tmp_path, tile_provider=provider)
-        assert credits == [ortho.TILE_ATTRIBUTIONS[provider]]
+    def test_osm_is_credited(self, tmp_path):
+        credits = self._render_credits(tmp_path, tile_provider="osm")
+        assert credits == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
+    @pytest.mark.parametrize("provider", ["google", "google_satellite"])
+    def test_google_credit_comes_from_viewport(self, tmp_path, provider):
+        with mock.patch("google_tiles.create_session", return_value="S"), \
+                mock.patch.object(ortho.GoogleMapTiles, "copyright",
+                                  return_value="Map data ©2026 Google") as copyright_:
+            credits = self._render_credits(
+                tmp_path, tile_provider=provider, tile_kwargs={"api_key": "k"},
+            )
+        assert credits == ["Google Maps", "Map data ©2026 Google"]
+        copyright_.assert_called_once_with(1)  # the render's zoom level
 
     def test_koppen_is_credited_when_enabled(self, tmp_path):
         credits = self._render_credits(tmp_path, koppen=True)
@@ -342,8 +433,9 @@ class TestGenerateOrthographicMapIntegration:
 
 
 class TestAttribution:
-    def test_every_provider_has_a_credit(self):
-        assert set(ortho.TILE_ATTRIBUTIONS) == set(ortho.TILE_PROVIDERS)
+    def test_every_provider_has_a_credit_source(self):
+        # Google credits come from the Map Tiles API; everything else is fixed text
+        assert set(ortho.TILE_ATTRIBUTIONS) | set(ortho.GOOGLE_MAP_TYPES) == set(ortho.TILE_PROVIDERS)
 
     def test_credits_drawn_unclipped_in_bottom_right(self):
         import matplotlib
