@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import io
 import logging
 import os
 import sys
+import time
+import urllib.error
+import urllib.request
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
+from PIL import Image
 
-import cartopy
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.io.img_tiles as cimgt
@@ -38,19 +43,77 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "ortho_tiles")
 
+# How long a cached OSM tile is reused before it is fetched again
+TILE_CACHE_MAX_AGE_DAYS = 7
+
 
 def configure_tile_cache(cache_dir: str | None = None) -> str:
-    """Point Cartopy's download cache at *cache_dir* (created if needed).
+    """Create the tile cache directory (default ``~/.cache/ortho_tiles``) and return it.
 
-    Cartopy already caches tiles internally, but its default location is
-    buried under ``~/.local/share/cartopy``.  This helper lets users and
-    the CLI control where that cache lives.
+    Pass the result to :func:`generate_orthographic_map` as ``tile_cache_dir``.
+    Only OSM tiles are cached; Google's terms do not allow caching its tiles.
     """
     cache_dir = cache_dir or DEFAULT_CACHE_DIR
     os.makedirs(cache_dir, exist_ok=True)
-    cartopy.config["data_dir"] = cache_dir
     logger.debug("Tile cache directory: %s", cache_dir)
     return cache_dir
+
+
+class CachedOSM(cimgt.OSM):
+    """OSM tile source with a safer on-disk cache than Cartopy's built-in one.
+
+    Cartopy's cache stores the grey placeholder it substitutes for a failed
+    download, so one network error leaves a permanent hole in every later
+    render, and it never expires tiles. This version caches only successful
+    downloads, writes cache files atomically, and refetches tiles older than
+    *max_age_days*. With ``cache=False`` (the default) nothing is cached.
+    """
+
+    def __init__(self, *args: Any, max_age_days: float = TILE_CACHE_MAX_AGE_DAYS,
+                 timeout: float = 30, **kwargs: Any) -> None:
+        self.max_age_days = max_age_days
+        self.timeout = timeout
+        super().__init__(*args, **kwargs)
+
+    @property
+    def _cache_dir(self) -> Path:  # pyright: ignore[reportIncompatibleMethodOverride]
+        assert self.cache_path is not None
+        return Path(self.cache_path) / "osm"
+
+    def _cache_file(self, tile: tuple[int, int, int]) -> Path | None:
+        if self.cache_path is None:
+            return None
+        return self._cache_dir / ("_".join(str(i) for i in tile) + ".npy")
+
+    def _is_fresh(self, path: Path) -> bool:
+        try:
+            age_days = (time.time() - path.stat().st_mtime) / 86400
+        except OSError:
+            return False
+        return age_days < self.max_age_days
+
+    def get_image(self, tile: tuple[int, int, int]):  # same (image, extent, origin) shape as Cartopy
+        cached = self._cache_file(tile)
+        if cached is not None and cached in self.cache and self._is_fresh(cached):
+            return np.load(cached, allow_pickle=False), self.tileextent(tile), "lower"
+
+        request = urllib.request.Request(self._image_url(tile), headers={"User-Agent": self.user_agent})
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as resp:
+                img = np.asarray(Image.open(io.BytesIO(resp.read())).convert(self.desired_tile_form))
+        except (urllib.error.URLError, TimeoutError, OSError) as err:
+            # Same fallback as Cartopy (a blank tile), but never cached
+            logger.warning("OSM tile %s could not be downloaded: %s", tile, err)
+            blank = np.full((256, 256, 3), 250, dtype=np.uint8)
+            return blank, self.tileextent(tile), "lower"
+
+        if cached is not None:
+            part = cached.with_name(cached.name + ".part")
+            with open(part, "wb") as fh:
+                np.save(fh, img, allow_pickle=False)
+            os.replace(part, cached)
+            self.cache.add(cached)
+        return img, self.tileextent(tile), "lower"
 
 
 def load_env_files() -> list[str]:
@@ -141,18 +204,23 @@ class BufferedTileSource:
 def create_tile_source(
     tile_provider: str = "osm",
     tile_buffer_factor: float = 2,
+    cache_dir: str | None = None,
     **tile_kwargs: Any,
 ) -> BufferedTileSource:
     """Create a Cartopy tile source from a simple provider name.
 
-    Google providers create a Map Tiles API session here, so a missing or
-    invalid API key raises :class:`GoogleTilesError` before any rendering.
+    OSM tiles are cached under *cache_dir* when one is given. Google tiles
+    are never cached. Google providers create a Map Tiles API session here,
+    so a missing or invalid API key raises :class:`GoogleTilesError` before
+    any rendering.
     """
     provider = tile_provider.lower()
 
     if provider == "osm":
-        tile_source = cimgt.OSM(**tile_kwargs)
+        tile_source = CachedOSM(cache=cache_dir or False, **tile_kwargs)
     elif provider in GOOGLE_MAP_TYPES:
+        if cache_dir:
+            logger.info("Google tiles are not cached (Google Maps Platform terms).")
         tile_source = GoogleMapTiles(map_type=GOOGLE_MAP_TYPES[provider], **tile_kwargs)
     else:
         raise ValueError(
@@ -171,6 +239,19 @@ def tile_attribution_lines(tiles: BufferedTileSource, tile_provider: str, zoom: 
     return [TILE_ATTRIBUTIONS[tile_provider.lower()]]
 
 
+MIN_DPI = 10
+# 20 in × 1200 dpi is already 24 000 px square (~2.3 GB of RGBA in memory)
+MAX_DPI = 1200
+
+
+def validate_render_options(dpi: int, koppen_alpha: float) -> None:
+    """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
+    if not MIN_DPI <= dpi <= MAX_DPI:
+        raise ValueError(f"dpi must be between {MIN_DPI} and {MAX_DPI}, got {dpi}")
+    if not 0.0 <= koppen_alpha <= 1.0:
+        raise ValueError(f"koppen_alpha must be between 0 and 1, got {koppen_alpha}")
+
+
 def generate_orthographic_map(
     lat: float,
     lon: float,
@@ -187,6 +268,7 @@ def generate_orthographic_map(
     koppen: bool = False,
     koppen_alpha: float = 0.45,
     routes: Sequence[Route] | None = None,
+    tile_cache_dir: str | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -225,6 +307,9 @@ def generate_orthographic_map(
         Opacity of the Köppen-Geiger overlay (0–1).
     routes : sequence of Route, optional
         Polylines to draw on the globe, e.g. from :func:`routes.load_routes`.
+    tile_cache_dir : str or None
+        Directory for cached OSM tiles (see :func:`configure_tile_cache`).
+        ``None`` disables caching. Google tiles are never cached.
 
     Returns
     -------
@@ -232,10 +317,12 @@ def generate_orthographic_map(
         Absolute path of the saved PNG.
     """
 
-    # Resolve output path
+    validate_render_options(dpi=dpi, koppen_alpha=koppen_alpha)
+
+    # Resolve output path and create its folder now, not after all the work
     if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
         output_filename = os.path.join(output_dir, output_filename)
+    os.makedirs(os.path.dirname(os.path.abspath(output_filename)), exist_ok=True)
 
     logger.info("Setting up the map centred at lat=%.4f, lon=%.4f", lat, lon)
 
@@ -244,6 +331,7 @@ def generate_orthographic_map(
     tiles = create_tile_source(
         tile_provider=tile_provider,
         tile_buffer_factor=tile_buffer_factor,
+        cache_dir=tile_cache_dir,
         **tile_kwargs,
     )
 
@@ -556,7 +644,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
         "--dpi",
         type=int,
         default=600,
-        help="Output DPI (default: 600)",
+        help=f"Output DPI, {MIN_DPI}-{MAX_DPI} (default: 600)",
     )
     parser.add_argument(
         "-o", "--output",
@@ -569,7 +657,13 @@ def build_cli_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cache-dir",
         default=None,
-        help=f"Tile cache directory (default: {DEFAULT_CACHE_DIR})",
+        help=f"OSM tile cache directory (default: {DEFAULT_CACHE_DIR}). "
+             "Google tiles are never cached.",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Download OSM tiles fresh instead of using the tile cache.",
     )
     parser.add_argument(
         "--koppen",
@@ -603,7 +697,7 @@ def load_route_files(paths: Sequence[str]) -> list[Route]:
 # --- Entry point modes ---
 
 
-def run_interactive() -> None:
+def run_interactive(tile_cache_dir: str | None = None) -> None:
     """Interactive prompt flow with custom coordinate support."""
     city_options = ["[Custom coordinates]"] + list(MAJOR_METROPOLISES.keys())
     selection = prompt_for_selection(
@@ -668,6 +762,7 @@ def run_interactive() -> None:
             koppen=enable_koppen,
             koppen_alpha=koppen_alpha,
             routes=routes,
+            tile_cache_dir=tile_cache_dir,
         )
     except GoogleTilesError as e:
         print(f"\n{e}")
@@ -715,6 +810,12 @@ def run_cli(args: argparse.Namespace) -> None:
         logger.error("Could not load route: %s", e)
         sys.exit(1)
 
+    try:
+        validate_render_options(dpi=args.dpi, koppen_alpha=args.koppen_alpha)
+    except ValueError as e:
+        logger.error("Invalid option: %s.", e)
+        sys.exit(1)
+
     if args.provider in GOOGLE_MAP_TYPES:
         try:
             resolve_api_key()
@@ -722,11 +823,12 @@ def run_cli(args: argparse.Namespace) -> None:
             logger.error("%s", e)
             sys.exit(1)
 
-    # Configure tile cache
-    configure_tile_cache(args.cache_dir)
+    tile_cache_dir = None if args.no_cache else configure_tile_cache(args.cache_dir)
 
     # Determine output filename
     if args.output:
+        if args.output_dir:
+            logger.warning("--output-dir is ignored because -o/--output gives the full path.")
         output_file = args.output
         output_dir = None  # explicit path, don't prepend output_dir
     else:
@@ -752,6 +854,7 @@ def run_cli(args: argparse.Namespace) -> None:
             koppen=args.koppen,
             koppen_alpha=args.koppen_alpha,
             routes=routes,
+            tile_cache_dir=tile_cache_dir,
         )
     except GoogleTilesError as e:
         logger.error("%s", e)
@@ -767,8 +870,7 @@ def main() -> None:
     load_env_files()
 
     if len(sys.argv) == 1:
-        configure_tile_cache()
-        run_interactive()
+        run_interactive(tile_cache_dir=configure_tile_cache())
     else:
         parser = build_cli_parser()
         parsed_args = parser.parse_args()

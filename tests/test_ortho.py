@@ -1,9 +1,11 @@
 """Tests for ortho.py — unit-level tests that do NOT hit the network."""
 
 import argparse
+import io
 import os
 import sys
-import types
+import time
+import urllib.error
 from unittest import mock
 
 import pytest
@@ -86,6 +88,17 @@ class TestCreateTileSource:
     def test_osm(self):
         src = ortho.create_tile_source("osm")
         assert isinstance(src, ortho.BufferedTileSource)
+        assert isinstance(src.tile_source, ortho.CachedOSM)
+        assert src.tile_source.cache_path is None
+
+    def test_osm_uses_cache_dir(self, tmp_path):
+        src = ortho.create_tile_source("osm", cache_dir=str(tmp_path))
+        assert str(src.tile_source.cache_path) == str(tmp_path)
+
+    def test_google_is_never_cached(self, tmp_path):
+        with mock.patch("google_tiles.create_session", return_value="S"):
+            src = ortho.create_tile_source("google", cache_dir=str(tmp_path), api_key="k")
+        assert src.tile_source.cache_path is None
 
     @pytest.mark.parametrize(
         "provider, map_type", [("google", "roadmap"), ("google_satellite", "satellite")]
@@ -138,11 +151,90 @@ class TestConfigureTileCache:
         assert result == str(cache)
 
     def test_default_when_none(self):
+        with mock.patch("os.makedirs") as makedirs:
+            assert ortho.configure_tile_cache(None) == ortho.DEFAULT_CACHE_DIR
+        makedirs.assert_called_once_with(ortho.DEFAULT_CACHE_DIR, exist_ok=True)
+
+    def test_does_not_move_cartopy_data_dir(self, tmp_path):
+        """Natural Earth data must stay where Cartopy keeps it (review #4)."""
         import cartopy
 
-        with mock.patch("os.makedirs"):
-            ortho.configure_tile_cache(None)
-            assert cartopy.config["data_dir"] == ortho.DEFAULT_CACHE_DIR
+        before = cartopy.config["data_dir"]
+        ortho.configure_tile_cache(str(tmp_path / "tiles"))
+        assert cartopy.config["data_dir"] == before
+
+
+# ===================================================================
+# CachedOSM
+# ===================================================================
+
+
+def _png_bytes(colour=(10, 20, 30)):
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (256, 256), colour).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class TestCachedOSM:
+    TILE = (1, 2, 3)
+
+    @pytest.fixture
+    def urlopen(self):
+        with mock.patch.object(ortho.urllib.request, "urlopen") as m:
+            m.side_effect = lambda *a, **k: io.BytesIO(_png_bytes())
+            yield m
+
+    def test_no_cache_by_default(self, urlopen):
+        src = ortho.CachedOSM()
+        assert src.cache_path is None
+        img, _extent, origin = src.get_image(self.TILE)
+        assert img.shape == (256, 256, 3)
+        assert origin == "lower"
+
+    def test_successful_tile_is_cached_and_reused(self, tmp_path, urlopen):
+        first = ortho.CachedOSM(cache=str(tmp_path))
+        img1, _, _ = first.get_image(self.TILE)
+        cached = tmp_path / "osm" / "1_2_3.npy"
+        assert cached.is_file()
+        assert not list((tmp_path / "osm").glob("*.part"))
+
+        # A new instance (next run) reads the tile from disk without the network
+        urlopen.reset_mock()
+        second = ortho.CachedOSM(cache=str(tmp_path))
+        img2, _, _ = second.get_image(self.TILE)
+        urlopen.assert_not_called()
+        assert (img1 == img2).all()
+
+    def test_failed_download_is_not_cached(self, tmp_path, urlopen):
+        urlopen.side_effect = urllib.error.URLError("network down")
+        src = ortho.CachedOSM(cache=str(tmp_path))
+        img, _, _ = src.get_image(self.TILE)
+        assert (img == 250).all()   # blank placeholder, as Cartopy does
+        assert not (tmp_path / "osm" / "1_2_3.npy").exists()
+
+        # Once the network is back the real tile is fetched, not the placeholder
+        urlopen.side_effect = lambda *a, **k: io.BytesIO(_png_bytes())
+        img, _, _ = src.get_image(self.TILE)
+        assert not (img == 250).all()
+
+    def test_stale_tile_is_refetched(self, tmp_path, urlopen):
+        ortho.CachedOSM(cache=str(tmp_path)).get_image(self.TILE)
+        cached = tmp_path / "osm" / "1_2_3.npy"
+        old = time.time() - (ortho.TILE_CACHE_MAX_AGE_DAYS + 1) * 86400
+        os.utime(cached, (old, old))
+
+        urlopen.reset_mock()
+        ortho.CachedOSM(cache=str(tmp_path)).get_image(self.TILE)
+        urlopen.assert_called_once()
+        assert time.time() - cached.stat().st_mtime < 60   # refreshed on disk
+
+    def test_sends_user_agent_and_timeout(self, urlopen):
+        ortho.CachedOSM(timeout=7).get_image(self.TILE)
+        request = urlopen.call_args.args[0]
+        assert request.get_header("User-agent")
+        assert urlopen.call_args.kwargs["timeout"] == 7
 
 
 # ===================================================================
@@ -260,7 +352,7 @@ class TestRunCLIValidation:
             city=None, lat=None, lon=None,
             provider="osm", zoom=3, dpi=300,
             output=None, output_dir=None, cache_dir=None,
-            koppen=False, koppen_alpha=0.45, route=None,
+            koppen=False, koppen_alpha=0.45, route=None, no_cache=False,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -318,6 +410,41 @@ class TestRunCLIValidation:
             with pytest.raises(SystemExit) as excinfo:
                 ortho.run_cli(args)
         assert excinfo.value.code == 1
+
+    @pytest.mark.parametrize("overrides", [
+        {"koppen_alpha": 5.0},
+        {"koppen_alpha": -0.1},
+        {"dpi": 0},
+        {"dpi": 5000},
+    ])
+    def test_invalid_render_options_exit_before_render(self, overrides):
+        args = self._make_args(city="paris", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
+            with pytest.raises(SystemExit) as excinfo:
+                ortho.run_cli(args)
+        assert excinfo.value.code == 1
+        render.assert_not_called()
+
+    def test_output_dir_ignored_with_explicit_output_warns(self, tmp_path, caplog):
+        args = self._make_args(city="paris", output=str(tmp_path / "x.png"),
+                               output_dir=str(tmp_path / "ignored"))
+        with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert "--output-dir is ignored" in caplog.text
+        assert render.call_args.kwargs["output_dir"] is None
+
+    def test_cache_dir_passed_to_renderer(self, tmp_path):
+        args = self._make_args(city="paris", cache_dir=str(tmp_path / "tiles"))
+        with mock.patch.object(ortho, "generate_orthographic_map") as render:
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["tile_cache_dir"] == str(tmp_path / "tiles")
+
+    def test_no_cache_flag_disables_cache(self):
+        args = self._make_args(city="paris", no_cache=True)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache") as configure:
+            ortho.run_cli(args)
+        configure.assert_not_called()
+        assert render.call_args.kwargs["tile_cache_dir"] is None
 
     def test_missing_route_file_exits_before_render(self, tmp_path):
         args = self._make_args(city="paris", route=[str(tmp_path / "nope.geojson")])
@@ -429,6 +556,25 @@ class TestGenerateOrthographicMapIntegration:
         assert os.path.exists(result)
         legend.assert_not_called()
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
+    @pytest.mark.parametrize("kwargs", [{"dpi": 0}, {"koppen_alpha": 2.0}])
+    def test_invalid_options_fail_before_any_work(self, tmp_path, kwargs):
+        with mock.patch.object(ortho, "create_tile_source") as create,                 mock.patch.object(ortho.plt, "subplots") as subplots:
+            with pytest.raises(ValueError):
+                ortho.generate_orthographic_map(
+                    lat=0, lon=0, output_filename=str(tmp_path / "m.png"), **kwargs,
+                )
+        create.assert_not_called()
+        subplots.assert_not_called()
+
+    def test_explicit_output_path_folders_are_created(self, tmp_path):
+        target = tmp_path / "renders" / "nested" / "m.png"
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None):
+            result = ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename=str(target), zoom=1, dpi=20,
+            )
+        assert target.is_file()
+        assert result == str(target.resolve())
 
     def test_no_routes_drawn_by_default(self, tmp_path):
         """Without routes, nothing but the two distance circles is plotted."""

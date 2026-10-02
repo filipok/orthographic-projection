@@ -144,7 +144,8 @@ python ortho.py --city lisbon --zoom 3 --route routes/gibraltar_ascension_falkla
 | `--dpi DPI` | Output resolution | `600` |
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
 | `--output-dir` | Directory for auto-named output files | `.` |
-| `--cache-dir` | Tile cache directory | `~/.cache/ortho_tiles` |
+| `--cache-dir` | OSM tile cache directory (Google tiles are never cached) | `~/.cache/ortho_tiles` |
+| `--no-cache` | Download OSM tiles fresh instead of using the cache | off |
 | `--koppen` | Enable Köppen-Geiger climate classification overlay | off |
 | `--koppen-alpha ALPHA` | Opacity of the climate overlay (0–1) | `0.45` |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
@@ -199,7 +200,7 @@ python -m pytest tests/ -v
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
 - Google tile backends depend on Cartopy tile services and may be subject to provider availability or usage limits.
 - If tile fetching fails due to network issues, the map will still be saved with fallback land/ocean features.
-- Downloaded tiles are cached in `~/.cache/ortho_tiles` by default. Use `--cache-dir` to change the location. Subsequent runs reuse cached tiles, avoiding redundant downloads.
+- OSM tiles are cached in `~/.cache/ortho_tiles/osm/` and reused for 7 days, as the OSM tile usage policy asks. Use `--cache-dir` to change the location or `--no-cache` to skip it. Failed downloads are never cached. Google tiles are never cached, because Google's terms don't allow it. In code, pass `tile_cache_dir=configure_tile_cache()` to `generate_orthographic_map`; the default is no cache.
 - When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
 - Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at their northernmost point.
 
