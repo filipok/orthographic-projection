@@ -416,6 +416,20 @@ class TestGenerateOrthographicMapIntegration:
         assert credits == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.KOPPEN_ATTRIBUTION]
         assert "Beck et al. (2018)" in ortho.KOPPEN_ATTRIBUTION
 
+    def test_koppen_failure_still_saves_map_without_credit(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "add_koppen_overlay",
+                                  side_effect=ortho.KoppenDataError("no data")), \
+                mock.patch.object(ortho, "add_koppen_legend") as legend, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), koppen=True,
+            )
+        assert os.path.exists(result)
+        legend.assert_not_called()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
     def test_no_routes_drawn_by_default(self, tmp_path):
         """Without routes, nothing but the two distance circles is plotted."""
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \

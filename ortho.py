@@ -27,7 +27,7 @@ from google_tiles import (
     GoogleTilesError,
     resolve_api_key,
 )
-from koppen import KOPPEN_ATTRIBUTION, add_koppen_overlay, add_koppen_legend
+from koppen import KOPPEN_ATTRIBUTION, KoppenDataError, add_koppen_overlay, add_koppen_legend
 from routes import Route, draw_routes, load_routes
 
 logger = logging.getLogger(__name__)
@@ -286,10 +286,17 @@ def generate_orthographic_map(
         logger.warning("The map will be saved with fallback land/ocean features only.")
 
     # Step 5b: Köppen-Geiger overlay (above tiles, below gridlines)
+    koppen_drawn = False
     if koppen:
         logger.info("Applying Köppen-Geiger climate overlay (alpha=%.2f) …", koppen_alpha)
-        add_koppen_overlay(ax, alpha=koppen_alpha)
-        add_koppen_legend(ax)
+        try:
+            add_koppen_overlay(ax, alpha=koppen_alpha)
+        except (KoppenDataError, OSError) as e:
+            # Missing data should not throw away the rest of the map
+            logger.warning("Skipping Köppen-Geiger overlay: %s", e)
+        else:
+            add_koppen_legend(ax)
+            koppen_drawn = True
 
     # Step 6: Gridlines
     ax.gridlines(draw_labels=False, color='black', alpha=0.3, linestyle='--')
@@ -321,7 +328,7 @@ def generate_orthographic_map(
 
     # Step 7d: Data credits required by the tile and dataset licences
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
-    if koppen:
+    if koppen_drawn:
         credits.append(KOPPEN_ATTRIBUTION)
     _add_attribution(ax, credits)
 

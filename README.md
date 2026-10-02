@@ -256,6 +256,14 @@ python ortho.py --city paris --provider osm --zoom 3 --koppen
 python ortho.py --city tokyo --provider google_satellite --zoom 3 --koppen --koppen-alpha 0.6
 ```
 
+**Data:** the first `--koppen` run downloads the V1 archive
+(`Beck_KG_V1.zip`, ~71 MB) from [Figshare](https://doi.org/10.6084/m9.figshare.6396959),
+checks its MD5 and extracts the 0.083° present-day raster into
+`~/.cache/ortho_tiles/koppen/`. Later runs reuse it. If you already have the
+archive, extract it into a `Beck_KG_V1/` folder next to `koppen.py`, which is
+checked first. If the data can't be obtained, the map is still rendered without
+the overlay and a warning explains what to do.
+
 The overlay uses the 30-class colour scheme from the official dataset and adds
 a compact legend strip below the globe. The dataset credit
 (*Climate data: Beck et al. (2018), CC BY 4.0*) is added to the attribution

@@ -14,14 +14,13 @@ Licensed under CC BY 4.0.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
-import re
-import tempfile
 import time
+import urllib.error
 import urllib.request
 import zipfile
-from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -34,10 +33,17 @@ from cartopy.mpl.geoaxes import GeoAxes
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Figshare direct-download URL for the V1 data (Beck et al. 2018)
+# V1 data archive on Figshare (Beck et al. 2018)
+# https://doi.org/10.6084/m9.figshare.6396959 — file "Beck_KG_V1.zip"
 # ---------------------------------------------------------------------------
 
-FIGSHARE_URL = "https://figshare.com/ndownloader/files/10808306"
+FIGSHARE_ARTICLE_URL = "https://doi.org/10.6084/m9.figshare.6396959"
+KOPPEN_ZIP_URL = "https://ndownloader.figshare.com/files/12407516"
+KOPPEN_ZIP_NAME = "Beck_KG_V1.zip"
+KOPPEN_ZIP_MD5 = "69594689d3cdd8323a0f74ce658125a1"  # published by Figshare
+
+RESOLUTIONS = ("0p5", "0p083", "0p0083")  # 0.5°, 0.083° (~10 km), 0.0083° (~1 km)
+PERIODS = ("present", "future")
 
 # Credit line required by the dataset's CC BY 4.0 licence
 KOPPEN_ATTRIBUTION = "Climate data: Beck et al. (2018), CC BY 4.0"
@@ -98,123 +104,177 @@ _GROUPS: list[tuple[str, str, list[int]]] = [
 # ---------------------------------------------------------------------------
 
 
+class KoppenDataError(RuntimeError):
+    """The Köppen-Geiger raster could not be found, downloaded or read."""
+
+
+_MANUAL_HINT = (
+    f"Download {KOPPEN_ZIP_NAME} from {FIGSHARE_ARTICLE_URL} and extract it into a "
+    "'Beck_KG_V1' folder next to koppen.py."
+)
+
+# Errors worth retrying: rate limiting and server-side failures
+_RETRYABLE_HTTP = {429, 500, 502, 503, 504}
+
+
 def _default_cache_dir() -> str:
     return os.path.join(os.path.expanduser("~"), ".cache", "ortho_tiles", "koppen")
 
 
-def _find_tif_in_zip(zf: zipfile.ZipFile, resolution: str, period: str) -> str | None:
-    """Return the first ZIP member matching *resolution* and *period*."""
-    candidates: list[str] = []
-    for name in zf.namelist():
-        low = name.lower()
-        if not low.endswith(".tif"):
-            continue
-        if resolution in low and period in low:
-            candidates.append(name)
-    # Prefer the shortest match (avoids confidence-layer variants)
-    if candidates:
-        candidates.sort(key=len)
-        return candidates[0]
-    return None
+def _is_valid_tif(path: str) -> bool:
+    """True if *path* exists and starts with a TIFF / BigTIFF header."""
+    try:
+        with open(path, "rb") as fh:
+            header = fh.read(4)
+    except OSError:
+        return False
+    return header in (b"II*\x00", b"MM\x00*", b"II+\x00", b"MM\x00+")
 
 
-def _download_with_progress(url: str, dest: str, label: str = "Downloading") -> None:
-    """Download *url* to *dest* with a console progress bar."""
-    max_retries = 30
-    retry_delay = 10  # seconds
-    
-    for attempt in range(max_retries):
+def _md5(path: str) -> str:
+    digest = hashlib.md5()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _download_with_progress(
+    url: str,
+    dest: str,
+    label: str = "Downloading",
+    attempts: int = 3,
+    timeout: float = 60,
+) -> None:
+    """Download *url* to *dest* atomically, retrying only transient failures.
+
+    The data is written to ``dest + ".part"`` and moved into place only once
+    the transfer completes, so an interrupted run never leaves a truncated
+    file at *dest*.
+    """
+    part = dest + ".part"
+    for attempt in range(1, attempts + 1):
         req = urllib.request.Request(url, headers={"User-Agent": "ortho/1.0"})
         try:
-            with urllib.request.urlopen(req) as resp:
-                if resp.status == 202:
-                    if attempt % 3 == 0:
-                        logger.info("  Server returned 202 (Accepted). Waiting for file generation... (Attempt %d/%d)", 
-                                    attempt + 1, max_retries)
-                    time.sleep(retry_delay)
-                    continue
-                
-                total = resp.headers.get("Content-Length")
-                total = int(total) if total else None
-                chunk_size = 1 << 16  # 64 KiB
-                downloaded = 0
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if resp.headers.get("x-amzn-waf-action"):
+                    # Bot challenge: waiting will not help a non-browser client
+                    raise KoppenDataError(
+                        f"The download server answered with a bot challenge. {_MANUAL_HINT}"
+                    )
+                if resp.status != 200:
+                    raise KoppenDataError(f"Unexpected HTTP {resp.status} from {url}")
 
-                with open(dest, "wb") as fh:
-                    while True:
-                        chunk = resp.read(chunk_size)
-                        if not chunk:
-                            break
+                total = int(resp.headers.get("Content-Length") or 0) or None
+                downloaded = 0
+                shown = None
+                with open(part, "wb") as fh:
+                    while chunk := resp.read(1 << 16):
                         fh.write(chunk)
                         downloaded += len(chunk)
+                        # Redraw only when the displayed value changes
+                        step = downloaded * 100 // total if total else downloaded >> 20
+                        if step != shown:
+                            shown = step
+                            mb = downloaded / 1e6
+                            text = f"{mb:.1f} / {total / 1e6:.1f} MB ({step}%)" if total else f"{mb:.1f} MB"
+                            print(f"\r  {label}: {text}", end="", flush=True)
+                print()
 
-                        if total:
-                            pct = downloaded / total * 100
-                            mb = downloaded / 1e6
-                            total_mb = total / 1e6
-                            print(
-                                f"\r  {label}: {mb:.1f} / {total_mb:.1f} MB ({pct:.0f}%)",
-                                end="", flush=True,
-                            )
-                        else:
-                            mb = downloaded / 1e6
-                            print(f"\r  {label}: {mb:.1f} MB", end="", flush=True)
-                
-                print()  # newline after progress
-                
-                # Verify that we actually got some data
-                if os.path.exists(dest) and os.path.getsize(dest) > 100_000:
-                    return
-                else:
-                    logger.warning("  Downloaded file is empty or corrupted. Retrying...")
-                    if os.path.exists(dest):
-                        os.remove(dest)
-                        
-        except Exception as e:
-            logger.error("  Download failed: %s", e)
-            if attempt < max_retries - 1:
-                time.sleep(retry_delay)
-            else:
-                raise
-    
-    raise RuntimeError(f"Failed to download {url} after {max_retries} attempts.")
+            if total and downloaded != total:
+                raise urllib.error.URLError(f"incomplete download ({downloaded} of {total} bytes)")
+            os.replace(part, dest)
+            return
+
+        except urllib.error.HTTPError as exc:
+            retryable = exc.code in _RETRYABLE_HTTP
+            error: Exception = exc
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            retryable = True
+            error = exc
+        finally:
+            if os.path.exists(part):
+                os.remove(part)
+
+        if not retryable or attempt == attempts:
+            raise KoppenDataError(f"Download of {url} failed: {error}. {_MANUAL_HINT}") from error
+        delay = 2 ** attempt
+        logger.warning("  Download failed (%s); retrying in %d s (%d/%d) …", error, delay, attempt, attempts)
+        time.sleep(delay)
+
+
+def _ensure_zip(cache_dir: str) -> str:
+    """Return the path to a verified copy of the V1 archive, downloading it if needed."""
+    zip_path = os.path.join(cache_dir, KOPPEN_ZIP_NAME)
+    if os.path.isfile(zip_path) and _md5(zip_path) == KOPPEN_ZIP_MD5:
+        return zip_path
+
+    logger.info("Downloading Köppen-Geiger data (%s, ~71 MB) from Figshare …", KOPPEN_ZIP_NAME)
+    _download_with_progress(KOPPEN_ZIP_URL, zip_path, label="Köppen-Geiger data")
+    if _md5(zip_path) != KOPPEN_ZIP_MD5:
+        os.remove(zip_path)
+        raise KoppenDataError(f"{KOPPEN_ZIP_NAME} failed its MD5 check. {_MANUAL_HINT}")
+    return zip_path
+
+
+def _extract_member(zip_path: str, member: str, dest: str) -> None:
+    """Extract *member* of *zip_path* to *dest* atomically."""
+    part = dest + ".part"
+    try:
+        with zipfile.ZipFile(zip_path) as zf, zf.open(member) as src, open(part, "wb") as out:
+            while chunk := src.read(1 << 20):
+                out.write(chunk)
+        os.replace(part, dest)
+    except KeyError:
+        raise KoppenDataError(f"{member} is missing from {zip_path}") from None
+    finally:
+        if os.path.exists(part):
+            os.remove(part)
 
 
 def ensure_koppen_data(
     cache_dir: str | None = None,
-    resolution: str = "0p083",  # V1's ~10km resolution string
-    period: str = "present",
+    resolution: str = DEFAULT_RESOLUTION,
+    period: str = DEFAULT_PERIOD,
 ) -> str:
-    """Return path to the Köppen-Geiger GeoTIFF, checking local folder and cache.
-    """
-    # 1. First check the user's manual download folder in the workspace
-    local_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Beck_KG_V1")
-    if os.path.isdir(local_dir):
-        for fname in os.listdir(local_dir):
-            if fname.endswith(".tif") and period in fname and resolution in fname and "_conf_" not in fname:
-                path = os.path.abspath(os.path.join(local_dir, fname))
-                logger.info("Using local manual Köppen-Geiger data: %s", path)
-                return path
+    """Return the path to the Köppen-Geiger GeoTIFF for *period* / *resolution*.
 
-    # 2. Fallback to cache directory
+    Looks in, in order: the manual ``Beck_KG_V1/`` folder next to this file,
+    the cache directory, and finally downloads and verifies the V1 archive
+    into the cache and extracts the requested raster. Raises
+    :class:`KoppenDataError` if the data cannot be obtained.
+    """
+    if resolution not in RESOLUTIONS:
+        raise ValueError(f"resolution must be one of {RESOLUTIONS}, got {resolution!r}")
+    if period not in PERIODS:
+        raise ValueError(f"period must be one of {PERIODS}, got {period!r}")
+    tif_name = f"Beck_KG_V1_{period}_{resolution}.tif"
+
+    # 1. Manual download folder in the workspace
+    local_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Beck_KG_V1", tif_name)
+    if _is_valid_tif(local_path):
+        logger.info("Using local Köppen-Geiger data: %s", local_path)
+        return local_path
+
+    # 2. Cache directory
     cache_dir = cache_dir or _default_cache_dir()
     os.makedirs(cache_dir, exist_ok=True)
+    cached_path = os.path.join(cache_dir, tif_name)
+    if _is_valid_tif(cached_path):
+        logger.info("Using cached Köppen-Geiger data: %s", cached_path)
+        return cached_path
+    if os.path.exists(cached_path):
+        logger.warning("Discarding invalid cached file %s", cached_path)
+        os.remove(cached_path)
 
-    # Check if we already have a suitable tif in cache
-    for fname in os.listdir(cache_dir):
-        if fname.endswith(".tif") and resolution in fname and period in fname:
-            path = os.path.join(cache_dir, fname)
-            logger.info("Using cached Köppen-Geiger data: %s", path)
-            return path
-
-    # 3. Download if missing (optional fallback if user deletes folders)
-    # Using the Beck 2018 individual file link if we have it
-    # We'll use the 0.083 (V1) file ID 10808306
-    download_path = os.path.join(cache_dir, f"Beck_KG_V1_{period}_{resolution}.tif")
-    if not os.path.isfile(download_path) or os.path.getsize(download_path) == 0:
-        logger.info("Downloading Köppen-Geiger data from Figshare (backup mirror) …")
-        _download_with_progress(FIGSHARE_URL, download_path, label="Köppen-Geiger data")
-
-    return download_path
+    # 3. Download the archive and extract the requested raster
+    zip_path = _ensure_zip(cache_dir)
+    _extract_member(zip_path, tif_name, cached_path)
+    if not _is_valid_tif(cached_path):
+        os.remove(cached_path)
+        raise KoppenDataError(f"{tif_name} extracted from {zip_path} is not a valid GeoTIFF")
+    logger.info("Köppen-Geiger data ready: %s", cached_path)
+    return cached_path
 
 
 # ---------------------------------------------------------------------------
