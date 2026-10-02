@@ -255,3 +255,47 @@ class TestGenerateOrthographicMapIntegration:
         with open(out_path, "rb") as f:
             header = f.read(8)
         assert header[:4] == b"\x89PNG", "File does not have a valid PNG header"
+
+
+# ===================================================================
+# Distance circles
+# ===================================================================
+
+
+class TestDrawDistanceCircles:
+    """Circles must stay continuous even when they enclose a pole."""
+
+    @pytest.mark.parametrize(
+        "lon, lat",
+        [
+            (-0.1276, 51.5072),   # London: 5 000 km ring encloses the North Pole
+            (-21.9, 64.1),        # Reykjavik: both rings near / around the pole
+            (166.7, -77.8),       # McMurdo: rings enclose the South Pole
+            (-46.6, -23.5),       # São Paulo: no pole inside, control case
+        ],
+    )
+    def test_rings_are_closed_and_continuous(self, lon, lat):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import cartopy.crs as ccrs
+
+        fig, ax = plt.subplots(
+            subplot_kw={"projection": ccrs.Orthographic(lon, lat)},
+        )
+        try:
+            ortho._draw_distance_circles(ax, lon, lat, radii_km=(2_500, 5_000))
+            assert len(ax.lines) == 2
+
+            for line in ax.lines:
+                xy = np.column_stack(line.get_data())
+                assert np.isfinite(xy).all()
+                # Closed ring
+                assert np.allclose(xy[0], xy[-1])
+                # No spurious long edges: 180 vertices on a <=5 000 km circle
+                # are ~175 km apart, so anything over 500 km is a seam jump.
+                steps = np.hypot(*np.diff(xy, axis=0).T)
+                assert steps.max() < 500_000
+        finally:
+            plt.close(fig)

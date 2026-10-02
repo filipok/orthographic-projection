@@ -290,41 +290,41 @@ def _draw_distance_circles(
 ) -> None:
     """Draw concentric geodesic circles on *ax* at the given radii.
 
-    A ``PlateCarree`` CRS centred on *lon* is used so that geodesic arcs
-    crossing the antimeridian (±180°) don't produce degenerate polygons.
+    The ring vertices are projected straight into the axes' own projection
+    and drawn as a closed line there. Going through lon/lat polygons breaks
+    whenever a circle encloses a pole: the ring then spans all 360° of
+    longitude and has to cross the CRS seam, producing a spurious edge.
     """
-    # Centre the source CRS on the circle origin so the polygon never
-    # straddles the ±180° boundary of the coordinate system.
-    source_crs = ccrs.PlateCarree(central_longitude=lon)
+    proj = ax.projection
     colors = ["#ffffff", "#ffffff"]
     alphas = [0.7, 0.5]
 
     for idx, radius_km in enumerate(radii_km):
         circle_poly = _geodesic_circle(lon, lat, radius_km * 1_000)
-
-        # Re-centre longitudes relative to *lon* so they stay in [-180, 180]
-        # within the shifted CRS and never straddle its boundary.
         ring = np.array(circle_poly.exterior.coords)
-        ring[:, 0] = ((ring[:, 0] - lon + 180) % 360) - 180
-        shifted_poly = Polygon(ring)
 
-        ax.add_geometries(
-            [shifted_poly],
-            crs=source_crs,
-            facecolor="none",
-            edgecolor=colors[idx % len(colors)],
+        xyz = proj.transform_points(ccrs.Geodetic(), ring[:, 0], ring[:, 1])
+        xy = xyz[:, :2]
+        # Drop vertices on the far side of the globe (non-finite in Orthographic)
+        xy = xy[np.isfinite(xy).all(axis=1)]
+        if len(xy) < 2:
+            continue
+
+        ax.plot(
+            xy[:, 0], xy[:, 1],
+            transform=proj,
+            color=colors[idx % len(colors)],
             linewidth=1.4,
             linestyle="--",
             alpha=alphas[idx % len(alphas)],
             zorder=9,
         )
-        # Place a small label on the circle (at the top, i.e. northward)
-        # Pick the point closest to due-north (max latitude)
-        top_idx = int(np.argmax(ring[:, 1]))
-        label_x, label_lat = ring[top_idx]
+        # Place a small label at the top of the circle as drawn on the map
+        top_idx = int(np.argmax(xy[:, 1]))
+        label_x, label_y = xy[top_idx]
         ax.text(
-            label_x, label_lat, f" {int(radius_km):,} km",
-            transform=source_crs,
+            label_x, label_y, f" {int(radius_km):,} km",
+            transform=proj,
             fontsize=9, color="white", alpha=alphas[idx % len(alphas)],
             fontweight="bold", va="bottom", ha="center", zorder=10,
             path_effects=[pe.withStroke(linewidth=2, foreground="black")],
