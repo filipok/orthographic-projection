@@ -1,20 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import getpass
-import io
 import logging
 import os
 import sys
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image
 
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
@@ -34,6 +31,7 @@ from google_tiles import (
 )
 from koppen import KOPPEN_ATTRIBUTION, KoppenDataError, add_koppen_overlay, add_koppen_legend
 from routes import Route, draw_routes, load_routes
+from tile_fetch import download_tile
 
 logger = logging.getLogger(__name__)
 
@@ -93,19 +91,16 @@ class CachedOSM(cimgt.OSM):
         return age_days < self.max_age_days
 
     def get_image(self, tile: tuple[int, int, int]):  # same (image, extent, origin) shape as Cartopy
+        """Return a tile from the cache or the network; raises if the download fails.
+
+        Failures are never cached. :class:`BufferedTileSource` turns them
+        into transparent tiles.
+        """
         cached = self._cache_file(tile)
         if cached is not None and cached in self.cache and self._is_fresh(cached):
             return np.load(cached, allow_pickle=False), self.tileextent(tile), "lower"
 
-        request = urllib.request.Request(self._image_url(tile), headers={"User-Agent": self.user_agent})
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as resp:
-                img = np.asarray(Image.open(io.BytesIO(resp.read())).convert(self.desired_tile_form))
-        except (urllib.error.URLError, TimeoutError, OSError) as err:
-            # Same fallback as Cartopy (a blank tile), but never cached
-            logger.warning("OSM tile %s could not be downloaded: %s", tile, err)
-            blank = np.full((256, 256, 3), 250, dtype=np.uint8)
-            return blank, self.tileextent(tile), "lower"
+        img = download_tile(self._image_url(tile), self.user_agent, self.timeout)
 
         if cached is not None:
             part = cached.with_name(cached.name + ".part")
@@ -182,23 +177,72 @@ TILE_ATTRIBUTIONS = {
 }
 
 
+def _to_rgba(img: Any) -> np.ndarray:
+    """Return *img* as an RGBA ``uint8`` array (cached tiles may be RGB)."""
+    arr = np.asarray(img, dtype=np.uint8)
+    if arr.ndim == 2:
+        arr = np.stack([arr] * 3, axis=-1)
+    if arr.shape[2] == 3:
+        arr = np.dstack([arr, np.full(arr.shape[:2], 255, dtype=np.uint8)])
+    return arr
+
+
 class BufferedTileSource:
-    """Fetch an extra ring of Web Mercator tiles to avoid edge underfill."""
+    """Tile factory that over-fetches near the globe edge and survives failed tiles.
+
+    Cartopy fetches tiles lazily inside ``savefig``. Its own
+    ``image_for_domain`` drops tiles whose download raises, and the merged
+    image fills those holes with opaque white; if every tile fails it raises
+    ``ValueError`` and the save crashes. This factory fetches the tiles
+    itself and makes each failed tile fully transparent, so the land/ocean
+    fallback drawn underneath shows through. Failures are recorded in
+    :attr:`failed_tiles` (``(tile, error)`` pairs) for reporting.
+    """
 
     def __init__(self, tile_source: Any, tile_buffer_factor: float = 0.5) -> None:
         self.tile_source = tile_source
         self.tile_buffer_factor = tile_buffer_factor
         self.crs = tile_source.crs
+        self.total_tiles = 0
+        self.failed_tiles: list[tuple[Any, BaseException]] = []
 
     def __getattr__(self, name: str) -> Any:
+        if name == "tile_source":  # not set yet (e.g. during copy/unpickling)
+            raise AttributeError(name)
         return getattr(self.tile_source, name)
 
     def image_for_domain(self, target_domain: Any, target_z: int) -> Any:
         x0, x1 = self.crs.x_limits
-        world_width = x1 - x0
-        tile_width = world_width / (2 ** target_z)
+        tile_width = (x1 - x0) / (2 ** target_z)
         buffered_domain = target_domain.buffer(tile_width * self.tile_buffer_factor)
-        return self.tile_source.image_for_domain(buffered_domain, target_z)
+
+        source = self.tile_source
+        tiles = list(source.find_images(buffered_domain, target_z))
+        results: dict[Any, tuple[Any, Any, str]] = {}
+        with concurrent.futures.ThreadPoolExecutor(
+                max_workers=getattr(source, "_MAX_THREADS", 8)) as executor:
+            futures = {executor.submit(source.get_image, tile): tile for tile in tiles}
+            for future in concurrent.futures.as_completed(futures):
+                tile = futures[future]
+                try:
+                    results[tile] = future.result()
+                except Exception as err:  # one bad tile must not sink the render
+                    self.failed_tiles.append((tile, err))
+        self.total_tiles += len(tiles)
+
+        size = next((np.asarray(img).shape[:2] for img, _, _ in results.values()), (256, 256))
+        pieces = []
+        for tile in tiles:
+            if tile in results:
+                img, extent, origin = results[tile]
+                img = _to_rgba(img)
+            else:
+                img = np.zeros(size + (4,), dtype=np.uint8)  # transparent placeholder
+                extent, origin = source.tileextent(tile), "lower"
+            x = np.linspace(extent[0], extent[1], img.shape[1])
+            y = np.linspace(extent[2], extent[3], img.shape[0])
+            pieces.append([img, x, y, origin])
+        return cimgt._merge_tiles(pieces)
 
 
 def create_tile_source(
@@ -360,18 +404,14 @@ def generate_orthographic_map(
     ax.add_feature(cfeature.OCEAN, facecolor=background_color, edgecolor="none", zorder=0)
     ax.add_feature(cfeature.LAND, facecolor="#f1efe6", edgecolor="none", zorder=0)
 
-    # Step 5: Fetch and add tiles
-    logger.info("Fetching '%s' tiles at zoom level %d …", tile_provider, zoom)
-    try:
-        ax.add_image(
-            tiles,
-            zoom,
-            regrid_shape=regrid_shape,
-            interpolation="nearest",
-        )
-    except Exception as e:
-        logger.warning("Failed to fetch map tiles: %s", e)
-        logger.warning("The map will be saved with fallback land/ocean features only.")
+    # Step 5: Register the tiles. Cartopy downloads them later, inside savefig;
+    # failed tiles come out transparent (see BufferedTileSource).
+    ax.add_image(
+        tiles,
+        zoom,
+        regrid_shape=regrid_shape,
+        interpolation="nearest",
+    )
 
     # Step 5b: Köppen-Geiger overlay (above tiles, below gridlines)
     koppen_drawn = False
@@ -421,14 +461,34 @@ def generate_orthographic_map(
     _add_attribution(ax, credits)
 
     # Step 8: Export
-    logger.info("Saving high-resolution map to '%s' at %d DPI …", output_filename, dpi)
+    logger.info("Fetching '%s' tiles at zoom %d and saving to '%s' at %d DPI …",
+                tile_provider, zoom, output_filename, dpi)
     plt.savefig(output_filename, dpi=dpi, bbox_inches="tight", transparent=True)
     plt.close(fig)
+    _report_tile_failures(tiles)
 
     output_path = os.path.abspath(output_filename)
     logger.info("Map successfully created: %s", output_path)
     return output_path
 
+
+
+def _report_tile_failures(tiles: BufferedTileSource) -> None:
+    """Log how many tiles failed to download during the render, if any."""
+    failed, total = len(tiles.failed_tiles), tiles.total_tiles
+    if not failed:
+        return
+    first_error = tiles.failed_tiles[0][1]
+    if failed == total:
+        logger.warning(
+            "No map tiles could be downloaded (%s). The map was saved with the "
+            "fallback land/ocean features only.", first_error,
+        )
+    else:
+        logger.warning(
+            "%d of %d map tiles could not be downloaded (first error: %s). Those "
+            "areas show the fallback land/ocean features.", failed, total, first_error,
+        )
 
 
 def _add_attribution(ax: GeoAxes, credits: Sequence[str]) -> None:

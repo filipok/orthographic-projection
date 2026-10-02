@@ -141,6 +141,14 @@ class TestGoogleMapTiles:
         assert url.startswith("https://tile.googleapis.com/v1/2dtiles/4/3/5?")
         assert _query(url) == {"session": "SESSION-1", "key": KEY}
 
+    def test_failed_tile_raises_instead_of_grey_placeholder(self, urlopen):
+        tiles = google_tiles.GoogleMapTiles("roadmap", api_key=KEY)
+        with mock.patch("tile_fetch.urllib.request.urlopen",
+                        side_effect=_http_error(403, {"error": {"message": "quota"}})):
+            with pytest.raises(urllib.error.HTTPError) as excinfo:
+                tiles.get_image((0, 0, 1))
+        assert KEY not in str(excinfo.value)
+
     def test_repr_hides_key(self, urlopen):
         assert KEY not in repr(google_tiles.GoogleMapTiles("roadmap", api_key=KEY))
 

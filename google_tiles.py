@@ -29,6 +29,8 @@ from typing import Any
 
 import cartopy.io.img_tiles as cimgt
 
+from tile_fetch import DEFAULT_TIMEOUT, download_tile
+
 logger = logging.getLogger(__name__)
 
 API_KEY_ENV = "GOOGLE_MAPS_API_KEY"
@@ -123,8 +125,10 @@ class GoogleMapTiles(cimgt.GoogleWTS):
         language: str = "en-US",
         region: str = "US",
         desired_tile_form: str = "RGB",
+        timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
         self.map_type = map_type
+        self.timeout = timeout
         self._api_key = resolve_api_key(api_key)
         self.session = create_session(self._api_key, map_type, language, region)
         super().__init__(desired_tile_form=desired_tile_form)
@@ -136,6 +140,14 @@ class GoogleMapTiles(cimgt.GoogleWTS):
         x, y, z = tile
         query = urllib.parse.urlencode({"session": self.session, "key": self._api_key})
         return f"{BASE_URL}/v1/2dtiles/{z}/{x}/{y}?{query}"
+
+    def get_image(self, tile: tuple[int, int, int]):  # pyright: ignore[reportIncompatibleMethodOverride]
+        """Download *tile*; raises on failure instead of Cartopy's grey placeholder.
+
+        Tiles are never cached, as Google's terms require.
+        """
+        img = download_tile(self._image_url(tile), self.user_agent, self.timeout)
+        return img, self.tileextent(tile), "lower"
 
     def copyright(self, zoom: int, timeout: float = 30) -> str:
         """Return the data copyright string Google requires for *zoom*."""

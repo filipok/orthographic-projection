@@ -30,4 +30,4 @@ dev = [
 ortho = "ortho:main"
 
 [tool.setuptools]
-py-modules = ["ortho", "koppen", "routes", "google_tiles"]
+py-modules = ["ortho", "koppen", "routes", "google_tiles", "tile_fetch"]

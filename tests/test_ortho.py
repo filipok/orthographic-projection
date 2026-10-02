@@ -8,6 +8,7 @@ import time
 import urllib.error
 from unittest import mock
 
+import numpy as np
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -71,12 +72,60 @@ class TestBufferedTileSource:
         buffered = ortho.BufferedTileSource(inner, tile_buffer_factor=0.5)
         assert buffered.some_attr == 42
 
-    def test_image_for_domain_calls_inner(self):
-        inner = self._make_fake_source()
-        buffered = ortho.BufferedTileSource(inner, tile_buffer_factor=0.5)
-        domain = mock.MagicMock()
-        buffered.image_for_domain(domain, target_z=3)
-        inner.image_for_domain.assert_called_once()
+    def test_getattr_before_init_does_not_recurse(self):
+        bare = ortho.BufferedTileSource.__new__(ortho.BufferedTileSource)
+        with pytest.raises(AttributeError):
+            bare.anything
+
+    # --- tile fetching (review #22) ---------------------------------
+
+    @staticmethod
+    def _world(source):
+        from shapely.geometry import box
+
+        (x0, x1), (y0, y1) = source.crs.x_limits, source.crs.y_limits
+        return box(x0, y0, x1, y1)
+
+    def _render_domain(self, fail=lambda tile: False, rgb=False):
+        """Fetch zoom-1 (2x2 tiles) with get_image stubbed; *fail* picks tiles that raise."""
+        source = ortho.CachedOSM()
+        channels = 3 if rgb else 4
+
+        def get_image(tile):
+            if fail(tile):
+                raise urllib.error.URLError("network down")
+            tile_img = np.full((256, 256, channels), 255, np.uint8)
+            tile_img[..., :3] = 200
+            return tile_img, source.tileextent(tile), "lower"
+
+        buffered = ortho.BufferedTileSource(source, tile_buffer_factor=0.5)
+        with mock.patch.object(source, "get_image", side_effect=get_image):
+            img, _extent, _origin = buffered.image_for_domain(self._world(source), 1)
+        return buffered, img
+
+    def test_all_tiles_succeed(self):
+        buffered, img = self._render_domain()
+        assert img.shape[2] == 4 and img.shape[0] > 500   # 2x2 tiles of 256 px (edges shared)
+        assert (img[..., 3] == 255).all()
+        assert buffered.total_tiles == 4 and buffered.failed_tiles == []
+
+    def test_failed_tile_becomes_transparent(self):
+        buffered, img = self._render_domain(fail=lambda tile: tile[:2] == (0, 0))
+        assert len(buffered.failed_tiles) == 1
+        assert isinstance(buffered.failed_tiles[0][1], urllib.error.URLError)
+        transparent = (img[..., 3] == 0).mean()
+        assert 0.2 < transparent < 0.3                        # one tile of four is see-through
+        assert ((img[..., 3] == 0) | (img[..., 3] == 255)).all()
+
+    def test_all_tiles_failing_does_not_raise(self):
+        # Cartopy's own merge raises ValueError here, crashing savefig
+        buffered, img = self._render_domain(fail=lambda tile: True)
+        assert len(buffered.failed_tiles) == buffered.total_tiles == 4
+        assert (img[..., 3] == 0).all()
+
+    def test_rgb_tiles_are_promoted_to_rgba(self):
+        _buffered, img = self._render_domain(rgb=True)
+        assert img.shape[2] == 4 and (img[..., 3] == 255).all()
 
 
 # ===================================================================
@@ -182,7 +231,7 @@ class TestCachedOSM:
 
     @pytest.fixture
     def urlopen(self):
-        with mock.patch.object(ortho.urllib.request, "urlopen") as m:
+        with mock.patch("tile_fetch.urllib.request.urlopen") as m:
             m.side_effect = lambda *a, **k: io.BytesIO(_png_bytes())
             yield m
 
@@ -190,7 +239,7 @@ class TestCachedOSM:
         src = ortho.CachedOSM()
         assert src.cache_path is None
         img, _extent, origin = src.get_image(self.TILE)
-        assert img.shape == (256, 256, 3)
+        assert img.shape == (256, 256, 4)
         assert origin == "lower"
 
     def test_successful_tile_is_cached_and_reused(self, tmp_path, urlopen):
@@ -207,17 +256,18 @@ class TestCachedOSM:
         urlopen.assert_not_called()
         assert (img1 == img2).all()
 
-    def test_failed_download_is_not_cached(self, tmp_path, urlopen):
+    def test_failed_download_raises_and_is_not_cached(self, tmp_path, urlopen):
         urlopen.side_effect = urllib.error.URLError("network down")
         src = ortho.CachedOSM(cache=str(tmp_path))
-        img, _, _ = src.get_image(self.TILE)
-        assert (img == 250).all()   # blank placeholder, as Cartopy does
+        with pytest.raises(urllib.error.URLError):
+            src.get_image(self.TILE)
         assert not (tmp_path / "osm" / "1_2_3.npy").exists()
 
-        # Once the network is back the real tile is fetched, not the placeholder
+        # Once the network is back the real tile is fetched and cached
         urlopen.side_effect = lambda *a, **k: io.BytesIO(_png_bytes())
         img, _, _ = src.get_image(self.TILE)
-        assert not (img == 250).all()
+        assert tuple(img[0, 0, :3]) == (10, 20, 30)
+        assert (tmp_path / "osm" / "1_2_3.npy").exists()
 
     def test_stale_tile_is_refetched(self, tmp_path, urlopen):
         ortho.CachedOSM(cache=str(tmp_path)).get_image(self.TILE)
@@ -575,6 +625,24 @@ class TestGenerateOrthographicMapIntegration:
             )
         assert target.is_file()
         assert result == str(target.resolve())
+
+    @pytest.mark.parametrize("fail_all, expected", [
+        (True, "No map tiles could be downloaded"),
+        (False, "map tiles could not be downloaded"),
+    ])
+    def test_tile_failures_still_save_map(self, tmp_path, caplog, fail_all, expected):
+        def get_image(self, tile):
+            if fail_all or tile[0] == 0:
+                raise urllib.error.URLError("network down")
+            return np.full((256, 256, 4), 200, np.uint8), self.tileextent(tile), "lower"
+
+        with mock.patch.object(ortho.CachedOSM, "get_image", get_image):
+            result = ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path),
+            )
+        assert os.path.exists(result)
+        assert expected in caplog.text
 
     def test_no_routes_drawn_by_default(self, tmp_path):
         """Without routes, nothing but the two distance circles is plotted."""
