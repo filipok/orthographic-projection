@@ -11,3 +11,6 @@ test_*.png
 
 # Local resources
 Beck_KG_V1/
+
+# Editor / notes
+.obsidian/
