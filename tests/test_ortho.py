@@ -302,6 +302,29 @@ class TestGenerateOrthographicMapIntegration:
             header = f.read(8)
         assert header[:4] == b"\x89PNG", "File does not have a valid PNG header"
 
+    def _render_credits(self, tmp_path, **kwargs):
+        """Render offline and return the credits passed to _add_attribution."""
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "add_koppen_overlay"), \
+                mock.patch.object(ortho, "add_koppen_legend"), \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), **kwargs,
+            )
+        attribution.assert_called_once()
+        return attribution.call_args.args[1]
+
+    @pytest.mark.parametrize("provider", ortho.TILE_PROVIDERS)
+    def test_tile_provider_is_credited(self, tmp_path, provider):
+        credits = self._render_credits(tmp_path, tile_provider=provider)
+        assert credits == [ortho.TILE_ATTRIBUTIONS[provider]]
+
+    def test_koppen_is_credited_when_enabled(self, tmp_path):
+        credits = self._render_credits(tmp_path, koppen=True)
+        assert credits == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.KOPPEN_ATTRIBUTION]
+        assert "Beck et al. (2018)" in ortho.KOPPEN_ATTRIBUTION
+
     def test_no_routes_drawn_by_default(self, tmp_path):
         """Without routes, nothing but the two distance circles is plotted."""
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
@@ -311,6 +334,33 @@ class TestGenerateOrthographicMapIntegration:
                 output_dir=str(tmp_path),
             )
         draw.assert_not_called()
+
+
+# ===================================================================
+# Attribution
+# ===================================================================
+
+
+class TestAttribution:
+    def test_every_provider_has_a_credit(self):
+        assert set(ortho.TILE_ATTRIBUTIONS) == set(ortho.TILE_PROVIDERS)
+
+    def test_credits_drawn_unclipped_in_bottom_right(self):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import cartopy.crs as ccrs
+
+        fig, ax = plt.subplots(subplot_kw={"projection": ccrs.Orthographic(0, 0)})
+        try:
+            ortho._add_attribution(ax, ["Line one", "Line two"])
+            (text,) = ax.texts
+            assert text.get_text() == "Line one\nLine two"
+            assert text.get_position() == (1.0, 0.0)
+            assert text.get_transform() is ax.transAxes
+            assert not text.get_clip_on()  # GeoAxes would clip it to the globe
+        finally:
+            plt.close(fig)
 
 
 # ===================================================================

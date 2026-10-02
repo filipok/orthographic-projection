@@ -28,6 +28,7 @@ The main script is [ortho.py](ortho.py).
 - Optional Köppen-Geiger climate classification overlay with compact legend
 - Optional route overlays loaded from GeoJSON files, drawn as great-circle polylines
 - Graceful error handling for network tile fetch failures
+- Automatic attribution block crediting the tile provider and any datasets used
 
 ## Supported Cities
 
@@ -256,21 +257,34 @@ python ortho.py --city tokyo --provider google_satellite --zoom 3 --koppen --kop
 ```
 
 The overlay uses the 30-class colour scheme from the official dataset and adds
-a compact legend strip below the globe. An attribution line
-(*Climate data: Beck et al. (2023) · CC BY 4.0*) is automatically placed at
-the bottom of the image.
+a compact legend strip below the globe. The dataset credit
+(*Climate data: Beck et al. (2018), CC BY 4.0*) is added to the attribution
+block in the bottom-right corner of the image (see below).
 
 ## Data Sources & Licensing
 
 | Data | Authors | License | Reference |
 |---|---|---|---|
-| Köppen-Geiger climate classification (1 km) | Beck, H. E. et al. | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-023-02549-6](https://doi.org/10.1038/s41597-023-02549-6) |
+| Köppen-Geiger climate classification V1, present day (1980–2016), used at 0.083° (~10 km) | Beck, H. E. et al. (2018) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/sdata.2018.214](https://doi.org/10.1038/sdata.2018.214) |
 | Natural Earth (land / ocean fallback) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
-| OpenStreetMap tiles | OpenStreetMap contributors | [ODbL](https://www.openstreetmap.org/copyright) | [openstreetmap.org](https://www.openstreetmap.org/) |
+| OpenStreetMap tiles | OpenStreetMap contributors | Data [ODbL](https://www.openstreetmap.org/copyright); attribution required by the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) | [openstreetmap.org](https://www.openstreetmap.org/) |
+| Google map / satellite tiles | Google | Proprietary, [Google Maps terms](https://cloud.google.com/maps-platform/terms) | [google.com/maps](https://www.google.com/maps) |
 
-When distributing maps generated with the `--koppen` flag, you must retain the
-attribution line or otherwise credit the original authors as required by the
-CC BY 4.0 license.
+Every render carries an attribution block in its bottom-right corner, outside
+the globe:
+
+| Layer | Credit line |
+|---|---|
+| `osm` tiles | *Map tiles © OpenStreetMap contributors* |
+| `google` tiles | *Map data © Google* |
+| `google_satellite` tiles | *Imagery © Google* |
+| `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |
+
+Keep this block (or credit the same sources elsewhere) when you share or publish
+a map; the OSM tile policy and the CC BY 4.0 licence both require it.
+
+> **Note:** the Google providers fetch tiles from Google's servers without an API
+> key, which Google's terms do not permit. Prefer `osm` for anything you publish.
 
 ## Project Files
 

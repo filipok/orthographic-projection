@@ -2,10 +2,12 @@
 
 Data source
 -----------
-Beck, H. E. et al. (2023).  High-resolution (1 km) Köppen-Geiger maps for
-1901–2099 based on constrained CMIP6 projections.  *Scientific Data* 10, 724.
-https://doi.org/10.1038/s41597-023-02549-6
+Beck, H. E., Zimmermann, N. E., McVicar, T. R., Vergopolan, N., Berg, A. &
+Wood, E. F. (2018).  Present and future Köppen-Geiger climate classification
+maps at 1-km resolution.  *Scientific Data* 5, 180214.
+https://doi.org/10.1038/sdata.2018.214
 
+This module uses the V1 "present" (1980–2016) map at 0.083° (~10 km).
 Colour table follows the official ``legend.txt`` shipped with the dataset.
 Licensed under CC BY 4.0.
 """
@@ -26,17 +28,19 @@ from PIL import Image
 
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 from cartopy.mpl.geoaxes import GeoAxes
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Figshare direct-download URL for the V3 archive (Beck et al. 2023)
+# Figshare direct-download URL for the V1 data (Beck et al. 2018)
 # ---------------------------------------------------------------------------
 
-FIGSHARE_URL = "https://figshare.com/ndownloader/files/10808306"  # Beck et al. (2018) V1 0.1-deg Present
+FIGSHARE_URL = "https://figshare.com/ndownloader/files/10808306"
+
+# Credit line required by the dataset's CC BY 4.0 licence
+KOPPEN_ATTRIBUTION = "Climate data: Beck et al. (2018), CC BY 4.0"
 
 DEFAULT_RESOLUTION = "0p083"  # ~10 km for V1
 DEFAULT_PERIOD = "present"
@@ -313,11 +317,12 @@ def add_koppen_overlay(
 # ---------------------------------------------------------------------------
 
 
-def add_koppen_legend(fig: plt.Figure, ax: GeoAxes) -> None:
+def add_koppen_legend(ax: GeoAxes) -> None:
     """Add a compact Köppen-Geiger legend strip below the globe.
 
     The legend is organised by major climate group (A–E) and shows each
-    sub-class with its canonical colour swatch and abbreviation.
+    sub-class with its canonical colour swatch and abbreviation.  The
+    dataset credit (:data:`KOPPEN_ATTRIBUTION`) is drawn by the caller.
     """
     handles: list[mpatches.Patch] = []
     labels: list[str] = []
@@ -349,11 +354,3 @@ def add_koppen_legend(fig: plt.Figure, ax: GeoAxes) -> None:
         title_fontsize=7.5,
     )
     legend.get_title().set_fontweight("bold")
-
-    # CC BY 4.0 attribution (required by the dataset license)
-    fig.text(
-        0.5, 0.01,
-        "Climate data: Beck et al. (2023) · CC BY 4.0",
-        ha="center", va="bottom",
-        fontsize=6, color="#888888", style="italic",
-    )

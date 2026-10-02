@@ -19,7 +19,7 @@ from cartopy.geodesic import Geodesic
 from cartopy.mpl.geoaxes import GeoAxes
 from shapely.geometry import Polygon
 
-from koppen import add_koppen_overlay, add_koppen_legend
+from koppen import KOPPEN_ATTRIBUTION, add_koppen_overlay, add_koppen_legend
 from routes import Route, draw_routes, load_routes
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,13 @@ TILE_PROVIDERS = [
     "google",
     "google_satellite"
 ]
+
+# Credit lines the tile providers require on every rendered map
+TILE_ATTRIBUTIONS = {
+    "osm": "Map tiles © OpenStreetMap contributors",
+    "google": "Map data © Google",
+    "google_satellite": "Imagery © Google",
+}
 
 
 class BufferedTileSource:
@@ -233,7 +240,7 @@ def generate_orthographic_map(
     if koppen:
         logger.info("Applying Köppen-Geiger climate overlay (alpha=%.2f) …", koppen_alpha)
         add_koppen_overlay(ax, alpha=koppen_alpha)
-        add_koppen_legend(plt.gcf(), ax)
+        add_koppen_legend(ax)
 
     # Step 6: Gridlines
     ax.gridlines(draw_labels=False, color='black', alpha=0.3, linestyle='--')
@@ -263,6 +270,12 @@ def generate_orthographic_map(
     if routes:
         draw_routes(ax, routes)
 
+    # Step 7d: Data credits required by the tile and dataset licences
+    credits = [TILE_ATTRIBUTIONS[tile_provider.lower()]]
+    if koppen:
+        credits.append(KOPPEN_ATTRIBUTION)
+    _add_attribution(ax, credits)
+
     # Step 8: Export
     logger.info("Saving high-resolution map to '%s' at %d DPI …", output_filename, dpi)
     plt.savefig(output_filename, dpi=dpi, bbox_inches="tight", transparent=True)
@@ -272,6 +285,21 @@ def generate_orthographic_map(
     logger.info("Map successfully created: %s", output_path)
     return output_path
 
+
+
+def _add_attribution(ax: GeoAxes, credits: Sequence[str]) -> None:
+    """Draw *credits*, one per line, in the bottom-right corner of *ax*.
+
+    That corner lies outside the globe disc, so the text never covers map
+    content. ``clip_on=False`` stops GeoAxes clipping it to the globe.
+    """
+    ax.text(
+        1.0, 0.0, "\n".join(credits),
+        transform=ax.transAxes,
+        ha="right", va="bottom", multialignment="right",
+        fontsize=8, color="#888888", style="italic",
+        clip_on=False, zorder=10,
+    )
 
 
 def _geodesic_circle(lon: float, lat: float, radius_m: float, n_points: int = 180) -> Polygon:
