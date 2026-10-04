@@ -3,7 +3,7 @@
 **Date:** 2026-10-02
 **Scope:** `ortho.py`, `koppen.py`, `tests/test_ortho.py`, `pyproject.toml`, `requirements.txt`, `README.md`, plus the uncommitted diff to `ortho.py`.
 **Baseline:** `main` @ `71bdbfb` + working-tree changes.
-**Updated:** 2026-10-02 against the latest `main`. #1–#18 and #20–#22 are resolved and #19 is mostly resolved; and `ortho.py` line references are re-mapped to the current code.
+**Updated:** 2026-10-04 against the latest `main`. All 22 findings are resolved; the only open item is the Google Maps API key setup under #7, which is an owner action. Line references in resolved findings point to the code as it was when each was written.
 **Method:** Read all source, then tried to break each claim the code, docstrings and README make. Every finding marked **[verified]** was reproduced in this environment (Python 3.14.3, cartopy 0.25.0). The rest come from reading the code and have a concrete failure path.
 
 Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the route and packaging fixes. The tests pass, but most of the findings below are bugs the suite cannot see.
@@ -32,7 +32,7 @@ Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the ro
 | 16 | ~~Low~~ Resolved | Distance circles draw chords across the far side for radii ≳ 10 000 km |
 | 17 | ~~Low~~ Resolved | Cache scan can pick up a `_conf_` (confidence) raster |
 | 18 | ~~Low~~ Resolved | Dead code, unused imports and contradictory comments in `koppen.py` |
-| 19 | ~~Low~~ Mostly resolved | Docstring and README statements that are false |
+| 19 | ~~Low~~ Resolved | Docstring and README statements that are false |
 | 20 | ~~Low~~ Resolved | Test-suite gaps and test pollution |
 | 21 | ~~Low~~ Resolved | Packaging/metadata inconsistencies |
 | 22 | ~~Medium~~ Resolved | Tile download failures crash `savefig`; the `try/except` around `add_image` never fires |
@@ -240,7 +240,8 @@ Non-finite (far-side) vertices are removed and the remaining points are joined w
 The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `os.listdir` order arbitrary, a confidence raster (values 0–100) could be picked and rendered as climate classes. `_find_tif_in_zip` sorts by length for this reason, but it is never called.
 
 ### 18. Dead code and contradictory comments in `koppen.py`
-> **Resolved 2026-10-02:** dead code, unused imports and contradictory comments went with #2; the legend docstring now describes the flat 15-column grid. The `print` progress line is kept deliberately: it redraws in place (``), which a log line can't do, and it now redraws at most 101 times.
+> **Resolved 2026-10-02:** dead code, unused imports and contradictory comments went with #2; the legend docstring now describes the flat 15-column grid. The `print` progress line is kept deliberately: it redraws in place (`
+`), which a log line can't do, and it now redraws at most 101 times.
 
 - ~~Unused imports: `re`, `tempfile`, `Any`; `zipfile` is only used by the dead function below.~~ Resolved with #2.
 - ~~`_find_tif_in_zip` (line 105) is never called.~~ Removed with #2.
@@ -260,7 +261,7 @@ The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `
 | ~~README: "Requirements: Python 3.14"~~ | ~~`pyproject.toml` says `>=3.12`~~ Resolved: "Python 3.12 or newer (developed on 3.14)" |
 | ~~README: Köppen "1 km"~~ | ~~0.083° (~10 km) (#6)~~ Resolved: README now states 0.083° (~10 km) |
 | ~~`BufferedTileSource` docstring: "extra ring"~~ | ~~two tile widths~~ Resolved: docstring rewritten with #22 |
-| Integration test: "without hitting the network" | **Still open:** `cfeature.LAND/OCEAN` download Natural Earth on first use if not already present. Low impact once cached; fixing it needs a bundled shapefile or a feature stub |
+| ~~Integration test: "without hitting the network"~~ | ~~downloads Natural Earth on first use~~ Resolved 2026-10-04: with a network guard and an empty Cartopy data folder, 10 render tests failed by reaching `naturalearth.s3.amazonaws.com`. `tests/conftest.py` now blocks non-local connections, isolates Cartopy's data folder and swaps `cfeature.LAND/OCEAN` for in-memory stand-ins; `tests/test_offline.py` checks the guard itself |
 
 ### 20. Test-suite gaps
 > **Resolved 2026-10-03** except where noted below. 138 tests now pass with plain `pytest`.
@@ -291,4 +292,5 @@ The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `
 5. ~~Make tile caching real (#4).~~ Done.
 6. ~~Validate CLI inputs and create the `-o` parent directory (#11, #12), and add tests for each.~~ Done.
 7. ~~Revisit the default DPI and regrid shapes (#13, #14), and add `try/finally` for figure cleanup (#15).~~ Done (also #16, #18, #20, #21).
-8. Remaining: finish the Google setup (#7 owner steps: Maps API key, smoke test, re-render `sample_sao_paulo.png`) and, optionally, make the integration test fully offline (#19).
+8. ~~Make the test suite fully offline (#19).~~ Done.
+9. Remaining: finish the Google setup (#7 owner steps: Maps API key, smoke test, re-render `sample_sao_paulo.png`).
