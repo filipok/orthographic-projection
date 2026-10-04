@@ -64,10 +64,10 @@ The interactive menu exposes these providers:
 
 ## Requirements
 
-- Python 3.14
-- Internet access for downloading map tiles
+- Python 3.12 or newer (developed on 3.14)
+- Internet access for downloading map tiles (and, once, the Köppen data)
 
-Packages present in the local virtual environment include:
+`requirements.txt` lists minimum versions, not pins. The versions this was developed and tested with:
 
 - `cartopy==0.25.0`
 - `matplotlib==3.10.8`
@@ -76,10 +76,11 @@ Packages present in the local virtual environment include:
 - `shapely==2.1.2`
 - `scipy==1.17.1`
 - `pillow==12.1.1`
+- `python-dotenv==1.2.4`
 
 ## Setup
 
-Install from the lock file:
+Install the dependencies:
 
 ```powershell
 python -m venv .venv
@@ -141,7 +142,7 @@ python ortho.py --city lisbon --zoom 3 --route routes/gibraltar_ascension_falkla
 | `--lon LON` | Custom longitude (-180 to 180) | — |
 | `--provider` | Tile provider: `osm`, `google`, `google_satellite` | `osm` |
 | `--zoom ZOOM` | Tile zoom level (1–4) | `3` |
-| `--dpi DPI` | Output resolution | `600` |
+| `--dpi DPI` | Output resolution, 10–1200. The figure is 20 in, so 300 DPI = 6,000 px | `300` |
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
 | `--output-dir` | Directory for auto-named output files | `.` |
 | `--cache-dir` | OSM tile cache directory (Google tiles are never cached) | `~/.cache/ortho_tiles` |
@@ -163,7 +164,7 @@ orthographic_map_<city>_<provider>_z<zoom>.png
 Example:
 
 ```text
-orthographic_map_paris_osm_z5.png
+orthographic_map_paris_osm_z3.png
 ```
 
 ## Programmatic Use
@@ -179,7 +180,7 @@ generate_orthographic_map(
     output_filename="orthographic_map_paris_osm_z3.png",
     tile_provider="osm",
     zoom=3,
-    dpi=600,
+    dpi=300,
     output_dir="renders",  # optional: save to a specific directory
     city_name="Paris",     # optional: adds a marker and label on the map
     routes=None,           # optional: list of Route objects, see "Route Overlays"
@@ -197,12 +198,13 @@ python -m pytest tests/ -v
 ## Notes
 
 - Zoom is capped at level `4` to avoid excessive tile downloads. Lower zoom levels are safer for full-globe renders.
+- The default 300 DPI gives a ~6,000 px image. Map imagery carries roughly 2,000–4,000 px of real detail at zoom 3–4, so higher DPIs mostly upscale it; they still make text, circles, routes and the legend sharper (`--dpi 600` gives ~12,000 px).
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
 - Google tile backends depend on Cartopy tile services and may be subject to provider availability or usage limits.
 - If some or all map tiles fail to download, the map is still saved: missing tiles are left transparent so the fallback land/ocean features show through, and a warning says how many tiles failed.
 - OSM tiles are cached in `~/.cache/ortho_tiles/osm/` and reused for 7 days, as the OSM tile usage policy asks. Use `--cache-dir` to change the location or `--no-cache` to skip it. Failed downloads are never cached. Google tiles are never cached, because Google's terms don't allow it. In code, pass `tile_cache_dir=configure_tile_cache()` to `generate_orthographic_map`; the default is no cache.
 - When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
-- Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at their northernmost point.
+- Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at the top of each circle as drawn on the globe.
 
 ## Route Overlays
 
@@ -331,7 +333,10 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [ortho.py](ortho.py): main script and reusable map-generation functions
 - [koppen.py](koppen.py): Köppen-Geiger climate overlay and legend
 - [routes.py](routes.py): GeoJSON route loading and drawing
+- [google_tiles.py](google_tiles.py): Google Map Tiles API client (API key, sessions, attribution)
+- [tile_fetch.py](tile_fetch.py): single-tile downloader shared by the tile sources
+- [LICENSE](LICENSE): MIT licence
 - [routes/](routes/): bundled route files
-- [requirements.txt](requirements.txt): pinned dependencies
+- [requirements.txt](requirements.txt): minimum dependency versions
 - [pyproject.toml](pyproject.toml): project metadata and `console_scripts` entry point
 - [tests/](tests/): unit test suite

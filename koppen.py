@@ -333,6 +333,7 @@ def add_koppen_overlay(
     cache_dir: str | None = None,
     resolution: str = DEFAULT_RESOLUTION,
     period: str = DEFAULT_PERIOD,
+    regrid_shape: int = 750,
 ) -> None:
     """Render the Köppen-Geiger overlay on *ax*.
 
@@ -348,6 +349,10 @@ def add_koppen_overlay(
         Grid resolution tag.
     period : str
         Historical / scenario tag.
+    regrid_shape : int
+        Resolution (pixels along the longer side) the raster is warped to in
+        the target projection. Cartopy's default of 750 looks blocky on large
+        renders; match the tiles' regrid shape for consistent sharpness.
     """
     tif_path = ensure_koppen_data(cache_dir, resolution, period)
     data = _read_koppen_tif(tif_path)
@@ -366,6 +371,7 @@ def add_koppen_overlay(
         norm=norm,
         alpha=alpha,
         interpolation="nearest",
+        regrid_shape=regrid_shape,
         zorder=5,
     )
 
@@ -380,17 +386,18 @@ def add_koppen_overlay(
 def add_koppen_legend(ax: GeoAxes) -> None:
     """Add a compact Köppen-Geiger legend strip below the globe.
 
-    The legend is organised by major climate group (A–E) and shows each
-    sub-class with its canonical colour swatch and abbreviation.  The
-    dataset credit (:data:`KOPPEN_ATTRIBUTION`) is drawn by the caller.
+    The legend lists all 30 sub-classes in climate-group order (A–E) as a
+    flat 15-column grid, each with its canonical colour swatch and
+    abbreviation.  The dataset credit (:data:`KOPPEN_ATTRIBUTION`) is drawn
+    by the caller.
     """
     handles: list[mpatches.Patch] = []
     labels: list[str] = []
 
     for _group_letter, _group_name, codes in _GROUPS:
         for code in codes:
-            sym, _desc, rgb = KOPPEN_CLASSES[code]
-            colour = tuple(c / 255 for c in rgb)
+            sym, _desc, (r, g, b) = KOPPEN_CLASSES[code]
+            colour = (r / 255, g / 255, b / 255)
             handles.append(mpatches.Patch(facecolor=colour, edgecolor="white", linewidth=0.4))
             labels.append(sym)
 

@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 import cartopy.crs as ccrs
 import cartopy.io.img_tiles as cimgt
 import cartopy.feature as cfeature
@@ -283,6 +283,10 @@ def tile_attribution_lines(tiles: BufferedTileSource, tile_provider: str, zoom: 
     return [TILE_ATTRIBUTIONS[tile_provider.lower()]]
 
 
+# 20 in × 300 dpi = 6000 px. Map imagery holds only ~2000-4000 px of real
+# detail at zoom 3-4 (and is regridded at most at max_regrid_shape), so
+# higher DPIs mostly upscale it; they still sharpen text and lines.
+DEFAULT_DPI = 300
 MIN_DPI = 10
 # 20 in × 1200 dpi is already 24 000 px square (~2.3 GB of RGBA in memory)
 MAX_DPI = 1200
@@ -301,7 +305,7 @@ def generate_orthographic_map(
     lon: float,
     output_filename: str,
     zoom: int = 3,
-    dpi: int = 300,
+    dpi: int = DEFAULT_DPI,
     background_color: str = "#a6d3e0",
     tile_provider: str = "osm",
     tile_kwargs: dict[str, Any] | None = None,
@@ -330,7 +334,8 @@ def generate_orthographic_map(
     dpi : int
         Dots per inch for the output image. 300+ is high resolution.
     background_color : str
-        Hex colour for ocean / figure background.
+        Ocean colour (the fallback ocean under the tiles). The PNG itself is
+        saved with a transparent background.
     tile_provider : str
         One of ``"osm"``, ``"google"``, ``"google_satellite"``.
     tile_kwargs : dict, optional
@@ -382,19 +387,20 @@ def generate_orthographic_map(
     # Step 2: Define the Orthographic projection
     ortho_proj = ccrs.Orthographic(central_longitude=lon, central_latitude=lat)
 
-    # Step 3: Create a high-resolution figure and axes
-    fig, ax = plt.subplots(figsize=(20, 20), subplot_kw={"projection": ortho_proj})
-    fig.patch.set_facecolor(background_color)
+    # Step 3: Create a high-resolution figure and axes. The Figure is built
+    # directly rather than through pyplot, so it is never registered in
+    # pyplot's global state and is freed even if rendering fails.
+    fig = Figure(figsize=(20, 20))
+    ax = fig.add_subplot(projection=ortho_proj)
 
     if not isinstance(ax, GeoAxes):
         raise RuntimeError("Failed to create GeoAxes")
 
-    ax.set_facecolor(background_color)
-
     # Step 4: Full hemisphere view
     ax.set_global()
 
-    # Dynamic regrid_shape for sharp exports
+    # Warp resolution for tiles and overlays: the output's pixel size, capped
+    # at max_regrid_shape (beyond that the source imagery has no more detail)
     regrid_shape = min(
         max(750, int(min(fig.get_size_inches()) * dpi)),
         max_regrid_shape,
@@ -418,7 +424,7 @@ def generate_orthographic_map(
     if koppen:
         logger.info("Applying Köppen-Geiger climate overlay (alpha=%.2f) …", koppen_alpha)
         try:
-            add_koppen_overlay(ax, alpha=koppen_alpha)
+            add_koppen_overlay(ax, alpha=koppen_alpha, regrid_shape=regrid_shape)
         except (KoppenDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
             logger.warning("Skipping Köppen-Geiger overlay: %s", e)
@@ -463,8 +469,7 @@ def generate_orthographic_map(
     # Step 8: Export
     logger.info("Fetching '%s' tiles at zoom %d and saving to '%s' at %d DPI …",
                 tile_provider, zoom, output_filename, dpi)
-    plt.savefig(output_filename, dpi=dpi, bbox_inches="tight", transparent=True)
-    plt.close(fig)
+    fig.savefig(output_filename, dpi=dpi, bbox_inches="tight", transparent=True)
     _report_tile_failures(tiles)
 
     output_path = os.path.abspath(output_filename)
@@ -523,6 +528,36 @@ def _geodesic_circle(lon: float, lat: float, radius_m: float, n_points: int = 18
     return Polygon(coords)
 
 
+def _visible_runs(xy: np.ndarray) -> list[np.ndarray]:
+    """Split a closed ring of projected vertices into its visible stretches.
+
+    Vertices on the far side of the globe are non-finite in Orthographic.
+    Dropping them and drawing the rest as one line would join the two ends
+    of the gap with a straight chord across the globe, so each contiguous
+    visible stretch becomes its own run instead. A fully visible ring is
+    returned whole (still closed).
+    """
+    finite = np.asarray(np.isfinite(xy).all(axis=1), dtype=bool)
+    if finite.all():
+        return [xy]
+    # Drop the closing duplicate and rotate so the array starts inside a
+    # gap; then no visible stretch is split by the array's start/end seam.
+    pts, fin = xy[:-1], finite[:-1]
+    start = int(np.argmin(fin))
+    pts, fin = np.roll(pts, -start, axis=0), np.roll(fin, -start)
+
+    runs, current = [], []
+    for point, ok in zip(pts, fin):
+        if ok:
+            current.append(point)
+        elif current:
+            runs.append(np.array(current))
+            current = []
+    if current:
+        runs.append(np.array(current))
+    return [run for run in runs if len(run) >= 2]
+
+
 def _draw_distance_circles(
     ax: GeoAxes,
     lon: float,
@@ -545,24 +580,23 @@ def _draw_distance_circles(
         ring = np.array(circle_poly.exterior.coords)
 
         xyz = proj.transform_points(ccrs.Geodetic(), ring[:, 0], ring[:, 1])
-        xy = xyz[:, :2]
-        # Drop vertices on the far side of the globe (non-finite in Orthographic)
-        xy = xy[np.isfinite(xy).all(axis=1)]
-        if len(xy) < 2:
+        runs = _visible_runs(xyz[:, :2])
+        if not runs:
             continue
 
-        ax.plot(
-            xy[:, 0], xy[:, 1],
-            transform=proj,
-            color=colors[idx % len(colors)],
-            linewidth=1.4,
-            linestyle="--",
-            alpha=alphas[idx % len(alphas)],
-            zorder=9,
-        )
+        for run in runs:
+            ax.plot(
+                run[:, 0], run[:, 1],
+                transform=proj,
+                color=colors[idx % len(colors)],
+                linewidth=1.4,
+                linestyle="--",
+                alpha=alphas[idx % len(alphas)],
+                zorder=9,
+            )
         # Place a small label at the top of the circle as drawn on the map
-        top_idx = int(np.argmax(xy[:, 1]))
-        label_x, label_y = xy[top_idx]
+        visible = np.vstack(runs)
+        label_x, label_y = visible[int(np.argmax(visible[:, 1]))]
         ax.text(
             label_x, label_y, f" {int(radius_km):,} km",
             transform=proj,
@@ -703,8 +737,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dpi",
         type=int,
-        default=600,
-        help=f"Output DPI, {MIN_DPI}-{MAX_DPI} (default: 600)",
+        default=DEFAULT_DPI,
+        help=f"Output DPI, {MIN_DPI}-{MAX_DPI} (default: {DEFAULT_DPI})",
     )
     parser.add_argument(
         "-o", "--output",
@@ -817,7 +851,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             tile_provider=tile_provider,
             tile_kwargs=tile_kwargs,
             zoom=zoom,
-            dpi=600,
+            dpi=DEFAULT_DPI,
             city_name=city_label if city_slug != "custom" else None,
             koppen=enable_koppen,
             koppen_alpha=koppen_alpha,

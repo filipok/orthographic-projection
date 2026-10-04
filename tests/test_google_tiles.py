@@ -3,14 +3,11 @@
 import io
 import json
 import os
-import sys
 import urllib.error
 import urllib.parse
 from unittest import mock
 
 import pytest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import google_tiles
 

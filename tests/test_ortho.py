@@ -3,7 +3,6 @@
 import argparse
 import io
 import os
-import sys
 import time
 import urllib.error
 from unittest import mock
@@ -14,8 +13,6 @@ import pytest
 # ---------------------------------------------------------------------------
 # Make sure ortho is importable from repo root
 # ---------------------------------------------------------------------------
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
 import ortho
 
 
@@ -183,8 +180,8 @@ class TestBuildOutputFilename:
         assert result == "orthographic_map_nyc_osm_z3.png"
 
     def test_spaces_in_provider(self):
-        result = ortho.build_output_filename("paris", "google satellite", 5)
-        assert result == "orthographic_map_paris_google_satellite_z5.png"
+        result = ortho.build_output_filename("paris", "google satellite", 3)
+        assert result == "orthographic_map_paris_google_satellite_z3.png"
 
 
 # ===================================================================
@@ -361,7 +358,7 @@ class TestCLIParser:
         args = self._parse(["--city", "paris"])
         assert args.provider == "osm"
         assert args.zoom == 3
-        assert args.dpi == 600
+        assert args.dpi == ortho.DEFAULT_DPI == 300
         assert args.output is None
         assert args.output_dir is None
         assert args.cache_dir is None
@@ -469,7 +466,8 @@ class TestRunCLIValidation:
     ])
     def test_invalid_render_options_exit_before_render(self, overrides):
         args = self._make_args(city="paris", **overrides)
-        with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
             with pytest.raises(SystemExit) as excinfo:
                 ortho.run_cli(args)
         assert excinfo.value.code == 1
@@ -478,7 +476,8 @@ class TestRunCLIValidation:
     def test_output_dir_ignored_with_explicit_output_warns(self, tmp_path, caplog):
         args = self._make_args(city="paris", output=str(tmp_path / "x.png"),
                                output_dir=str(tmp_path / "ignored"))
-        with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
             ortho.run_cli(args)
         assert "--output-dir is ignored" in caplog.text
         assert render.call_args.kwargs["output_dir"] is None
@@ -491,7 +490,8 @@ class TestRunCLIValidation:
 
     def test_no_cache_flag_disables_cache(self):
         args = self._make_args(city="paris", no_cache=True)
-        with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache") as configure:
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache") as configure:
             ortho.run_cli(args)
         configure.assert_not_called()
         assert render.call_args.kwargs["tile_cache_dir"] is None
@@ -609,13 +609,14 @@ class TestGenerateOrthographicMapIntegration:
 
     @pytest.mark.parametrize("kwargs", [{"dpi": 0}, {"koppen_alpha": 2.0}])
     def test_invalid_options_fail_before_any_work(self, tmp_path, kwargs):
-        with mock.patch.object(ortho, "create_tile_source") as create,                 mock.patch.object(ortho.plt, "subplots") as subplots:
+        with mock.patch.object(ortho, "create_tile_source") as create, \
+                mock.patch.object(ortho, "Figure") as figure:
             with pytest.raises(ValueError):
                 ortho.generate_orthographic_map(
                     lat=0, lon=0, output_filename=str(tmp_path / "m.png"), **kwargs,
                 )
         create.assert_not_called()
-        subplots.assert_not_called()
+        figure.assert_not_called()
 
     def test_explicit_output_path_folders_are_created(self, tmp_path):
         target = tmp_path / "renders" / "nested" / "m.png"
@@ -725,3 +726,53 @@ class TestDrawDistanceCircles:
                 assert steps.max() < 500_000
         finally:
             plt.close(fig)
+
+    def test_circle_crossing_the_horizon_has_no_chord(self):
+        """A ring that straddles the horizon must not get a straight line across its hidden part.
+
+        Rings centred on the view centre are either fully visible or fully
+        hidden, so this uses a ring centred off-view (80°E on a 0°E map),
+        which is cut by the horizon at 90°E.
+        """
+        import cartopy.crs as ccrs
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(subplot_kw={"projection": ccrs.Orthographic(0, 0)})
+        try:
+            ortho._draw_distance_circles(ax, 80, 0, radii_km=(2_500,))
+            assert len(ax.lines) == 1          # one visible arc, not a closed ring
+            xy = np.column_stack(ax.lines[0].get_data())
+            assert np.isfinite(xy).all()
+            assert not np.allclose(xy[0], xy[-1])   # open arc: ends sit on the horizon
+            steps = np.hypot(*np.diff(xy, axis=0).T)
+            assert steps.max() < 500_000            # a chord would span thousands of km
+            assert len(ax.texts) == 1
+        finally:
+            plt.close(fig)
+
+
+class TestVisibleRuns:
+    @staticmethod
+    def _ring(visible):
+        """A closed ring of len(visible) distinct points, NaN where not visible."""
+        n = len(visible)
+        pts = np.column_stack([np.arange(n, dtype=float), np.zeros(n)])
+        pts[~np.asarray(visible)] = np.nan
+        return np.vstack([pts, pts[:1]])   # closed: last == first
+
+    def test_fully_visible_ring_is_returned_closed(self):
+        ring = self._ring([True] * 5)
+        (run,) = ortho._visible_runs(ring)
+        assert np.array_equal(run, ring)
+
+    def test_gap_in_the_middle_gives_one_run_across_the_seam(self):
+        # Points 0,1 and 4,5 are visible; 2,3 hidden. 4,5,0,1 are contiguous around the ring.
+        (run,) = ortho._visible_runs(self._ring([True, True, False, False, True, True]))
+        assert run[:, 0].tolist() == [4, 5, 0, 1]
+
+    def test_two_gaps_give_two_runs(self):
+        runs = ortho._visible_runs(self._ring([True, True, False, True, True, False]))
+        assert sorted(run[:, 0].tolist() for run in runs) == [[0, 1], [3, 4]]
+
+    def test_single_visible_points_are_dropped(self):
+        assert ortho._visible_runs(self._ring([True, False, False, False])) == []

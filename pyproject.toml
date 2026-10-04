@@ -29,5 +29,9 @@ dev = [
 [project.scripts]
 ortho = "ortho:main"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 [tool.setuptools]
 py-modules = ["ortho", "koppen", "routes", "google_tiles", "tile_fetch"]

@@ -3,14 +3,11 @@
 import hashlib
 import io
 import os
-import sys
 import urllib.error
 import zipfile
 from unittest import mock
 
 import pytest
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import koppen
 
@@ -201,3 +198,29 @@ class TestColormap:
             r, g, b, a = cmap(norm(code))
             assert (round(r * 255), round(g * 255), round(b * 255)) == rgb
             assert a == 1.0
+
+
+# ===================================================================
+# Legend
+# ===================================================================
+
+
+class TestLegend:
+    def test_lists_every_class_in_group_order_with_its_colour(self):
+        import cartopy.crs as ccrs
+        import matplotlib.colors as mcolors
+        from matplotlib.figure import Figure
+
+        fig = Figure()
+        ax = fig.add_subplot(projection=ccrs.Orthographic(0, 0))
+        koppen.add_koppen_legend(ax)
+
+        legend = ax.get_legend()
+        assert legend.get_title().get_text() == "Köppen-Geiger Climate Classification"
+        labels = [t.get_text() for t in legend.get_texts()]
+        expected_codes = [code for _l, _n, codes in koppen._GROUPS for code in codes]
+        assert sorted(expected_codes) == list(koppen.KOPPEN_CLASSES)   # every class exactly once
+        assert labels == [koppen.KOPPEN_CLASSES[c][0] for c in expected_codes]
+        for patch, code in zip(legend.get_patches(), expected_codes):
+            r, g, b, _a = mcolors.to_rgba(patch.get_facecolor())
+            assert (round(r * 255), round(g * 255), round(b * 255)) == koppen.KOPPEN_CLASSES[code][2]
