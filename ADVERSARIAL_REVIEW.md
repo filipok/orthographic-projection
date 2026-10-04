@@ -3,7 +3,7 @@
 **Date:** 2026-10-02
 **Scope:** `ortho.py`, `koppen.py`, `tests/test_ortho.py`, `pyproject.toml`, `requirements.txt`, `README.md`, plus the uncommitted diff to `ortho.py`.
 **Baseline:** `main` @ `71bdbfb` + working-tree changes.
-**Updated:** 2026-10-04 against the latest `main`. All 22 findings are resolved; the only open item is the Google Maps API key setup under #7, which is an owner action. Line references in resolved findings point to the code as it was when each was written.
+**Updated:** 2026-10-04 against the latest `main`. All 22 findings are resolved; the Google Maps setup under #7 is finished. One new finding, #23, is open. Line references in resolved findings point to the code as it was when each was written.
 **Method:** Read all source, then tried to break each claim the code, docstrings and README make. Every finding marked **[verified]** was reproduced in this environment (Python 3.14.3, cartopy 0.25.0). The rest come from reading the code and have a concrete failure path.
 
 Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the route and packaging fixes. The tests pass, but most of the findings below are bugs the suite cannot see.
@@ -36,6 +36,7 @@ Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the ro
 | 20 | ~~Low~~ Resolved | Test-suite gaps and test pollution |
 | 21 | ~~Low~~ Resolved | Packaging/metadata inconsistencies |
 | 22 | ~~Medium~~ Resolved | Tile download failures crash `savefig`; the `try/except` around `add_image` never fires |
+| 23 | Low | Polar caps beyond Web Mercator's ±85° show the flat fallback colour, a visible disc on satellite renders |
 
 ---
 
@@ -129,13 +130,7 @@ The image footer, module docstring and README all credit **Beck et al. (2023)**,
 >
 > **Live check 2026-10-02:** the `GOOGLE_API_KEY` in `~/myapikeys.env` is a Gemini key and Google rejects it: `HTTP 403: Requests to this API tile method … are blocked`. The code path works; the key lacks permission.
 >
-> **To finish (owner action):**
-> 1. In the Google Cloud console, pick or create a project with billing enabled.
-> 2. Enable the **Map Tiles API** (APIs & Services → Library → "Map Tiles API").
-> 3. Create an API key (APIs & Services → Credentials → Create credentials → API key) and, under **API restrictions**, restrict it to the Map Tiles API.
-> 4. Add it to `~/myapikeys.env` as `GOOGLE_MAPS_API_KEY=...`. It takes precedence over the Gemini `GOOGLE_API_KEY`, so newsgrab is unaffected.
-> 5. Smoke test: `python ortho.py --city tokyo --provider google_satellite --zoom 2 --dpi 60 -o test_google.png`, then check the tiles load and the bottom-right credit reads "Google Maps" plus Google's copyright line.
-> 6. Re-render `sample_sao_paulo.png` (Google Satellite, zoom 3) so the README sample carries the Google credit.
+> **Finished 2026-10-04:** a Maps-only key was added to `~/myapikeys.env` as `GOOGLE_MAPS_API_KEY`. Sessions succeed for both map types; the viewport copyright is "Map data ©2026 Google, INEGI" (roadmap, zoom 3) and "Imagery ©2026 NASA" (satellite, zoom 3). Smoke renders of Tokyo with `google` and `google_satellite` loaded all tiles, logged that Google tiles are not cached, and showed "Google Maps" plus the copyright line in the bottom-right corner. `sample_sao_paulo.png` was re-rendered (Google Satellite, zoom 3, 300 DPI: 4680×4680 px, 7.0 MB) and now carries the credit.
 >
 > **Caveats:** the text "Google Maps" is used instead of Google's preferred logo, and Google's policies restrict caching and offline use of exported imagery; check before publishing Google-based maps.
 
@@ -282,6 +277,16 @@ The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `
 - `.obsidian/` is untracked and not ignored.
 - `BufferedTileSource.__getattr__` recurses infinitely if `tile_source` is ever accessed before `__init__` (e.g. `copy.copy`, unpickling). Guard with `if name == "tile_source": raise AttributeError`.
 
+### 23. Polar caps show the fallback colour **[verified]**
+`ortho.py` fallback features (`cfeature.OCEAN` / `cfeature.LAND` with fixed colours)
+
+Web Mercator tiles stop at ±85.05°, so the area around each pole visible on the globe has no tile imagery and shows the
+Natural Earth fallback in its flat colours: light blue (`#a6d3e0`) over the Arctic Ocean, beige (`#f1efe6`) over Antarctica.
+With OSM this is nearly invisible because the fallback colours match OSM's own. On satellite imagery it is an obvious disc:
+visible in the Tokyo smoke render (North Pole) and in both the old and new `sample_sao_paulo.png` (South Pole).
+**Possible fixes:** choose fallback colours per provider (e.g. deep blue ocean and white ice for `google_satellite`), or fill
+the caps with the colour of the nearest tile row, or draw a polar ice overlay. Cosmetic only; the data is correct.
+
 ---
 
 ## Recommended order of work
@@ -293,4 +298,5 @@ The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `
 6. ~~Validate CLI inputs and create the `-o` parent directory (#11, #12), and add tests for each.~~ Done.
 7. ~~Revisit the default DPI and regrid shapes (#13, #14), and add `try/finally` for figure cleanup (#15).~~ Done (also #16, #18, #20, #21).
 8. ~~Make the test suite fully offline (#19).~~ Done.
-9. Remaining: finish the Google setup (#7 owner steps: Maps API key, smoke test, re-render `sample_sao_paulo.png`).
+9. ~~Finish the Google setup (#7: Maps API key, smoke test, re-render `sample_sao_paulo.png`).~~ Done 2026-10-04.
+10. Optional: polar-cap colours on satellite renders (#23).
