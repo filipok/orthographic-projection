@@ -3,7 +3,7 @@
 **Date:** 2026-10-02
 **Scope:** `ortho.py`, `koppen.py`, `tests/test_ortho.py`, `pyproject.toml`, `requirements.txt`, `README.md`, plus the uncommitted diff to `ortho.py`.
 **Baseline:** `main` @ `71bdbfb` + working-tree changes.
-**Updated:** 2026-10-04 against the latest `main`. All 22 findings are resolved; the Google Maps setup under #7 is finished. One new finding, #23, is open. Line references in resolved findings point to the code as it was when each was written.
+**Updated:** 2026-10-04 against the latest `main`. All 22 findings are resolved; the Google Maps setup under #7 is finished. #23 (polar caps) is a known cosmetic limitation, left as is by owner decision. Line references in resolved findings point to the code as it was when each was written.
 **Method:** Read all source, then tried to break each claim the code, docstrings and README make. Every finding marked **[verified]** was reproduced in this environment (Python 3.14.3, cartopy 0.25.0). The rest come from reading the code and have a concrete failure path.
 
 Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the route and packaging fixes. The tests pass, but most of the findings below are bugs the suite cannot see.
@@ -36,7 +36,7 @@ Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the ro
 | 20 | ~~Low~~ Resolved | Test-suite gaps and test pollution |
 | 21 | ~~Low~~ Resolved | Packaging/metadata inconsistencies |
 | 22 | ~~Medium~~ Resolved | Tile download failures crash `savefig`; the `try/except` around `add_image` never fires |
-| 23 | Low | Polar caps beyond Web Mercator's ±85° show the flat fallback colour, a visible disc on satellite renders |
+| 23 | Low (won't fix) | Polar caps beyond Web Mercator's ±85° show the flat fallback colour, a visible disc on satellite renders |
 
 ---
 
@@ -287,6 +287,19 @@ visible in the Tokyo smoke render (North Pole) and in both the old and new `samp
 **Possible fixes:** choose fallback colours per provider (e.g. deep blue ocean and white ice for `google_satellite`), or fill
 the caps with the colour of the nearest tile row, or draw a polar ice overlay. Cosmetic only; the data is correct.
 
+> **Won't fix (owner decision, 2026-10-04).** Prototyped on Google Satellite at zoom 3 (Moscow view for the North Pole,
+> São Paulo for the South Pole) before deciding:
+>
+> - **Satellite palette** (navy ocean, ice-white land): still a flat disc, and too dark against Google's Arctic imagery.
+> - **Ice caps** (white above 85°): plausible for Antarctica, wrong for the Arctic, where Google shows open water. A plain
+>   lon/lat box also projects to a triangle on the globe; the polygon needs densified edges.
+> - **Edge fill** (best): fill each cap from the tiles' outermost pixel row. Stretching the row as-is gives radial streaks;
+>   fading it to the row's mean colour at the pole, blurring it slightly along the row, and starting the cap at 84.5°
+>   *under* the tiles (zorder 0, so no seam of fallback colour shows at 85°) made it near-invisible at the South Pole and
+>   left only faint rays at the North Pole. Works for every provider without per-provider colours.
+>
+> If revisited, the edge fill is the one to implement.
+
 ---
 
 ## Recommended order of work
@@ -299,4 +312,4 @@ the caps with the colour of the nearest tile row, or draw a polar ice overlay. C
 7. ~~Revisit the default DPI and regrid shapes (#13, #14), and add `try/finally` for figure cleanup (#15).~~ Done (also #16, #18, #20, #21).
 8. ~~Make the test suite fully offline (#19).~~ Done.
 9. ~~Finish the Google setup (#7: Maps API key, smoke test, re-render `sample_sao_paulo.png`).~~ Done 2026-10-04.
-10. Optional: polar-cap colours on satellite renders (#23).
+10. ~~Optional: polar-cap colours on satellite renders (#23).~~ Prototyped; left as is by owner decision.

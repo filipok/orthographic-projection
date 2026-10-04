@@ -200,6 +200,7 @@ The suite runs fully offline. `tests/conftest.py` blocks any connection to a non
 ## Notes
 
 - Zoom is capped at level `4` to avoid excessive tile downloads. Lower zoom levels are safer for full-globe renders.
+- Web map tiles stop at about ±85° latitude, so a small disc around each pole shows the plain fallback colours. On OSM they match the tiles and are hard to see; on `google_satellite` the disc is visible. This is a known cosmetic limitation.
 - The default 300 DPI gives a ~6,000 px image. Map imagery carries roughly 2,000–4,000 px of real detail at zoom 3–4, so higher DPIs mostly upscale it; they still make text, circles, routes and the legend sharper (`--dpi 600` gives ~12,000 px).
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
 - Google tile backends depend on Cartopy tile services and may be subject to provider availability or usage limits.
