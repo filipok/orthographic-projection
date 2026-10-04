@@ -3,7 +3,7 @@
 **Date:** 2026-10-02
 **Scope:** `ortho.py`, `koppen.py`, `tests/test_ortho.py`, `pyproject.toml`, `requirements.txt`, `README.md`, plus the uncommitted diff to `ortho.py`.
 **Baseline:** `main` @ `71bdbfb` + working-tree changes.
-**Updated:** 2026-10-02 against the latest `main`. #1–#12, #17 and #22 are resolved, #18 is partly resolved, and `ortho.py` line references are re-mapped to the current code.
+**Updated:** 2026-10-02 against the latest `main`. #1–#18 and #20–#22 are resolved and #19 is mostly resolved; and `ortho.py` line references are re-mapped to the current code.
 **Method:** Read all source, then tried to break each claim the code, docstrings and README make. Every finding marked **[verified]** was reproduced in this environment (Python 3.14.3, cartopy 0.25.0). The rest come from reading the code and have a concrete failure path.
 
 Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the route and packaging fixes. The tests pass, but most of the findings below are bugs the suite cannot see.
@@ -26,15 +26,15 @@ Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the ro
 | 10 | ~~Medium~~ Resolved | Download retries 30× on permanent errors (404, DNS, etc.) |
 | 11 | ~~Medium~~ Resolved | `--koppen-alpha` is not validated in CLI mode; crashes late |
 | 12 | ~~Medium~~ Resolved | `-o` into a missing directory crashes after all the work is done |
-| 13 | Medium | Default 600 DPI × 20 in figure gives about 144 MP output; regrid is capped at 4096, so the extra DPI is upscaling |
-| 14 | Medium | Köppen overlay is regridded at cartopy's default 750 px and comes out blocky |
-| 15 | Medium | Figures leak on any exception (no `try/finally` around `plt.close`) |
-| 16 | Low | Distance circles draw chords across the far side for radii ≳ 10 000 km |
+| 13 | ~~Medium~~ Resolved | Default 600 DPI × 20 in figure gives about 144 MP output; regrid is capped at 4096, so the extra DPI is upscaling |
+| 14 | ~~Medium~~ Resolved | Köppen overlay is regridded at cartopy's default 750 px and comes out blocky |
+| 15 | ~~Medium~~ Resolved | Figures leak on any exception (no `try/finally` around `plt.close`) |
+| 16 | ~~Low~~ Resolved | Distance circles draw chords across the far side for radii ≳ 10 000 km |
 | 17 | ~~Low~~ Resolved | Cache scan can pick up a `_conf_` (confidence) raster |
-| 18 | Low (partly resolved) | Dead code, unused imports and contradictory comments in `koppen.py` |
-| 19 | Low | Docstring and README statements that are false |
-| 20 | Low | Test-suite gaps and test pollution |
-| 21 | Low | Packaging/metadata inconsistencies |
+| 18 | ~~Low~~ Resolved | Dead code, unused imports and contradictory comments in `koppen.py` |
+| 19 | ~~Low~~ Mostly resolved | Docstring and README statements that are false |
+| 20 | ~~Low~~ Resolved | Test-suite gaps and test pollution |
+| 21 | ~~Low~~ Resolved | Packaging/metadata inconsistencies |
 | 22 | ~~Medium~~ Resolved | Tile download failures crash `savefig`; the `try/except` around `add_image` never fires |
 
 ---
@@ -191,17 +191,23 @@ Interactive mode clamps alpha to 0–1 (`ortho.py:728`), but CLI mode passes it 
 **Fix:** `os.makedirs(os.path.dirname(os.path.abspath(output_filename)), exist_ok=True)` before rendering, and warn or error on `-o` combined with `--output-dir`.
 
 ### 13. Default output size is excessive and mostly upscaled
+> **Resolved 2026-10-03:** the owner chose a 300 DPI default (`DEFAULT_DPI`) for the CLI, interactive mode and the library: ~6,000 px instead of ~12,000 px. A London `--koppen` render went from 9360×9887 px / 4.4 MB / ~32 s to 4680×4943 px / 2.9 MB / 25 s. `--dpi 600` still works (range 10–1200, see #11). The README explains that imagery holds only ~2,000–4,000 px of real detail at zoom 3–4, while higher DPIs still sharpen text and lines.
+
 `ortho.py:386`, `ortho.py:398-401`, `ortho.py:706`, `ortho.py:820`
 
 `figsize=(20, 20)` at the CLI/interactive default of `dpi=600` is about **12 000 × 12 000 px (~144 MP)**, roughly a 576 MB RGBA canvas before PNG encoding. Meanwhile `regrid_shape = min(max(750, 20*dpi), 4096)` saturates at 4096 for any DPI above ~205. Above that point the "dynamic" regrid is a constant, and the extra pixels are nearest-neighbour upscaling of a 4096 px warp: larger files with no extra detail. Defaults also disagree (library 300, CLI 600, interactive hard-coded 600 with no prompt).
 **Fix:** pick one default (e.g. 300), derive `max_regrid_shape` from the target pixel size, or expose `figsize`.
 
 ### 14. Köppen overlay rendered at low resolution
+> **Resolved 2026-10-02:** `add_koppen_overlay(..., regrid_shape=...)` now receives the same regrid shape as the tiles. A side-by-side crop of a 3,000 px render shows the staircase edges gone; that render took 11.7 s instead of 7.9 s.
+
 `koppen.py:360-369`
 
 `GeoAxes.imshow` with a `transform` that differs from the axes projection warps through `regrid_shape`, which defaults to **750**. On a 6 000–12 000 px globe, the climate layer is visibly blocky next to the 4096 px tiles. Pass the same `regrid_shape` the tiles use.
 
 ### 15. Figure leak on exceptions
+> **Resolved 2026-10-02:** the figure is created with `matplotlib.figure.Figure` and saved with `fig.savefig`, so it is never registered in pyplot's global state and is freed even when rendering raises. `ortho.py` no longer imports pyplot at all, which also removes the hidden "current figure" dependency.
+
 `ortho.py:386-467`
 
 `plt.subplots` creates a pyplot-managed 20×20 in figure. Any exception before `plt.close(fig)` (#8, #11, #12) leaves it registered in pyplot's global state. In programmatic or batch use (the README advertises `from ortho import generate_orthographic_map`), memory grows with every failure, and matplotlib eventually warns about >20 open figures.
@@ -220,6 +226,8 @@ Interactive mode clamps alpha to 0–1 (`ortho.py:728`), but CLI mode passes it 
 ## Low
 
 ### 16. Distance-circle chord artefact for large radii
+> **Resolved 2026-10-02:** `_visible_runs` splits a ring into its visible stretches and each is drawn separately, so no chord can cross the hidden part. Note the scenario is mostly theoretical here: the circles are centred on the view centre, so a ring is either fully visible (< ~10,000 km) or fully hidden; only off-centre rings can straddle the horizon. The new test uses one (80°E ring on a 0°E map) and fails on the old code.
+
 `ortho.py:547-561`
 
 Non-finite (far-side) vertices are removed and the remaining points are joined with a single `plot`. For any radius past the visible limb (≈10 000 km), the gap becomes a straight chord across the globe. The default radii (2 500/5 000 km) are safe, but `radii_km` is a public parameter. Splitting the line into runs at the NaN gaps (or keeping NaNs, which matplotlib breaks lines at) fixes it. The label code (`argmax(y)`) also assumes at least one visible vertex near the top.
@@ -232,6 +240,8 @@ Non-finite (far-side) vertices are removed and the remaining points are joined w
 The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `os.listdir` order arbitrary, a confidence raster (values 0–100) could be picked and rendered as climate classes. `_find_tif_in_zip` sorts by length for this reason, but it is never called.
 
 ### 18. Dead code and contradictory comments in `koppen.py`
+> **Resolved 2026-10-02:** dead code, unused imports and contradictory comments went with #2; the legend docstring now describes the flat 15-column grid. The `print` progress line is kept deliberately: it redraws in place (``), which a log line can't do, and it now redraws at most 101 times.
+
 - ~~Unused imports: `re`, `tempfile`, `Any`; `zipfile` is only used by the dead function below.~~ Resolved with #2.
 - ~~`_find_tif_in_zip` (line 105) is never called.~~ Removed with #2.
 - ~~Line 36 says *"V3 archive (Beck et al. 2023)"*; line 39 says *"Beck et al. (2018) V1"*.~~ Resolved with #6.
@@ -242,26 +252,30 @@ The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `
 ### 19. Docs and docstrings that are false
 | Claim | Reality |
 |---|---|
-| `background_color`: "ocean / figure background" (`ortho.py:333`) | `savefig(..., transparent=True)` discards the figure facecolor; only the OCEAN feature uses it |
+| ~~`background_color`: "ocean / figure background"~~ | ~~only the OCEAN feature uses it~~ Resolved: docstring fixed and the no-op facecolor calls removed |
 | ~~`configure_tile_cache`: "Cartopy already caches tiles internally"~~ | ~~False by default (#4)~~ Resolved with #4 |
-| README: circles labelled "at their northernmost point" | Labelled at max projected *y*, which differs once a circle encloses a pole |
-| README: `requirements.txt` is a "lock file" / "pinned dependencies" | All entries are `>=` ranges, so nothing is pinned |
+| ~~README: circles labelled "at their northernmost point"~~ | ~~Labelled at max projected *y*~~ Resolved: README says "at the top of each circle as drawn" |
+| ~~README: `requirements.txt` is a "lock file" / "pinned dependencies"~~ | ~~nothing is pinned~~ Resolved: README calls them minimum versions and lists the tested versions |
 | ~~README: "unit test suite (24 tests)"~~ | ~~29 tests~~ Resolved: README no longer states a count |
-| README: "Requirements: Python 3.14" | `pyproject.toml` says `>=3.12` |
+| ~~README: "Requirements: Python 3.14"~~ | ~~`pyproject.toml` says `>=3.12`~~ Resolved: "Python 3.12 or newer (developed on 3.14)" |
 | ~~README: Köppen "1 km"~~ | ~~0.083° (~10 km) (#6)~~ Resolved: README now states 0.083° (~10 km) |
-| `BufferedTileSource` docstring: "extra ring" (class default 0.5) | Callers default to `tile_buffer_factor=2`, i.e. two tile widths |
-| Integration test: "without hitting the network" | `cfeature.LAND/OCEAN` download Natural Earth on first use if not already present |
+| ~~`BufferedTileSource` docstring: "extra ring"~~ | ~~two tile widths~~ Resolved: docstring rewritten with #22 |
+| Integration test: "without hitting the network" | **Still open:** `cfeature.LAND/OCEAN` download Natural Earth on first use if not already present. Low impact once cached; fixing it needs a bundled shapefile or a feature stub |
 
 ### 20. Test-suite gaps
-- ~~**No tests for `koppen.py` at all.**~~ Resolved: `tests/test_koppen.py` covers lookup order, validation, download/MD5/extraction, retries, cleanup and the colormap. Legend construction is still untested.
+> **Resolved 2026-10-03** except where noted below. 138 tests now pass with plain `pytest`.
+
+- ~~**No tests for `koppen.py` at all.**~~ Resolved: `tests/test_koppen.py` covers lookup order, validation, download/MD5/extraction, retries, cleanup and the colormap. Legend construction is now tested too.
 - ~~Nothing covers #11 (alpha range) or #12 (`-o` dir).~~ Resolved: #3, #5, #11 and #12 are all covered now.
-- `test_image_for_domain_calls_inner` only checks that a call happened, not that the domain was buffered by the right amount.
-- `test_spaces_in_provider` uses `zoom=5`, which the CLI rejects, so it tests an impossible input.
+- ~~`test_image_for_domain_calls_inner` only checks that a call happened.~~ Replaced with tests of the real fetch/merge path (#22).
+- ~~`test_spaces_in_provider` uses `zoom=5`.~~ Now uses zoom 3.
 - ~~`test_default_when_none` mutates global `cartopy.config["data_dir"]` and never restores it, so later tests run with a modified global.~~ Resolved with #4: `configure_tile_cache` no longer mutates it, and a test asserts that.
-- The integration test stubs `add_image`, so the `BufferedTileSource` → cartopy contract is never exercised. A cartopy API change to `image_for_domain` would pass CI.
-- `_draw_distance_circles` tests assert `len(ax.lines) == 2`, which is coupled to implementation details rather than behaviour.
+- ~~The integration test stubs `add_image`.~~ `test_tile_failures_still_save_map` now renders through the real `add_image` → `BufferedTileSource` → cartopy draw path (only `get_image` is stubbed).
+- `_draw_distance_circles` tests assert `len(ax.lines) == 2`. Kept deliberately: since #16 a fully visible ring must be exactly one closed line, so the count is now the behaviour under test.
 
 ### 21. Packaging / repo hygiene
+> **Resolved 2026-10-03:** MIT `LICENSE` added (shipped in the wheel); `[tool.pytest.ini_options]` sets `testpaths` and `pythonpath`, so the `sys.path.insert` lines are gone from all test files; `.obsidian/` is ignored; `BufferedTileSource.__getattr__` guards `tile_source`.
+
 - `license = "MIT"` but there is no `LICENSE` file.
 - `pyproject.toml` has no `[tool.pytest.ini_options]`, so tests rely on `sys.path.insert` hacking (`tests/test_ortho.py:14`).
 - `.obsidian/` is untracked and not ignored.
@@ -276,4 +290,5 @@ The local-folder scan excludes `_conf_`, but the cache-dir scan does not. With `
 4. ~~Make Köppen failure fast and non-fatal, with an atomic download (#2, #8, #9, #10).~~ Done (also #17).
 5. ~~Make tile caching real (#4).~~ Done.
 6. ~~Validate CLI inputs and create the `-o` parent directory (#11, #12), and add tests for each.~~ Done.
-7. Revisit the default DPI and regrid shapes (#13, #14), and add `try/finally` for figure cleanup (#15).
+7. ~~Revisit the default DPI and regrid shapes (#13, #14), and add `try/finally` for figure cleanup (#15).~~ Done (also #16, #18, #20, #21).
+8. Remaining: finish the Google setup (#7 owner steps: Maps API key, smoke test, re-render `sample_sao_paulo.png`) and, optionally, make the integration test fully offline (#19).
