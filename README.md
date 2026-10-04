@@ -192,8 +192,10 @@ generate_orthographic_map(
 Run the test suite (requires the `[dev]` extra or `pip install pytest`):
 
 ```powershell
-python -m pytest tests/ -v
+python -m pytest
 ```
+
+The suite runs fully offline. `tests/conftest.py` blocks any connection to a non-local host, points Cartopy at an empty data folder, and replaces the Natural Earth land/ocean features with small stand-ins, so a test that accidentally reaches the network fails instead of quietly passing on an online machine.
 
 ## Notes
 
