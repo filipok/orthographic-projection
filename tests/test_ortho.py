@@ -385,6 +385,10 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc", "--route", "a.geojson", "--route", "b.geojson"])
         assert args.route == ["a.geojson", "b.geojson"]
 
+    def test_route_legend_flag(self):
+        assert self._parse(["--city", "nyc"]).route_legend is False
+        assert self._parse(["--city", "nyc", "--route-legend"]).route_legend is True
+
 
 # ===================================================================
 # run_cli validation
@@ -399,7 +403,7 @@ class TestRunCLIValidation:
             city=None, lat=None, lon=None,
             provider="osm", zoom=3, dpi=300,
             output=None, output_dir=None, cache_dir=None,
-            koppen=False, koppen_alpha=0.45, route=None, no_cache=False,
+            koppen=False, koppen_alpha=0.45, route=None, route_legend=False, no_cache=False,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -514,6 +518,25 @@ class TestRunCLIValidation:
             ortho.run_cli(args)
         (route,) = render.call_args.kwargs["routes"]
         assert route.name == "r"
+        assert render.call_args.kwargs["route_legend"] is False
+
+    def test_route_legend_passed_to_renderer(self, tmp_path):
+        route_file = tmp_path / "r.geojson"
+        route_file.write_text(
+            '{"type": "LineString", "coordinates": [[0, 0], [1, 1]]}', encoding="utf-8"
+        )
+        args = self._make_args(city="paris", route=[str(route_file)], route_legend=True)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["route_legend"] is True
+
+    def test_route_legend_without_routes_warns(self, caplog):
+        args = self._make_args(city="paris", route_legend=True)
+        with mock.patch.object(ortho, "generate_orthographic_map"), \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert "--route-legend is ignored" in caplog.text
 
 
 # ===================================================================
@@ -654,6 +677,30 @@ class TestGenerateOrthographicMapIntegration:
                 output_dir=str(tmp_path),
             )
         draw.assert_not_called()
+
+    @pytest.mark.parametrize("koppen, expected_y", [(False, -0.01), (True, -0.07)])
+    def test_route_legend_drawn_when_requested(self, tmp_path, koppen, expected_y):
+        route = ortho.Route(name="r", lines=(((0.0, 0.0), (10.0, 10.0)),))
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "add_koppen_overlay"), \
+                mock.patch.object(ortho, "add_koppen_legend"), \
+                mock.patch.object(ortho, "add_route_legend") as legend:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), routes=[route], route_legend=True, koppen=koppen,
+            )
+        legend.assert_called_once()
+        assert legend.call_args.kwargs["y"] == expected_y
+
+    def test_route_legend_off_by_default(self, tmp_path):
+        route = ortho.Route(name="r", lines=(((0.0, 0.0), (10.0, 10.0)),))
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "add_route_legend") as legend:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), routes=[route],
+            )
+        legend.assert_not_called()
 
 
 # ===================================================================

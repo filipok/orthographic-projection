@@ -25,8 +25,13 @@ from dataclasses import dataclass
 from typing import Any
 
 import matplotlib.colors as mcolors
+import matplotlib.patches as mpatches
+import matplotlib.patheffects as pe
 import cartopy.crs as ccrs
 from cartopy.mpl.geoaxes import GeoAxes
+from matplotlib.artist import Artist
+from matplotlib.legend import Legend
+from matplotlib.lines import Line2D
 from shapely.geometry import Polygon
 
 logger = logging.getLogger(__name__)
@@ -44,7 +49,8 @@ Area = tuple[Line, ...]
 class Route:
     """A named, styled set of polylines and filled areas in lon/lat degrees.
 
-    ``fill`` defaults to ``color`` when not given.
+    ``fill`` defaults to ``color`` when not given.  ``legend`` is the label
+    shown in the route key; ``name`` is used when it is not given.
     """
 
     name: str
@@ -54,6 +60,7 @@ class Route:
     areas: tuple[Area, ...] = ()
     fill: str | None = None
     fill_opacity: float = DEFAULT_FILL_OPACITY
+    legend: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +146,10 @@ def _parse_feature(feature: Any, default_name: str, where: str) -> Route:
     if isinstance(opacity, bool) or not isinstance(opacity, (int, float)) or not 0 <= opacity <= 1:
         raise ValueError(f"{where}: fill-opacity must be a number from 0 to 1, got {opacity!r}")
 
+    legend = props.get("legend")
+    if legend is not None and (not isinstance(legend, str) or not legend.strip()):
+        raise ValueError(f"{where}: legend must be a non-empty string, got {legend!r}")
+
     lines, areas = _parse_geometry(feature.get("geometry"), where)
     return Route(
         name=str(props.get("name") or default_name),
@@ -148,6 +159,7 @@ def _parse_feature(feature: Any, default_name: str, where: str) -> Route:
         areas=areas,
         fill=fill,
         fill_opacity=float(opacity),
+        legend=legend.strip() if legend else None,
     )
 
 
@@ -227,3 +239,58 @@ def draw_routes(ax: GeoAxes, routes: Sequence[Route], zorder: float = 9) -> None
             "Drew route '%s' (%d line(s), %d area(s)).",
             route.name, len(route.lines), len(route.areas),
         )
+
+
+def _legend_handle(route: Route) -> Artist:
+    """A key swatch styled like *route*: a line, or a filled box for areas."""
+    if route.lines:
+        # A dark outline keeps pale lines (white, yellow) visible on the light key
+        width = max(route.linewidth, 2.0)
+        return Line2D(
+            [], [], color=route.color, linewidth=width,
+            path_effects=[pe.Stroke(linewidth=width + 1.5, foreground="#333333"), pe.Normal()],
+        )
+    return mpatches.Patch(
+        facecolor=mcolors.to_rgba(route.fill or route.color, route.fill_opacity),
+        edgecolor=route.color,
+        linewidth=route.linewidth,
+    )
+
+
+def add_route_legend(ax: GeoAxes, routes: Sequence[Route], y: float = -0.01) -> None:
+    """Add a key below the globe naming each route next to its colour.
+
+    Each entry's label is the route's ``legend``, else its ``name``; routes
+    that share a label share one entry, styled like the first of them.
+    Entries are listed top layer first, the reverse of drawing order, as in
+    a GIS layer list.  *y* is the key's top edge in axes coordinates.
+
+    The key is added as a separate artist, so it does not replace another
+    legend on *ax* (such as the Köppen-Geiger one).
+    """
+    entries: dict[str, Artist] = {}
+    for route in reversed(routes):
+        entries.setdefault(route.legend or route.name, _legend_handle(route))
+    if not entries:
+        return
+
+    legend = Legend(
+        ax,
+        list(entries.values()),
+        list(entries),
+        loc="upper center",
+        bbox_to_anchor=(0.5, y),
+        ncol=1 if len(entries) < 4 else 2,
+        fontsize=11,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.85,
+        edgecolor="#444444",
+        handlelength=2.5,
+        columnspacing=2.0,
+        borderpad=0.7,
+        labelspacing=0.6,
+    )
+    # add_artist would clip the key to the globe disc, which it sits outside
+    legend.set_clip_on(False)
+    ax.add_artist(legend)

@@ -86,6 +86,15 @@ class TestLoadRoutes:
         assert route.fill == "blue"
         assert route.fill_opacity == routes.DEFAULT_FILL_OPACITY
 
+    def test_legend_label(self, tmp_path):
+        path = _write(tmp_path, _feature([[0, 0], [1, 1]], props={"name": "Long name", "legend": " Short "}))
+        (route,) = routes.load_routes(path)
+        assert route.legend == "Short"
+
+    def test_legend_defaults_to_none(self, tmp_path):
+        (route,) = routes.load_routes(_write(tmp_path, _feature([[0, 0], [1, 1]])))
+        assert route.legend is None
+
     def test_altitude_is_ignored(self, tmp_path):
         path = _write(tmp_path, _feature([[0, 0, 100], [1, 1, 200]]))
         (route,) = routes.load_routes(path)
@@ -108,6 +117,8 @@ class TestLoadRoutes:
             (_feature([], gtype="MultiPolygon"), "no polygons"),
             (_feature([[0, 0], [1, 1]], props={"fill": "notacolour"}), "fill colour"),
             (_feature([[0, 0], [1, 1]], props={"fill-opacity": 1.5}), "fill-opacity"),
+            (_feature([[0, 0], [1, 1]], props={"legend": 3}), "legend"),
+            (_feature([[0, 0], [1, 1]], props={"legend": "  "}), "legend"),
             ({"type": "FeatureCollection", "features": []}, "no routes"),
             ([1, 2, 3], "top level"),
         ],
@@ -171,3 +182,69 @@ class TestDrawRoutes:
             assert len(ax.lines) == 0
         finally:
             plt.close(fig)
+
+
+# ===================================================================
+# add_route_legend
+# ===================================================================
+
+
+class TestRouteLegend:
+    SQUARE = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0))
+
+    def _legends(self, route_list, **kwargs):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import cartopy.crs as ccrs
+        from matplotlib.legend import Legend
+
+        fig, ax = plt.subplots(subplot_kw={"projection": ccrs.Orthographic(0, 0)})
+        try:
+            routes.add_route_legend(ax, route_list, **kwargs)
+            fig.canvas.draw()  # the key must render outside the globe disc
+            return ax, [a for a in ax.artists if isinstance(a, Legend)]
+        finally:
+            plt.close(fig)
+
+    def test_entries_top_layer_first_and_merged_by_label(self):
+        line = (((0.0, 0.0), (1.0, 1.0)),)
+        drawn = [
+            routes.Route(name="first", lines=line, color="red", legend="Trade"),
+            routes.Route(name="second", lines=line, color="blue"),
+            routes.Route(name="third", lines=line, color="green", legend="Trade"),
+        ]
+        _, (legend,) = self._legends(drawn)
+        assert [t.get_text() for t in legend.get_texts()] == ["Trade", "second"]
+        # The merged entry takes the style of its top layer
+        assert legend.legend_handles[0].get_color() == "green"
+        assert not legend.get_clip_on()
+
+    def test_area_routes_get_a_filled_swatch(self):
+        import matplotlib.patches as mpatches
+
+        area = routes.Route(name="a", lines=(), color="#00aa00", areas=((self.SQUARE,),), fill_opacity=0.5)
+        _, (legend,) = self._legends([area])
+        (patch,) = legend.legend_handles
+        assert isinstance(patch, mpatches.Patch)
+        assert patch.get_facecolor()[3] == 0.5
+
+    def test_keeps_an_existing_legend(self):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        import cartopy.crs as ccrs
+
+        fig, ax = plt.subplots(subplot_kw={"projection": ccrs.Orthographic(0, 0)})
+        try:
+            existing = ax.legend([mpatches.Patch()], ["Köppen"])
+            routes.add_route_legend(ax, [routes.Route(name="r", lines=(((0.0, 0.0), (1.0, 1.0)),))])
+            assert ax.get_legend() is existing
+            assert len(ax.artists) == 1
+        finally:
+            plt.close(fig)
+
+    def test_no_routes_adds_nothing(self):
+        _, legends = self._legends([])
+        assert legends == []

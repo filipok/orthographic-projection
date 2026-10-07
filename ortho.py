@@ -30,7 +30,7 @@ from google_tiles import (
     resolve_api_key,
 )
 from koppen import KOPPEN_ATTRIBUTION, KoppenDataError, add_koppen_overlay, add_koppen_legend
-from routes import Route, draw_routes, load_routes
+from routes import Route, add_route_legend, draw_routes, load_routes
 from tile_fetch import download_tile
 
 logger = logging.getLogger(__name__)
@@ -316,6 +316,7 @@ def generate_orthographic_map(
     koppen: bool = False,
     koppen_alpha: float = 0.45,
     routes: Sequence[Route] | None = None,
+    route_legend: bool = False,
     tile_cache_dir: str | None = None,
 ) -> str:
     """
@@ -356,6 +357,9 @@ def generate_orthographic_map(
         Opacity of the Köppen-Geiger overlay (0–1).
     routes : sequence of Route, optional
         Polylines to draw on the globe, e.g. from :func:`routes.load_routes`.
+    route_legend : bool
+        When True and *routes* are given, add a key below the globe naming
+        each route next to its colour.
     tile_cache_dir : str or None
         Directory for cached OSM tiles (see :func:`configure_tile_cache`).
         ``None`` disables caching. Google tiles are never cached.
@@ -459,6 +463,9 @@ def generate_orthographic_map(
     # Step 7c: Route overlays
     if routes:
         draw_routes(ax, routes)
+        if route_legend:
+            # Below the Köppen-Geiger key when that is drawn too
+            add_route_legend(ax, routes, y=-0.07 if koppen_drawn else -0.01)
 
     # Step 7d: Data credits required by the tile and dataset licences
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
@@ -779,6 +786,11 @@ def build_cli_parser() -> argparse.ArgumentParser:
         metavar="GEOJSON",
         help="GeoJSON file of LineString routes to draw. Repeat for multiple files.",
     )
+    parser.add_argument(
+        "--route-legend",
+        action="store_true",
+        help="Add a key below the globe naming each route next to its colour.",
+    )
 
     return parser
 
@@ -842,6 +854,9 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
                 print("Invalid number. Using default 0.45.")
 
     routes = prompt_for_routes()
+    route_legend = bool(routes) and (
+        input("Add a key naming each route? [y/N]: ").strip().lower() in ("y", "yes")
+    )
 
     try:
         generate_orthographic_map(
@@ -856,6 +871,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             koppen=enable_koppen,
             koppen_alpha=koppen_alpha,
             routes=routes,
+            route_legend=route_legend,
             tile_cache_dir=tile_cache_dir,
         )
     except GoogleTilesError as e:
@@ -903,6 +919,8 @@ def run_cli(args: argparse.Namespace) -> None:
     except (OSError, ValueError) as e:
         logger.error("Could not load route: %s", e)
         sys.exit(1)
+    if args.route_legend and not routes:
+        logger.warning("--route-legend is ignored because no --route was given.")
 
     try:
         validate_render_options(dpi=args.dpi, koppen_alpha=args.koppen_alpha)
@@ -948,6 +966,7 @@ def run_cli(args: argparse.Namespace) -> None:
             koppen=args.koppen,
             koppen_alpha=args.koppen_alpha,
             routes=routes,
+            route_legend=args.route_legend,
             tile_cache_dir=tile_cache_dir,
         )
     except GoogleTilesError as e:
