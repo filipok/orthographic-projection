@@ -36,7 +36,7 @@ class TestLoadRoutes:
         assert files, "expected at least one bundled route file"
         for fname in files:
             loaded = routes.load_routes(os.path.join(route_dir, fname))
-            assert loaded and all(len(r.lines[0]) >= 2 for r in loaded)
+            assert loaded and all(r.lines or r.areas for r in loaded)
 
     def test_feature_collection_with_style(self, tmp_path):
         path = _write(tmp_path, {
@@ -65,6 +65,27 @@ class TestLoadRoutes:
         (route,) = routes.load_routes(path)
         assert len(route.lines) == 2
 
+    def test_polygon_with_hole_and_fill_style(self, tmp_path):
+        outer = [[0, 0], [10, 0], [10, 10], [0, 0]]
+        hole = [[2, 1], [8, 1], [8, 7], [2, 1]]
+        path = _write(tmp_path, _feature(
+            [outer, hole], gtype="Polygon",
+            props={"stroke": "green", "fill": "yellow", "fill-opacity": 0.5},
+        ))
+        (route,) = routes.load_routes(path)
+        assert route.lines == ()
+        assert len(route.areas) == 1 and len(route.areas[0]) == 2
+        assert route.fill == "yellow"
+        assert route.fill_opacity == 0.5
+
+    def test_multipolygon_fill_defaults_to_stroke(self, tmp_path):
+        square = [[0, 0], [1, 0], [1, 1], [0, 0]]
+        path = _write(tmp_path, _feature([[square], [square]], gtype="MultiPolygon", props={"stroke": "blue"}))
+        (route,) = routes.load_routes(path)
+        assert len(route.areas) == 2
+        assert route.fill == "blue"
+        assert route.fill_opacity == routes.DEFAULT_FILL_OPACITY
+
     def test_altitude_is_ignored(self, tmp_path):
         path = _write(tmp_path, _feature([[0, 0, 100], [1, 1, 200]]))
         (route,) = routes.load_routes(path)
@@ -81,6 +102,12 @@ class TestLoadRoutes:
             (_feature([0, 0], gtype="Point"), "unsupported geometry"),
             (_feature([[0, 0], [1, 1]], props={"stroke": "notacolour"}), "stroke colour"),
             (_feature([[0, 0], [1, 1]], props={"stroke-width": 0}), "stroke-width"),
+            (_feature([[[0, 0], [1, 0], [0, 0]]], gtype="Polygon"), "at least 4"),
+            (_feature([[[0, 0], [1, 0], [1, 1], [0, 1]]], gtype="Polygon"), "not closed"),
+            (_feature([], gtype="Polygon"), "no rings"),
+            (_feature([], gtype="MultiPolygon"), "no polygons"),
+            (_feature([[0, 0], [1, 1]], props={"fill": "notacolour"}), "fill colour"),
+            (_feature([[0, 0], [1, 1]], props={"fill-opacity": 1.5}), "fill-opacity"),
             ({"type": "FeatureCollection", "features": []}, "no routes"),
             ([1, 2, 3], "top level"),
         ],
@@ -125,5 +152,22 @@ class TestDrawRoutes:
             assert len(ax.lines) == 2
             assert all(line.get_color() == "#00ff00" for line in ax.lines)
             assert all(line.get_linewidth() == 1.5 for line in ax.lines)
+        finally:
+            plt.close(fig)
+
+    def test_area_drawn_below_lines(self):
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import cartopy.crs as ccrs
+
+        square = ((0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0), (0.0, 0.0))
+        route = routes.Route(name="a", lines=(), color="#0000ff", areas=((square,),), fill_opacity=0.5)
+        fig, ax = plt.subplots(subplot_kw={"projection": ccrs.Orthographic(0, 0)})
+        try:
+            routes.draw_routes(ax, [route], zorder=9)
+            (artist,) = ax.collections
+            assert artist.get_zorder() == 8
+            assert len(ax.lines) == 0
         finally:
             plt.close(fig)

@@ -2,7 +2,8 @@
 
 A route file is a GeoJSON ``FeatureCollection``, ``Feature`` or bare
 geometry containing ``LineString`` / ``MultiLineString`` geometries, with
-coordinates as ``[lon, lat]`` in degrees.  Styling follows the
+coordinates as ``[lon, lat]`` in degrees.  ``Polygon`` / ``MultiPolygon``
+geometries are drawn as translucent filled areas.  Styling follows the
 `simplestyle-spec <https://github.com/mapbox/simplestyle-spec>`_ property
 names so the same file renders sensibly on geojson.io and GitHub::
 
@@ -26,23 +27,33 @@ from typing import Any
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 from cartopy.mpl.geoaxes import GeoAxes
+from shapely.geometry import Polygon
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_ROUTE_COLOR = "#ff0000"
 DEFAULT_ROUTE_WIDTH = 2.0
+DEFAULT_FILL_OPACITY = 0.35
 
 Line = tuple[tuple[float, float], ...]
+# A polygon as its rings: the exterior first, then any holes.
+Area = tuple[Line, ...]
 
 
 @dataclass(frozen=True)
 class Route:
-    """A named, styled set of polylines in lon/lat degrees."""
+    """A named, styled set of polylines and filled areas in lon/lat degrees.
+
+    ``fill`` defaults to ``color`` when not given.
+    """
 
     name: str
     lines: tuple[Line, ...]
     color: str = DEFAULT_ROUTE_COLOR
     linewidth: float = DEFAULT_ROUTE_WIDTH
+    areas: tuple[Area, ...] = ()
+    fill: str | None = None
+    fill_opacity: float = DEFAULT_FILL_OPACITY
 
 
 # ---------------------------------------------------------------------------
@@ -68,19 +79,42 @@ def _parse_line(coords: Any, where: str) -> Line:
     return tuple(_parse_position(pos, where) for pos in coords)
 
 
-def _parse_geometry(geometry: Any, where: str) -> tuple[Line, ...]:
+def _parse_ring(coords: Any, where: str) -> Line:
+    if not isinstance(coords, list) or len(coords) < 4:
+        raise ValueError(f"{where}: a polygon ring needs at least 4 positions")
+    ring = tuple(_parse_position(pos, where) for pos in coords)
+    if ring[0] != ring[-1]:
+        raise ValueError(f"{where}: polygon ring is not closed (first and last positions differ)")
+    return ring
+
+
+def _parse_polygon(coords: Any, where: str) -> Area:
+    if not isinstance(coords, list) or not coords:
+        raise ValueError(f"{where}: Polygon has no rings")
+    return tuple(_parse_ring(ring, where) for ring in coords)
+
+
+def _parse_geometry(geometry: Any, where: str) -> tuple[tuple[Line, ...], tuple[Area, ...]]:
+    """Return ``(lines, areas)`` for a supported geometry."""
     if not isinstance(geometry, dict):
         raise ValueError(f"{where}: missing geometry")
     gtype = geometry.get("type")
     coords = geometry.get("coordinates")
     if gtype == "LineString":
-        return (_parse_line(coords, where),)
+        return (_parse_line(coords, where),), ()
     if gtype == "MultiLineString":
         if not isinstance(coords, list) or not coords:
             raise ValueError(f"{where}: MultiLineString has no lines")
-        return tuple(_parse_line(part, where) for part in coords)
+        return tuple(_parse_line(part, where) for part in coords), ()
+    if gtype == "Polygon":
+        return (), (_parse_polygon(coords, where),)
+    if gtype == "MultiPolygon":
+        if not isinstance(coords, list) or not coords:
+            raise ValueError(f"{where}: MultiPolygon has no polygons")
+        return (), tuple(_parse_polygon(part, where) for part in coords)
     raise ValueError(
-        f"{where}: unsupported geometry type {gtype!r} (expected LineString or MultiLineString)"
+        f"{where}: unsupported geometry type {gtype!r} "
+        "(expected LineString, MultiLineString, Polygon or MultiPolygon)"
     )
 
 
@@ -97,11 +131,23 @@ def _parse_feature(feature: Any, default_name: str, where: str) -> Route:
     if isinstance(width, bool) or not isinstance(width, (int, float)) or not width > 0:
         raise ValueError(f"{where}: stroke-width must be a positive number, got {width!r}")
 
+    fill = props.get("fill", color)
+    if not mcolors.is_color_like(fill):
+        raise ValueError(f"{where}: invalid fill colour {fill!r}")
+
+    opacity = props.get("fill-opacity", DEFAULT_FILL_OPACITY)
+    if isinstance(opacity, bool) or not isinstance(opacity, (int, float)) or not 0 <= opacity <= 1:
+        raise ValueError(f"{where}: fill-opacity must be a number from 0 to 1, got {opacity!r}")
+
+    lines, areas = _parse_geometry(feature.get("geometry"), where)
     return Route(
         name=str(props.get("name") or default_name),
-        lines=_parse_geometry(feature.get("geometry"), where),
+        lines=lines,
         color=color,
         linewidth=float(width),
+        areas=areas,
+        fill=fill,
+        fill_opacity=float(opacity),
     )
 
 
@@ -152,12 +198,22 @@ def load_routes(path: str) -> list[Route]:
 
 
 def draw_routes(ax: GeoAxes, routes: Sequence[Route], zorder: float = 9) -> None:
-    """Draw *routes* on *ax* as great-circle polylines.
+    """Draw *routes* on *ax* as great-circle polylines and filled areas.
 
     Segments between vertices follow the geodesic (``ccrs.Geodetic``), so
-    sparse routes still curve correctly on the globe.
+    sparse routes still curve correctly on the globe.  Areas are drawn just
+    below the lines so routes stay visible across them.
     """
     for route in routes:
+        if route.areas:
+            ax.add_geometries(
+                [Polygon(area[0], area[1:]) for area in route.areas],
+                crs=ccrs.PlateCarree(),
+                facecolor=mcolors.to_rgba(route.fill or route.color, route.fill_opacity),
+                edgecolor=route.color,
+                linewidth=route.linewidth,
+                zorder=zorder - 1,
+            )
         for line in route.lines:
             lons, lats = zip(*line)
             ax.plot(
@@ -167,4 +223,7 @@ def draw_routes(ax: GeoAxes, routes: Sequence[Route], zorder: float = 9) -> None
                 transform=ccrs.Geodetic(),
                 zorder=zorder,
             )
-        logger.info("Drew route '%s' (%d line(s)).", route.name, len(route.lines))
+        logger.info(
+            "Drew route '%s' (%d line(s), %d area(s)).",
+            route.name, len(route.lines), len(route.areas),
+        )
