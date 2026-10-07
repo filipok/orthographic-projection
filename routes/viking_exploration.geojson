@@ -3,7 +3,7 @@
   "features": [
     {
       "type": "Feature",
-      "properties": {"name": "Norway - Faroes - Iceland - Greenland (c. 860-985)", "stroke": "#7b2cbf", "stroke-width": 2},
+      "properties": {"name": "Norway - Faroes - Iceland - Greenland (c. 860-985)", "legend": "Exploration voyages", "stroke": "#7b2cbf", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [
@@ -17,7 +17,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Leif Erikson: Helluland - Markland - Vinland (c. 1000)", "stroke": "#7b2cbf", "stroke-width": 2},
+      "properties": {"name": "Leif Erikson: Helluland - Markland - Vinland (c. 1000)", "legend": "Exploration voyages", "stroke": "#7b2cbf", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [
@@ -28,7 +28,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Ohthere's voyage to the White Sea (c. 890)", "stroke": "#7b2cbf", "stroke-width": 2},
+      "properties": {"name": "Ohthere's voyage to the White Sea (c. 890)", "legend": "Exploration voyages", "stroke": "#7b2cbf", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [

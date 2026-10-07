@@ -3,7 +3,7 @@
   "features": [
     {
       "type": "Feature",
-      "properties": {"name": "Lindisfarne (793)", "stroke": "#e63946", "stroke-width": 2},
+      "properties": {"name": "Lindisfarne (793)", "legend": "Raids", "stroke": "#e63946", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [[5.32, 60.39], [4.6, 60.3], [-1.75, 55.68]]
@@ -11,7 +11,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Northern Isles - Hebrides - Iona - Dublin (795-841)", "stroke": "#e63946", "stroke-width": 2},
+      "properties": {"name": "Northern Isles - Hebrides - Iona - Dublin (795-841)", "legend": "Raids", "stroke": "#e63946", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [
@@ -25,7 +25,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Siege of Paris (845)", "stroke": "#e63946", "stroke-width": 2},
+      "properties": {"name": "Siege of Paris (845)", "legend": "Raids", "stroke": "#e63946", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [
@@ -39,7 +39,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Iberia and the Mediterranean (844, 859-861)", "stroke": "#e63946", "stroke-width": 2},
+      "properties": {"name": "Iberia and the Mediterranean (844, 859-861)", "legend": "Raids", "stroke": "#e63946", "stroke-width": 2},
       "geometry": {
         "type": "MultiLineString",
         "coordinates": [
@@ -63,7 +63,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Great Heathen Army lands in East Anglia (865)", "stroke": "#e63946", "stroke-width": 2},
+      "properties": {"name": "Great Heathen Army lands in East Anglia (865)", "legend": "Raids", "stroke": "#e63946", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [
@@ -74,7 +74,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Rus' Caspian expedition (913)", "stroke": "#e63946", "stroke-width": 2},
+      "properties": {"name": "Rus' Caspian expedition (913)", "legend": "Raids", "stroke": "#e63946", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [

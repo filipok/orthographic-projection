@@ -3,7 +3,7 @@
   "features": [
     {
       "type": "Feature",
-      "properties": {"name": "Dnieper route: Birka - Novgorod - Kiev - Constantinople", "stroke": "#ff9f1c", "stroke-width": 2},
+      "properties": {"name": "Dnieper route: Birka - Novgorod - Kiev - Constantinople", "legend": "Trade routes", "stroke": "#ff9f1c", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [
@@ -22,7 +22,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Volga route: Staraya Ladoga - Bulghar - Itil - Caspian - Baghdad", "stroke": "#ff9f1c", "stroke-width": 2},
+      "properties": {"name": "Volga route: Staraya Ladoga - Bulghar - Itil - Caspian - Baghdad", "legend": "Trade routes", "stroke": "#ff9f1c", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [
@@ -38,7 +38,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Baltic route: Birka - Gotland - Hedeby", "stroke": "#ff9f1c", "stroke-width": 2},
+      "properties": {"name": "Baltic route: Birka - Gotland - Hedeby", "legend": "Trade routes", "stroke": "#ff9f1c", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [
@@ -50,7 +50,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Kaupang - Hedeby", "stroke": "#ff9f1c", "stroke-width": 2},
+      "properties": {"name": "Kaupang - Hedeby", "legend": "Trade routes", "stroke": "#ff9f1c", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [
@@ -62,7 +62,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Hedeby - Dorestad (via the Treene portage and the Frisian coast)", "stroke": "#ff9f1c", "stroke-width": 2},
+      "properties": {"name": "Hedeby - Dorestad (via the Treene portage and the Frisian coast)", "legend": "Trade routes", "stroke": "#ff9f1c", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [
@@ -74,7 +74,7 @@
     },
     {
       "type": "Feature",
-      "properties": {"name": "Ribe - York", "stroke": "#ff9f1c", "stroke-width": 2},
+      "properties": {"name": "Ribe - York", "legend": "Trade routes", "stroke": "#ff9f1c", "stroke-width": 2},
       "geometry": {
         "type": "LineString",
         "coordinates": [
