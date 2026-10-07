@@ -14,6 +14,14 @@ The main script is [ortho.py](ortho.py).
 *Left: Orthographic globe centred on São Paulo (Google Satellite, zoom 3) showing concentric geodesic distance circles.*<br>
 *Right: Orthographic globe centred on London (OSM, zoom 3) featuring the Köppen-Geiger climate classification overlay.*
 
+<p align="center">
+  <img src="sample_portuguese_voyages.png" alt="Satellite globe centred on Lisbon with the Portuguese voyages of discovery drawn in eight colours and a key naming each voyage" width="48%">
+  <img src="sample_viking_routes.png" alt="Globe centred on Scandinavia with Viking homelands, settlements, trade routes, raids and exploration voyages, and a key" width="48%">
+</p>
+
+*Left: The Portuguese voyages of discovery, 1415–1522, centred on Lisbon (Google Satellite, zoom 3) with a route key.*<br>
+*Right: Viking Age homelands, settlements, trade, raids and exploration, centred on Scandinavia (OSM, zoom 3) with a route key.*
+
 ## Features
 
 - Interactive city selection from a built-in list of major metropolitan areas
@@ -27,6 +35,8 @@ The main script is [ortho.py](ortho.py).
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
 - Optional Köppen-Geiger climate classification overlay with compact legend
 - Optional route overlays loaded from GeoJSON files, drawn as great-circle polylines and translucent filled areas
+- Optional route key below the globe, with short labels and grouping set in the GeoJSON
+- Bundled historical route sets: the Portuguese voyages of discovery and the Viking Age
 - Graceful error handling for network tile fetch failures
 - Automatic attribution block crediting the tile provider and any datasets used
 
@@ -111,6 +121,7 @@ You will be prompted to choose:
 3. A zoom level
 4. Optional Köppen-Geiger climate overlay and opacity/alpha (0–1)
 5. An optional GeoJSON route file to overlay (leave blank to skip)
+6. Whether to add a key naming each route (asked only when a route file is loaded)
 
 ### CLI Mode
 
@@ -131,6 +142,9 @@ python ortho.py --city london --provider google_satellite --zoom 2 --output-dir 
 
 # Draw a route from a GeoJSON file (repeat --route for more)
 python ortho.py --city lisbon --zoom 3 --route routes/gibraltar_ascension_falklands.geojson
+
+# A route file with a key naming each route (see "Route Overlays")
+python ortho.py --city lisbon --provider google_satellite --route routes/portuguese_explorers.geojson --route-legend
 ```
 
 #### CLI Flags
@@ -150,6 +164,7 @@ python ortho.py --city lisbon --zoom 3 --route routes/gibraltar_ascension_falkla
 | `--koppen` | Enable Köppen-Geiger climate classification overlay | off |
 | `--koppen-alpha ALPHA` | Opacity of the climate overlay (0–1) | `0.45` |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
+| `--route-legend` | Add a key below the globe naming each route next to its colour | off |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
 
@@ -184,6 +199,7 @@ generate_orthographic_map(
     output_dir="renders",  # optional: save to a specific directory
     city_name="Paris",     # optional: adds a marker and label on the map
     routes=None,           # optional: list of Route objects, see "Route Overlays"
+    route_legend=False,    # optional: add a key naming each route
 )
 ```
 
@@ -201,7 +217,7 @@ The suite runs fully offline. `tests/conftest.py` blocks any connection to a non
 
 - Zoom is capped at level `4` to avoid excessive tile downloads. Lower zoom levels are safer for full-globe renders.
 - Web map tiles stop at about ±85° latitude, so a small disc around each pole shows the plain fallback colours. On OSM they match the tiles and are hard to see; on `google_satellite` the disc is visible. This is a known cosmetic limitation.
-- The default 300 DPI gives a ~6,000 px image. Map imagery carries roughly 2,000–4,000 px of real detail at zoom 3–4, so higher DPIs mostly upscale it; they still make text, circles, routes and the legend sharper (`--dpi 600` gives ~12,000 px).
+- The default 300 DPI gives a ~6,000 px image. Map imagery carries roughly 2,000–4,000 px of real detail at zoom 3–4, so higher DPIs mostly upscale it; they still make text, circles, routes and the keys sharper (`--dpi 600` gives ~12,000 px).
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
 - Google tile backends depend on Cartopy tile services and may be subject to provider availability or usage limits.
 - If some or all map tiles fail to download, the map is still saved: missing tiles are left transparent so the fallback land/ocean features show through, and a warning says how many tiles failed.
@@ -212,10 +228,12 @@ The suite runs fully offline. `tests/conftest.py` blocks any connection to a non
 ## Route Overlays
 
 Pass one or more GeoJSON files with `--route` (CLI), at the interactive prompt,
-or as `routes=` (API) to draw routes on the globe:
+or as `routes=` (API) to draw routes and areas on the globe. Add `--route-legend`
+for a key naming each one:
 
 ```powershell
 python ortho.py --city lisbon --route routes/gibraltar_ascension_falklands.geojson
+python ortho.py --city lisbon --route routes/portuguese_explorers.geojson --route-legend
 ```
 
 ```python
@@ -224,53 +242,79 @@ from routes import load_routes
 
 generate_orthographic_map(
     lat=38.7223, lon=-9.1393, output_filename="lisbon.png",
-    routes=load_routes("routes/gibraltar_ascension_falklands.geojson"),
+    routes=load_routes("routes/portuguese_explorers.geojson"),
+    route_legend=True,
 )
 ```
 
-Route files live in [routes/](routes/). Each file is a GeoJSON `FeatureCollection`,
-`Feature` or bare geometry containing `LineString`, `MultiLineString`, `Polygon` or
-`MultiPolygon` geometries. Coordinates are `[lon, lat]` in degrees. Segments between
-line vertices are drawn along the great circle; polygons are drawn as translucent
-filled areas beneath the lines, with holes supported. Styling uses the
-[simplestyle-spec](https://github.com/mapbox/simplestyle-spec) properties, so
-files also render correctly on GitHub and [geojson.io](https://geojson.io):
+Files given later are drawn on top of earlier ones. Route files are validated
+before any tiles are fetched, so a missing or malformed file fails immediately.
+
+### File format
+
+Each file is a GeoJSON `FeatureCollection`, `Feature` or bare geometry with
+`[lon, lat]` coordinates in degrees:
+
+- `LineString` and `MultiLineString` are drawn as lines. Segments between
+  vertices follow the great circle, so sparse routes still curve correctly.
+- `Polygon` and `MultiPolygon` are drawn as translucent filled areas beneath
+  the lines. Holes are supported.
+
+Styling uses the [simplestyle-spec](https://github.com/mapbox/simplestyle-spec)
+property names, so files also render sensibly on GitHub and
+[geojson.io](https://geojson.io):
 
 | Property | Meaning | Default |
 |---|---|---|
-| `name` | Route name (used in logs) | file name |
+| `name` | Route name, used in logs and as the key label | file name |
+| `legend` | Short label for the route key; features with the same label share one entry | `name` |
 | `stroke` | Line or outline colour (any Matplotlib colour) | `#ff0000` |
 | `stroke-width` | Line or outline width in points | `2` |
 | `fill` | Area fill colour (polygons only) | the `stroke` colour |
 | `fill-opacity` | Area fill opacity, 0–1 (polygons only) | `0.35` |
 
-The bundled Viking Age files can be layered together:
-
-```powershell
-python ortho.py --lat 62 --lon 15 --route routes/viking_homelands.geojson --route routes/viking_settlements.geojson --route routes/viking_trade.geojson --route routes/viking_raids.geojson --route routes/viking_exploration.geojson
-```
-
-| File | Colour | Contents |
-|---|---|---|
-| `viking_trade.geojson` | orange | Dnieper and Volga river routes, Baltic and North Sea trade |
-| `viking_raids.geojson` | red | Lindisfarne, Iona and Dublin, Paris, Iberia and the Mediterranean, East Anglia, the Caspian |
-| `viking_exploration.geojson` | purple | Faroes, Iceland and Greenland, Vinland, Ohthere's White Sea voyage |
-| `viking_homelands.geojson` | brown | Viking Age Denmark, Norway, and the Swedes and Geats |
-| `viking_settlements.geojson` | green, blue | Settled areas (Danelaw, Dublin, Norse Scotland and Man, Faroes, Iceland, Greenland, Normandy, Kievan Rus') in green; Norman southern Italy and Sicily, with the Normans' route there, in blue |
-
-The homeland and settlement areas are approximate outlines clipped to the
-[Natural Earth](https://www.naturalearthdata.com/) 1:10m coastline (public domain).
-
 ```json
 {
   "type": "Feature",
-  "properties": {"name": "My route", "stroke": "#ff0000", "stroke-width": 2},
-  "geometry": {"type": "LineString", "coordinates": [[-5.35, 36.14], [-14.36, -7.95]]}
+  "properties": {"name": "Vasco da Gama: sea route to India", "legend": "Vasco da Gama, 1497–1499",
+                 "stroke": "#ff3b30", "stroke-width": 2.5},
+  "geometry": {"type": "LineString", "coordinates": [[-9.14, 38.71], [-9.6, 38.5], [-15.97, 28.3]]}
 }
 ```
 
-Route files are validated before any tiles are fetched, so a missing or malformed
-file fails immediately.
+### Route key
+
+With `--route-legend` (`route_legend=True` in the API), a key below the globe
+lists each label next to a swatch: a line for routes, a filled box for areas.
+Entries run top layer first, the reverse of drawing order, as in a GIS layer
+list. Give features a shared `legend` label to group them, for example all
+trade routes as "Trade routes"; without one, every feature gets its own entry.
+When the Köppen-Geiger overlay is on, the route key goes below the climate key.
+
+### Bundled route files
+
+| File | Colour | Contents |
+|---|---|---|
+| `gibraltar_ascension_falklands.geojson` | red | Gibraltar to Ascension Island and the Falklands |
+| `portuguese_explorers.geojson` | one per voyage | Henry the Navigator's captains, Diogo Cão, Bartolomeu Dias, Vasco da Gama, Pedro Álvares Cabral, Pêro da Covilhã, Gaspar Corte-Real, and Magellan and Elcano (1415–1522) |
+| `viking_homelands.geojson` | brown | Viking Age Denmark, Norway, and the Swedes and Geats |
+| `viking_settlements.geojson` | green, blue | Norse settlements (Danelaw, Dublin, Norse Scotland and Man, Faroes, Iceland, Greenland, Normandy, Kievan Rus') in green; the Normans in southern Italy and Sicily in blue |
+| `viking_trade.geojson` | orange | Dnieper and Volga river routes, Baltic and North Sea trade |
+| `viking_raids.geojson` | red | Lindisfarne, Iona and Dublin, Paris, Iberia and the Mediterranean, East Anglia, the Caspian |
+| `viking_exploration.geojson` | purple | Faroes, Iceland and Greenland, Vinland, Ohthere's White Sea voyage |
+
+The Portuguese and Viking files carry `legend` labels, so they make compact keys.
+The two sample maps above were rendered with:
+
+```powershell
+python ortho.py --city lisbon --provider google_satellite --route routes/portuguese_explorers.geojson --route-legend
+python ortho.py --lat 62 --lon 15 --route routes/viking_homelands.geojson --route routes/viking_settlements.geojson --route routes/viking_trade.geojson --route routes/viking_raids.geojson --route routes/viking_exploration.geojson --route-legend
+```
+
+The routes are approximate, drawn through documented landfalls and checked so
+that sea legs stay off land. The homeland and settlement areas are approximate
+outlines clipped to the [Natural Earth](https://www.naturalearthdata.com/)
+1:10m coastline (public domain).
 
 ## Köppen-Geiger Climate Overlay
 
@@ -355,7 +399,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 
 - [ortho.py](ortho.py): main script and reusable map-generation functions
 - [koppen.py](koppen.py): Köppen-Geiger climate overlay and legend
-- [routes.py](routes.py): GeoJSON route loading and drawing
+- [routes.py](routes.py): GeoJSON route and area loading, drawing and the route key
 - [google_tiles.py](google_tiles.py): Google Map Tiles API client (API key, sessions, attribution)
 - [tile_fetch.py](tile_fetch.py): single-tile downloader shared by the tile sources
 - [LICENSE](LICENSE): MIT licence
