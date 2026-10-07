@@ -26,7 +26,7 @@ The main script is [ortho.py](ortho.py).
 - City marker and label overlay on the globe for named locations
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
 - Optional Köppen-Geiger climate classification overlay with compact legend
-- Optional route overlays loaded from GeoJSON files, drawn as great-circle polylines
+- Optional route overlays loaded from GeoJSON files, drawn as great-circle polylines and translucent filled areas
 - Graceful error handling for network tile fetch failures
 - Automatic attribution block crediting the tile provider and any datasets used
 
@@ -229,17 +229,37 @@ generate_orthographic_map(
 ```
 
 Route files live in [routes/](routes/). Each file is a GeoJSON `FeatureCollection`,
-`Feature` or bare geometry containing `LineString` or `MultiLineString` geometries.
-Coordinates are `[lon, lat]` in degrees, and segments between vertices are drawn
-along the great circle. Styling uses the
+`Feature` or bare geometry containing `LineString`, `MultiLineString`, `Polygon` or
+`MultiPolygon` geometries. Coordinates are `[lon, lat]` in degrees. Segments between
+line vertices are drawn along the great circle; polygons are drawn as translucent
+filled areas beneath the lines, with holes supported. Styling uses the
 [simplestyle-spec](https://github.com/mapbox/simplestyle-spec) properties, so
 files also render correctly on GitHub and [geojson.io](https://geojson.io):
 
 | Property | Meaning | Default |
 |---|---|---|
 | `name` | Route name (used in logs) | file name |
-| `stroke` | Line colour (any Matplotlib colour) | `#ff0000` |
-| `stroke-width` | Line width in points | `2` |
+| `stroke` | Line or outline colour (any Matplotlib colour) | `#ff0000` |
+| `stroke-width` | Line or outline width in points | `2` |
+| `fill` | Area fill colour (polygons only) | the `stroke` colour |
+| `fill-opacity` | Area fill opacity, 0–1 (polygons only) | `0.35` |
+
+The bundled Viking Age files can be layered together:
+
+```powershell
+python ortho.py --lat 62 --lon 15 --route routes/viking_homelands.geojson --route routes/viking_settlements.geojson --route routes/viking_trade.geojson --route routes/viking_raids.geojson --route routes/viking_exploration.geojson
+```
+
+| File | Colour | Contents |
+|---|---|---|
+| `viking_trade.geojson` | orange | Dnieper and Volga river routes, Baltic and North Sea trade |
+| `viking_raids.geojson` | red | Lindisfarne, Iona and Dublin, Paris, Iberia and the Mediterranean, East Anglia, the Caspian |
+| `viking_exploration.geojson` | purple | Faroes, Iceland and Greenland, Vinland, Ohthere's White Sea voyage |
+| `viking_homelands.geojson` | brown | Viking Age Denmark, Norway, and the Swedes and Geats |
+| `viking_settlements.geojson` | green, blue | Settled areas (Danelaw, Dublin, Norse Scotland and Man, Faroes, Iceland, Greenland, Normandy, Kievan Rus') in green; Norman southern Italy and Sicily, with the Normans' route there, in blue |
+
+The homeland and settlement areas are approximate outlines clipped to the
+[Natural Earth](https://www.naturalearthdata.com/) 1:10m coastline (public domain).
 
 ```json
 {
