@@ -3,7 +3,7 @@
 **Date:** 2026-10-02
 **Scope:** `ortho.py`, `koppen.py`, `tests/test_ortho.py`, `pyproject.toml`, `requirements.txt`, `README.md`, plus the uncommitted diff to `ortho.py`.
 **Baseline:** `main` @ `71bdbfb` + working-tree changes.
-**Updated:** 2026-10-04 against the latest `main`. All 22 findings are resolved; the Google Maps setup under #7 is finished. #23 (polar caps) is a known cosmetic limitation, left as is by owner decision. Line references in resolved findings point to the code as it was when each was written.
+**Updated:** 2026-10-04 against the latest `main`. All 22 findings are resolved; the Google Maps setup under #7 is finished. #23 (polar caps) is a known cosmetic limitation, left as is by owner decision; since 2026-10-08 the opt-in `--ice` overlay covers it. Line references in resolved findings point to the code as it was when each was written.
 **Method:** Read all source, then tried to break each claim the code, docstrings and README make. Every finding marked **[verified]** was reproduced in this environment (Python 3.14.3, cartopy 0.25.0). The rest come from reading the code and have a concrete failure path.
 
 Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the route and packaging fixes. The tests pass, but most of the findings below are bugs the suite cannot see.
@@ -36,7 +36,7 @@ Test suite status: `29 passed in 1.98s` at review time; `53 passed` after the ro
 | 20 | ~~Low~~ Resolved | Test-suite gaps and test pollution |
 | 21 | ~~Low~~ Resolved | Packaging/metadata inconsistencies |
 | 22 | ~~Medium~~ Resolved | Tile download failures crash `savefig`; the `try/except` around `add_image` never fires |
-| 23 | Low (won't fix) | Polar caps beyond Web Mercator's ±85° show the flat fallback colour, a visible disc on satellite renders |
+| 23 | Low (won't fix; mitigated by `--ice`) | Polar caps beyond Web Mercator's ±85° show the flat fallback colour, a visible disc on satellite renders |
 
 ---
 
@@ -300,6 +300,16 @@ the caps with the colour of the nearest tile row, or draw a polar ice overlay. C
 >
 > If revisited, the edge fill is the one to implement.
 
+> **Mitigated (2026-10-08, `6f363d8`):** the opt-in `--ice` overlay (`ice.py`) draws polar ice opaquely above the tiles,
+> which covers both discs. It answers the objection to the "ice caps" prototype above: instead of a white cap at 85°, it
+> draws measured ice for the month each hemisphere's ice peaks. That is NSIDC Sea Ice Index v4 extent for March (Arctic) and
+> September (Antarctic), plus Natural Earth polar land ice. In March the sea ice covers the North Pole, and Antarctica's
+> ice sheet covers the South Pole. Verified on Google Satellite (Lisbon, both hemispheres) and OSM (North Pole view): no
+> disc visible at either pole.
+>
+> Without `--ice` the default renders are unchanged and still show the discs, so the finding stays open as a won't-fix
+> for that case. The edge fill above remains the option for default renders.
+
 ---
 
 ## Recommended order of work
@@ -312,4 +322,4 @@ the caps with the colour of the nearest tile row, or draw a polar ice overlay. C
 7. ~~Revisit the default DPI and regrid shapes (#13, #14), and add `try/finally` for figure cleanup (#15).~~ Done (also #16, #18, #20, #21).
 8. ~~Make the test suite fully offline (#19).~~ Done.
 9. ~~Finish the Google setup (#7: Maps API key, smoke test, re-render `sample_sao_paulo.png`).~~ Done 2026-10-04.
-10. ~~Optional: polar-cap colours on satellite renders (#23).~~ Prototyped; left as is by owner decision.
+10. ~~Optional: polar-cap colours on satellite renders (#23).~~ Prototyped; left as is by owner decision. Covered since 2026-10-08 when `--ice` is used.
