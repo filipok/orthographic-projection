@@ -251,10 +251,11 @@ def load_ice_layers(year: int | None = None, cache_dir: str | None = None) -> Ic
     return IceLayers(sea_ice=tuple(sea_ice), land_ice=polar_land_ice(), years=years)
 
 
-def draw_ice(ax: GeoAxes, layers: IceLayers, zorder: float = 3) -> None:
-    """Draw *layers* on *ax* above the map imagery: sea ice, then land ice.
+def draw_ice(ax: GeoAxes, layers: IceLayers, zorder: float = 6) -> None:
+    """Draw *layers* on *ax*: sea ice, then land ice.
 
-    Land ice goes on top so the Antarctic ice shelves stay whole where the
+    The default *zorder* puts the ice above the map imagery and the
+    Köppen-Geiger (5) and crop (5.5) colours. Land ice goes on top so the Antarctic ice shelves stay whole where the
     sea ice extent overlaps them. Both fills are opaque, which also covers
     the plain disc the web tiles leave around each pole.
     """
