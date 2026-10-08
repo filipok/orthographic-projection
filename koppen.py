@@ -383,13 +383,13 @@ def add_koppen_overlay(
 # ---------------------------------------------------------------------------
 
 
-def add_koppen_legend(ax: GeoAxes) -> None:
+def add_koppen_legend(ax: GeoAxes, x: float = 0.5) -> None:
     """Add a compact Köppen-Geiger legend strip below the globe.
 
     The legend lists all 30 sub-classes in climate-group order (A–E) as a
     flat 15-column grid, each with its canonical colour swatch and
-    abbreviation.  The dataset credit (:data:`KOPPEN_ATTRIBUTION`) is drawn
-    by the caller.
+    abbreviation.  *x* is the strip's horizontal centre in axes coordinates.
+    The dataset credit (:data:`KOPPEN_ATTRIBUTION`) is drawn by the caller.
     """
     handles: list[mpatches.Patch] = []
     labels: list[str] = []
@@ -405,7 +405,7 @@ def add_koppen_legend(ax: GeoAxes) -> None:
         handles,
         labels,
         loc="lower center",
-        bbox_to_anchor=(0.5, -0.06),
+        bbox_to_anchor=(x, -0.06),
         ncol=15,
         fontsize=6.5,
         frameon=True,

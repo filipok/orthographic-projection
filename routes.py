@@ -257,13 +257,14 @@ def _legend_handle(route: Route) -> Artist:
     )
 
 
-def add_route_legend(ax: GeoAxes, routes: Sequence[Route], y: float = -0.01) -> None:
+def add_route_legend(ax: GeoAxes, routes: Sequence[Route], y: float = -0.01, x: float = 0.5) -> None:
     """Add a key below the globe naming each route next to its colour.
 
     Each entry's label is the route's ``legend``, else its ``name``; routes
     that share a label share one entry, styled like the first of them.
     Entries are listed top layer first, the reverse of drawing order, as in
-    a GIS layer list.  *y* is the key's top edge in axes coordinates.
+    a GIS layer list.  *y* is the key's top edge and *x* its horizontal
+    centre, in axes coordinates.
 
     The key is added as a separate artist, so it does not replace another
     legend on *ax* (such as the Köppen-Geiger one).
@@ -279,7 +280,7 @@ def add_route_legend(ax: GeoAxes, routes: Sequence[Route], y: float = -0.01) -> 
         list(entries.values()),
         list(entries),
         loc="upper center",
-        bbox_to_anchor=(0.5, y),
+        bbox_to_anchor=(x, y),
         ncol=1 if len(entries) < 4 else 2,
         fontsize=11,
         frameon=True,

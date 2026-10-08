@@ -292,10 +292,13 @@ MIN_DPI = 10
 MAX_DPI = 1200
 
 
-def validate_render_options(dpi: int, koppen_alpha: float) -> None:
+def validate_render_options(dpi: int, koppen_alpha: float, both_hemispheres: bool = False) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
-    if not MIN_DPI <= dpi <= MAX_DPI:
-        raise ValueError(f"dpi must be between {MIN_DPI} and {MAX_DPI}, got {dpi}")
+    # Two globes double the width, so halve the cap to keep the same pixel budget
+    max_dpi = MAX_DPI // 2 if both_hemispheres else MAX_DPI
+    if not MIN_DPI <= dpi <= max_dpi:
+        layout = " with both hemispheres" if both_hemispheres else ""
+        raise ValueError(f"dpi must be between {MIN_DPI} and {max_dpi}{layout}, got {dpi}")
     if not 0.0 <= koppen_alpha <= 1.0:
         raise ValueError(f"koppen_alpha must be between 0 and 1, got {koppen_alpha}")
 
@@ -318,6 +321,7 @@ def generate_orthographic_map(
     routes: Sequence[Route] | None = None,
     route_legend: bool = False,
     tile_cache_dir: str | None = None,
+    both_hemispheres: bool = False,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -363,6 +367,10 @@ def generate_orthographic_map(
     tile_cache_dir : str or None
         Directory for cached OSM tiles (see :func:`configure_tile_cache`).
         ``None`` disables caching. Google tiles are never cached.
+    both_hemispheres : bool
+        When True, draw a second globe beside the first, centred on the
+        antipode, so the whole Earth is shown. Its distance circles are
+        measured from (*lat*, *lon*) too. Limits *dpi* to ``MAX_DPI // 2``.
 
     Returns
     -------
@@ -370,7 +378,7 @@ def generate_orthographic_map(
         Absolute path of the saved PNG.
     """
 
-    validate_render_options(dpi=dpi, koppen_alpha=koppen_alpha)
+    validate_render_options(dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres)
 
     # Resolve output path and create its folder now, not after all the work
     if output_dir:
@@ -388,20 +396,28 @@ def generate_orthographic_map(
         **tile_kwargs,
     )
 
-    # Step 2: Define the Orthographic projection
-    ortho_proj = ccrs.Orthographic(central_longitude=lon, central_latitude=lat)
+    # Steps 2-4: One full-hemisphere Orthographic globe per centre: the
+    # requested point and, with both_hemispheres, its antipode beside it.
+    # The Figure is built directly rather than through pyplot, so it is never
+    # registered in pyplot's global state and is freed even if rendering fails.
+    centres = [(lat, lon)]
+    if both_hemispheres:
+        centres.append(antipode(lat, lon))
+        logger.info("Adding the opposite hemisphere, centred at lat=%.4f, lon=%.4f", *centres[1])
+    fig = Figure(figsize=(20 * len(centres), 20))
+    axes = [
+        _add_globe_axes(fig, centre_lat, centre_lon, index, len(centres))
+        for index, (centre_lat, centre_lon) in enumerate(centres)
+    ]
+    near = axes[0]
+    far = axes[1] if both_hemispheres else None
 
-    # Step 3: Create a high-resolution figure and axes. The Figure is built
-    # directly rather than through pyplot, so it is never registered in
-    # pyplot's global state and is freed even if rendering fails.
-    fig = Figure(figsize=(20, 20))
-    ax = fig.add_subplot(projection=ortho_proj)
-
-    if not isinstance(ax, GeoAxes):
-        raise RuntimeError("Failed to create GeoAxes")
-
-    # Step 4: Full hemisphere view
-    ax.set_global()
+    # Keys go under the middle of the row, given in the first globe's axes coordinates
+    if far is None:
+        key_x = 0.5
+    else:
+        first = near.get_position()
+        key_x = (0.5 - first.x0) / first.width
 
     # Warp resolution for tiles and overlays: the output's pixel size, capped
     # at max_regrid_shape (beyond that the source imagery has no more detail)
@@ -410,44 +426,47 @@ def generate_orthographic_map(
         max_regrid_shape,
     )
 
-    # Fallback land/ocean so blank areas aren't white
-    ax.add_feature(cfeature.OCEAN, facecolor=background_color, edgecolor="none", zorder=0)
-    ax.add_feature(cfeature.LAND, facecolor="#f1efe6", edgecolor="none", zorder=0)
+    for ax in axes:
+        # Fallback land/ocean so blank areas aren't white
+        ax.add_feature(cfeature.OCEAN, facecolor=background_color, edgecolor="none", zorder=0)
+        ax.add_feature(cfeature.LAND, facecolor="#f1efe6", edgecolor="none", zorder=0)
 
-    # Step 5: Register the tiles. Cartopy downloads them later, inside savefig;
-    # failed tiles come out transparent (see BufferedTileSource).
-    ax.add_image(
-        tiles,
-        zoom,
-        regrid_shape=regrid_shape,
-        interpolation="nearest",
-    )
+        # Step 5: Register the tiles. Cartopy downloads them later, inside
+        # savefig; failed tiles come out transparent (see BufferedTileSource).
+        ax.add_image(
+            tiles,
+            zoom,
+            regrid_shape=regrid_shape,
+            interpolation="nearest",
+        )
 
-    # Step 5b: Köppen-Geiger overlay (above tiles, below gridlines)
+    # Step 5b: Köppen-Geiger overlay (above tiles, below gridlines), one key
     koppen_drawn = False
     if koppen:
         logger.info("Applying Köppen-Geiger climate overlay (alpha=%.2f) …", koppen_alpha)
         try:
-            add_koppen_overlay(ax, alpha=koppen_alpha, regrid_shape=regrid_shape)
+            for ax in axes:
+                add_koppen_overlay(ax, alpha=koppen_alpha, regrid_shape=regrid_shape)
         except (KoppenDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
             logger.warning("Skipping Köppen-Geiger overlay: %s", e)
         else:
-            add_koppen_legend(ax)
+            add_koppen_legend(near, x=key_x)
             koppen_drawn = True
 
     # Step 6: Gridlines
-    ax.gridlines(draw_labels=False, color='black', alpha=0.3, linestyle='--')
+    for ax in axes:
+        ax.gridlines(draw_labels=False, color='black', alpha=0.3, linestyle='--')
 
-    # Step 7: City marker & label
+    # Step 7: City marker & label, and the antipode on the far globe
     if city_name:
-        ax.plot(
+        near.plot(
             lon, lat,
             marker="o", markersize=10, markeredgewidth=2,
             color="#e74c3c", markeredgecolor="white",
             transform=ccrs.PlateCarree(), zorder=10,
         )
-        ax.text(
+        near.text(
             lon, lat, f"  {city_name}",
             transform=ccrs.PlateCarree(),
             fontsize=14, fontweight="bold", color="white",
@@ -456,22 +475,41 @@ def generate_orthographic_map(
                 pe.withStroke(linewidth=3, foreground="black")
             ],
         )
+    if far is not None:
+        anti_lat, anti_lon = centres[1]
+        far.plot(
+            anti_lon, anti_lat,
+            marker="o", markersize=10, markeredgewidth=2.5,
+            markerfacecolor="none", markeredgecolor="white",
+            transform=ccrs.PlateCarree(), zorder=10,
+        )
+        far.text(
+            anti_lon, anti_lat, f"  Antipode of {city_name}" if city_name else "  Antipode",
+            transform=ccrs.PlateCarree(),
+            fontsize=14, fontweight="bold", color="white",
+            va="center", ha="left", zorder=10,
+            path_effects=[pe.withStroke(linewidth=3, foreground="black")],
+        )
 
-    # Step 7b: Concentric distance circles (2 500 km and 5 000 km)
-    _draw_distance_circles(ax, lon, lat)
+    # Step 7b: Concentric distance circles, all measured from the requested
+    # point: 2 500 and 5 000 km on its globe, 17 500 and 15 000 km on the far one
+    _draw_distance_circles(near, lon, lat)
+    if far is not None:
+        _draw_distance_circles(far, lon, lat, radii_km=FAR_SIDE_RADII_KM)
 
     # Step 7c: Route overlays
     if routes:
-        draw_routes(ax, routes)
+        for ax in axes:
+            draw_routes(ax, routes)
         if route_legend:
             # Below the Köppen-Geiger key when that is drawn too
-            add_route_legend(ax, routes, y=-0.07 if koppen_drawn else -0.01)
+            add_route_legend(near, routes, y=-0.07 if koppen_drawn else -0.01, x=key_x)
 
     # Step 7d: Data credits required by the tile and dataset licences
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
     if koppen_drawn:
         credits.append(KOPPEN_ATTRIBUTION)
-    _add_attribution(ax, credits)
+    _add_attribution(axes[-1], credits)
 
     # Step 8: Export
     logger.info("Fetching '%s' tiles at zoom %d and saving to '%s' at %d DPI …",
@@ -482,6 +520,37 @@ def generate_orthographic_map(
     output_path = os.path.abspath(output_filename)
     logger.info("Map successfully created: %s", output_path)
     return output_path
+
+
+def antipode(lat: float, lon: float) -> tuple[float, float]:
+    """Return the point diametrically opposite (*lat*, *lon*), lon in [-180, 180]."""
+    return -lat, lon + 180 if lon <= 0 else lon - 180
+
+
+# Side-by-side globes are each the size of a single render's globe (the
+# default subplot height of a 20 in figure), with a 1 in gap between them.
+_GLOBE_SIZE_IN = 0.77 * 20
+_GLOBE_GAP_IN = 1.0
+
+
+def _add_globe_axes(fig: Figure, lat: float, lon: float, index: int, count: int) -> GeoAxes:
+    """Add globe *index* of *count* to *fig*, centred on (*lat*, *lon*)."""
+    proj = ccrs.Orthographic(central_longitude=lon, central_latitude=lat)
+    if count == 1:
+        ax = fig.add_subplot(projection=proj)
+    else:
+        # A centred row of equal square globes
+        fig_w, fig_h = fig.get_size_inches()
+        row_w = count * _GLOBE_SIZE_IN + (count - 1) * _GLOBE_GAP_IN
+        left = (fig_w - row_w) / 2 + index * (_GLOBE_SIZE_IN + _GLOBE_GAP_IN)
+        ax = fig.add_axes(
+            (left / fig_w, 0.11, _GLOBE_SIZE_IN / fig_w, _GLOBE_SIZE_IN / fig_h),
+            projection=proj,
+        )
+    if not isinstance(ax, GeoAxes):
+        raise RuntimeError("Failed to create GeoAxes")
+    ax.set_global()  # full hemisphere view
+    return ax
 
 
 
@@ -563,6 +632,12 @@ def _visible_runs(xy: np.ndarray) -> list[np.ndarray]:
     if current:
         runs.append(np.array(current))
     return [run for run in runs if len(run) >= 2]
+
+
+# Distance circles on the far globe, still measured from the requested point.
+# The antipode is ~20 000 km away, so these sit 2 500 and 5 000 km from it,
+# mirroring the near globe's rings. Inner ring first, as on the near globe.
+FAR_SIDE_RADII_KM = (17_500, 15_000)
 
 
 def _draw_distance_circles(
@@ -650,10 +725,13 @@ def prompt_for_zoom(default_zoom: int = 3, min_zoom: int = 1, max_zoom: int = 4)
         print(f"Please enter an integer between {min_zoom} and {max_zoom}.\n")
 
 
-def build_output_filename(city_slug: str, tile_provider: str, zoom: int) -> str:
+def build_output_filename(
+    city_slug: str, tile_provider: str, zoom: int, both_hemispheres: bool = False
+) -> str:
     """Build a descriptive output filename from the render parameters."""
     sanitized_provider = tile_provider.replace(" ", "_")
-    return f"orthographic_map_{city_slug}_{sanitized_provider}_z{zoom}.png"
+    suffix = "_hemispheres" if both_hemispheres else ""
+    return f"orthographic_map_{city_slug}_{sanitized_provider}_z{zoom}{suffix}.png"
 
 
 # --- Custom coordinate prompt ---
@@ -791,6 +869,12 @@ def build_cli_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Add a key below the globe naming each route next to its colour.",
     )
+    parser.add_argument(
+        "--both-hemispheres",
+        action="store_true",
+        help="Draw a second globe centred on the antipode, showing the whole Earth "
+             f"(max --dpi {MAX_DPI // 2}).",
+    )
 
     return parser
 
@@ -829,7 +913,10 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
     if tile_provider in GOOGLE_MAP_TYPES:
         tile_kwargs["api_key"] = prompt_for_google_api_key()
     zoom = prompt_for_zoom(default_zoom=3)
-    output_file = build_output_filename(city_slug, tile_provider, zoom)
+    both_hemispheres = input(
+        "Also draw the opposite hemisphere, centred on the antipode? [y/N]: "
+    ).strip().lower() in ("y", "yes")
+    output_file = build_output_filename(city_slug, tile_provider, zoom, both_hemispheres)
 
     print(
         f"\nGenerating map for {city_label} using '{tile_provider}' at zoom level {zoom}."
@@ -873,6 +960,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             routes=routes,
             route_legend=route_legend,
             tile_cache_dir=tile_cache_dir,
+            both_hemispheres=both_hemispheres,
         )
     except GoogleTilesError as e:
         print(f"\n{e}")
@@ -923,7 +1011,9 @@ def run_cli(args: argparse.Namespace) -> None:
         logger.warning("--route-legend is ignored because no --route was given.")
 
     try:
-        validate_render_options(dpi=args.dpi, koppen_alpha=args.koppen_alpha)
+        validate_render_options(
+            dpi=args.dpi, koppen_alpha=args.koppen_alpha, both_hemispheres=args.both_hemispheres,
+        )
     except ValueError as e:
         logger.error("Invalid option: %s.", e)
         sys.exit(1)
@@ -944,7 +1034,7 @@ def run_cli(args: argparse.Namespace) -> None:
         output_file = args.output
         output_dir = None  # explicit path, don't prepend output_dir
     else:
-        output_file = build_output_filename(city_slug, args.provider, args.zoom)
+        output_file = build_output_filename(city_slug, args.provider, args.zoom, args.both_hemispheres)
         output_dir = args.output_dir
 
     logger.info(
@@ -968,6 +1058,7 @@ def run_cli(args: argparse.Namespace) -> None:
             routes=routes,
             route_legend=args.route_legend,
             tile_cache_dir=tile_cache_dir,
+            both_hemispheres=args.both_hemispheres,
         )
     except GoogleTilesError as e:
         logger.error("%s", e)

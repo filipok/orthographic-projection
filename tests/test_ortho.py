@@ -183,6 +183,43 @@ class TestBuildOutputFilename:
         result = ortho.build_output_filename("paris", "google satellite", 3)
         assert result == "orthographic_map_paris_google_satellite_z3.png"
 
+    def test_both_hemispheres_suffix(self):
+        result = ortho.build_output_filename("lisbon", "osm", 3, both_hemispheres=True)
+        assert result == "orthographic_map_lisbon_osm_z3_hemispheres.png"
+
+
+# ===================================================================
+# antipode and render options
+# ===================================================================
+
+
+class TestAntipode:
+    @pytest.mark.parametrize("lat, lon, expected", [
+        (38.7223, -9.1393, (-38.7223, 170.8607)),   # Lisbon -> Tasman Sea, west of New Zealand
+        (31.2304, 121.4737, (-31.2304, -58.5263)),  # Shanghai -> Entre Ríos, Argentina
+        (0.0, 0.0, (-0.0, 180.0)),
+        (10.0, 180.0, (-10.0, 0.0)),
+        (-5.0, -180.0, (5.0, 0.0)),
+        (90.0, 45.0, (-90.0, -135.0)),
+    ])
+    def test_opposite_point(self, lat, lon, expected):
+        anti_lat, anti_lon = ortho.antipode(lat, lon)
+        assert anti_lat == pytest.approx(expected[0])
+        assert anti_lon == pytest.approx(expected[1])
+        assert -180 <= anti_lon <= 180
+
+    def test_far_side_rings_mirror_the_near_ones(self):
+        # ~20 000 km to the antipode, so 17 500 / 15 000 km sit 2 500 / 5 000 km from it
+        assert ortho.FAR_SIDE_RADII_KM == (17_500, 15_000)
+
+
+class TestValidateRenderOptions:
+    def test_both_hemispheres_halves_the_dpi_cap(self):
+        ortho.validate_render_options(dpi=ortho.MAX_DPI // 2, koppen_alpha=0.5, both_hemispheres=True)
+        with pytest.raises(ValueError, match="with both hemispheres"):
+            ortho.validate_render_options(dpi=ortho.MAX_DPI // 2 + 1, koppen_alpha=0.5, both_hemispheres=True)
+        ortho.validate_render_options(dpi=ortho.MAX_DPI, koppen_alpha=0.5)
+
 
 # ===================================================================
 # configure_tile_cache
@@ -389,6 +426,10 @@ class TestCLIParser:
         assert self._parse(["--city", "nyc"]).route_legend is False
         assert self._parse(["--city", "nyc", "--route-legend"]).route_legend is True
 
+    def test_both_hemispheres_flag(self):
+        assert self._parse(["--city", "nyc"]).both_hemispheres is False
+        assert self._parse(["--city", "nyc", "--both-hemispheres"]).both_hemispheres is True
+
 
 # ===================================================================
 # run_cli validation
@@ -403,7 +444,7 @@ class TestRunCLIValidation:
             city=None, lat=None, lon=None,
             provider="osm", zoom=3, dpi=300,
             output=None, output_dir=None, cache_dir=None,
-            koppen=False, koppen_alpha=0.45, route=None, route_legend=False, no_cache=False,
+            koppen=False, koppen_alpha=0.45, route=None, route_legend=False, both_hemispheres=False, no_cache=False,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -530,6 +571,23 @@ class TestRunCLIValidation:
                 mock.patch.object(ortho, "configure_tile_cache"):
             ortho.run_cli(args)
         assert render.call_args.kwargs["route_legend"] is True
+
+    def test_both_hemispheres_passed_to_renderer_and_named(self):
+        args = self._make_args(city="lisbon", both_hemispheres=True)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert kwargs["both_hemispheres"] is True
+        assert kwargs["output_filename"] == "orthographic_map_lisbon_osm_z3_hemispheres.png"
+
+    def test_both_hemispheres_dpi_over_cap_exits_before_render(self):
+        args = self._make_args(city="lisbon", both_hemispheres=True, dpi=ortho.MAX_DPI)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
 
     def test_route_legend_without_routes_warns(self, caplog):
         args = self._make_args(city="paris", route_legend=True)
@@ -691,6 +749,44 @@ class TestGenerateOrthographicMapIntegration:
             )
         legend.assert_called_once()
         assert legend.call_args.kwargs["y"] == expected_y
+
+    def test_both_hemispheres_draws_two_globes(self, tmp_path):
+        """The antipode globe sits right of the city's, keys centre under the pair."""
+        route = ortho.Route(name="r", lines=(((0.0, 0.0), (10.0, 10.0)),))
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "add_koppen_overlay") as overlay, \
+                mock.patch.object(ortho, "add_koppen_legend") as koppen_legend, \
+                mock.patch.object(ortho, "add_route_legend") as route_legend, \
+                mock.patch.object(ortho, "draw_routes") as draw, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(
+                lat=38.7223, lon=-9.1393, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), city_name="Lisbon", koppen=True,
+                routes=[route], route_legend=True, both_hemispheres=True,
+            )
+        assert os.path.exists(result)
+
+        right = attribution.call_args.args[0]           # credits go under the right globe
+        left, other = right.figure.axes
+        assert other is right
+        assert left.projection.proj4_params["lat_0"] == pytest.approx(38.7223)
+        assert left.projection.proj4_params["lon_0"] == pytest.approx(-9.1393)
+        assert right.projection.proj4_params["lat_0"] == pytest.approx(-38.7223)
+        assert right.projection.proj4_params["lon_0"] == pytest.approx(170.8607)
+        assert left.get_position().x1 < right.get_position().x0   # side by side, no overlap
+
+        # Both globes get the overlay and routes; each key is drawn once, centred on the pair
+        assert overlay.call_count == 2 and draw.call_count == 2
+        mid = (left.get_position().x0 + right.get_position().x1) / 2
+        for key in (koppen_legend, route_legend):
+            key.assert_called_once()
+            assert key.call_args.args[0] is left
+            x = key.call_args.kwargs["x"]
+            assert left.get_position().x0 + x * left.get_position().width == pytest.approx(mid)
+
+        # The far globe marks the antipode and labels its rings by distance from Lisbon
+        assert any(t.get_text().strip() == "Antipode of Lisbon" for t in right.texts)
+        assert {t.get_text().strip() for t in right.texts} >= {"17,500 km", "15,000 km"}
 
     def test_route_legend_off_by_default(self, tmp_path):
         route = ortho.Route(name="r", lines=(((0.0, 0.0), (10.0, 10.0)),))
