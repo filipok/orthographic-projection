@@ -16,11 +16,17 @@ The main script is [ortho.py](ortho.py).
 
 <p align="center">
   <img src="sample_portuguese_voyages.png" alt="Satellite globe centred on Lisbon with the Portuguese voyages of discovery drawn in eight colours and a key naming each voyage" width="48%">
-  <img src="sample_viking_routes.png" alt="Globe centred on Scandinavia with Viking homelands, settlements, trade routes, raids and exploration voyages, and a key" width="48%">
+  <img src="sample_viking_routes.png" alt="Globe centred on Scandinavia with Viking homelands, settlements, trade routes, raids and exploration voyages, Arctic sea ice at its winter maximum, and a key" width="48%">
 </p>
 
 *Left: The Portuguese voyages of discovery, 1415–1522, centred on Lisbon (Google Satellite, zoom 3) with a route key.*<br>
-*Right: Viking Age homelands, settlements, trade, raids and exploration, centred on Scandinavia (OSM, zoom 3) with a route key.*
+*Right: Viking Age homelands, settlements, trade, raids and exploration, centred on Scandinavia (OSM, zoom 3) with a route key and polar ice at its winter maximum.*
+
+<p align="center">
+  <img src="sample_portuguese_hemispheres.png" alt="Two satellite globes side by side: Lisbon's hemisphere with the Portuguese voyages, and the opposite hemisphere centred on Lisbon's antipode showing Magellan's Pacific crossing and Elcano's return" width="97%">
+</p>
+
+*Both hemispheres: Lisbon's globe and, beside it, the globe centred on its antipode in the Tasman Sea, which shows Magellan's Pacific crossing and Elcano's return across the Indian Ocean (Google Satellite, zoom 3).*
 
 ## Features
 
@@ -345,12 +351,15 @@ When the Köppen-Geiger overlay is on, the route key goes below the climate key.
 | `viking_exploration.geojson` | purple | Faroes, Iceland and Greenland, Vinland, Ohthere's White Sea voyage |
 
 The Portuguese and Viking files carry `legend` labels, so they make compact keys.
-The two sample maps above were rendered with:
+The three historical sample maps above were rendered with:
 
 ```powershell
 python ortho.py --city lisbon --provider google_satellite --route routes/portuguese_explorers.geojson --route-legend
-python ortho.py --lat 62 --lon 15 --route routes/viking_homelands.geojson --route routes/viking_settlements.geojson --route routes/viking_trade.geojson --route routes/viking_raids.geojson --route routes/viking_exploration.geojson --route-legend
+python ortho.py --lat 62 --lon 15 --route routes/viking_homelands.geojson --route routes/viking_settlements.geojson --route routes/viking_trade.geojson --route routes/viking_raids.geojson --route routes/viking_exploration.geojson --route-legend --ice
+python ortho.py --city lisbon --provider google_satellite --route routes/portuguese_explorers.geojson --route-legend --both-hemispheres
 ```
+
+The ice on the Viking map is today's winter maximum, not the Viking Age's.
 
 The routes are approximate, drawn through documented landfalls and checked so
 that sea legs stay off land. The homeland and settlement areas are approximate
