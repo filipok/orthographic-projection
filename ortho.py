@@ -29,6 +29,10 @@ from google_tiles import (
     GoogleTilesError,
     resolve_api_key,
 )
+from crops import (
+    CROP_ATTRIBUTION, CROP_NAMES, CropDataError, add_crop_legend, crop_label, draw_crops,
+    load_crop_layer, resolve_crops,
+)
 from ice import FIRST_ICE_YEAR, IceDataError, draw_ice, load_ice_layers
 from koppen import KOPPEN_ATTRIBUTION, KoppenDataError, add_koppen_overlay, add_koppen_legend
 from routes import Route, add_route_legend, draw_routes, load_routes
@@ -331,6 +335,7 @@ def generate_orthographic_map(
     both_hemispheres: bool = False,
     ice: bool = False,
     ice_year: int | None = None,
+    crops: Sequence[str] | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -387,6 +392,11 @@ def generate_orthographic_map(
         tiles leave around each pole.
     ice_year : int or None
         Year of the sea ice maxima to show; ``None`` uses the latest published.
+    crops : sequence of str, optional
+        CROPGRIDS crops to shade by the share of land they cover, each
+        ``"wheat"`` or ``"wheat:#f2b705"`` (see :data:`crops.CROP_NAMES`).
+        With several, each cell shows the crop with the largest share. A
+        key below the globe names them.
 
     Returns
     -------
@@ -397,6 +407,7 @@ def generate_orthographic_map(
     validate_render_options(
         dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
     )
+    resolve_crops(crops or [])  # unknown names and bad colours fail before any download
 
     # Resolve output path and create its folder now, not after all the work
     if output_dir:
@@ -472,7 +483,20 @@ def generate_orthographic_map(
             add_koppen_legend(near, x=key_x)
             koppen_drawn = True
 
-    # Step 5c: Polar ice at its winter maximum (above tiles and climate colours)
+    # Step 5c: Crop areas (above climate colours, below ice)
+    crop_layer = None
+    if crops:
+        logger.info("Adding crop areas: %s …", ", ".join(crop_label(c.split(":")[0]) for c in crops))
+        try:
+            crop_layer = load_crop_layer(crops)
+        except (CropDataError, OSError) as e:
+            # Missing data should not throw away the rest of the map
+            logger.warning("Skipping crop areas: %s", e)
+        else:
+            for ax in axes:
+                draw_crops(ax, crop_layer, regrid_shape=regrid_shape)
+
+    # Step 5d: Polar ice at its winter maximum (above tiles, climate and crop colours)
     ice_attribution = None
     if ice:
         logger.info("Adding polar ice at its winter maximum …")
@@ -533,14 +557,22 @@ def generate_orthographic_map(
     if routes:
         for ax in axes:
             draw_routes(ax, routes)
-        if route_legend:
-            # Below the Köppen-Geiger key when that is drawn too
-            add_route_legend(near, routes, y=-0.07 if koppen_drawn else -0.01, x=key_x)
 
-    # Step 7d: Data credits required by the tile and dataset licences
+    # Step 7d: Keys below the globe(s): the crop key, then the route key,
+    # under the Köppen-Geiger key when that is drawn too
+    keys = []
+    if crop_layer is not None:
+        keys.append(add_crop_legend(near, crop_layer, x=key_x))
+    if routes and route_legend:
+        keys.append(add_route_legend(near, routes, x=key_x))
+    _stack_keys(near, [k for k in keys if k is not None], top=-0.07 if koppen_drawn else -0.01, x=key_x)
+
+    # Step 7e: Data credits required by the tile and dataset licences
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
     if koppen_drawn:
         credits.append(KOPPEN_ATTRIBUTION)
+    if crop_layer is not None:
+        credits.append(CROP_ATTRIBUTION)
     if ice_attribution:
         credits.append(ice_attribution)
     _add_attribution(axes[-1], credits)
@@ -586,6 +618,23 @@ def _add_globe_axes(fig: Figure, lat: float, lon: float, index: int, count: int)
     ax.set_global()  # full hemisphere view
     return ax
 
+
+
+# Vertical gap between stacked keys, in axes coordinates
+_KEY_GAP = 0.008
+
+
+def _stack_keys(ax: GeoAxes, keys: Sequence[Any], top: float, x: float = 0.5) -> None:
+    """Place *keys* below *ax*, the first with its top edge at *top*, each under the last.
+
+    Positions are axes coordinates; each key's height is measured once drawn,
+    so keys of any size stack without overlapping.
+    """
+    y = top
+    axes_height = ax.get_window_extent().height
+    for key in keys:
+        key.set_bbox_to_anchor((x, y), transform=ax.transAxes)
+        y -= key.get_window_extent().height / axes_height + _KEY_GAP
 
 
 def _report_tile_failures(tiles: BufferedTileSource) -> None:
@@ -798,6 +847,29 @@ def prompt_for_google_api_key() -> str:
         print("A key is required for Google tiles.\n")
 
 
+def print_crop_names() -> None:
+    """Print the CROPGRIDS crop names, several per line."""
+    print(f"{len(CROP_NAMES)} crops (\"nes\" = not elsewhere specified, \"for\" = fodder):")
+    for start in range(0, len(CROP_NAMES), 8):
+        print("  " + "  ".join(CROP_NAMES[start:start + 8]))
+
+
+def prompt_for_crops() -> list[str]:
+    """Prompt for crops to shade (comma-separated); blank skips."""
+    while True:
+        raw = input("Crops to shade, comma-separated (e.g. wheat, rice) [blank for none, ? to list]: ").strip()
+        if raw == "?":
+            print_crop_names()
+            continue
+        specs = [part.strip() for part in raw.split(",") if part.strip()]
+        try:
+            resolve_crops(specs)
+        except ValueError as e:
+            print(f"{e}\n")
+            continue
+        return specs
+
+
 def prompt_for_routes() -> list[Route]:
     """Prompt for an optional GeoJSON route file; blank skips."""
     while True:
@@ -905,6 +977,19 @@ def build_cli_parser() -> argparse.ArgumentParser:
              "Implies --ice.",
     )
     parser.add_argument(
+        "--crop",
+        action="append",
+        default=None,
+        metavar="NAME[:COLOUR]",
+        help="Shade where a crop is grown (CROPGRIDS, c. 2020), e.g. wheat or wheat:#f2b705. "
+             "Repeat for several crops; each place then shows the one with the largest share.",
+    )
+    parser.add_argument(
+        "--list-crops",
+        action="store_true",
+        help="List the crop names --crop accepts, then exit.",
+    )
+    parser.add_argument(
         "--route",
         action="append",
         default=None,
@@ -991,6 +1076,8 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
         "Add polar ice at its winter maximum? [y/N]: "
     ).strip().lower() in ("y", "yes")
 
+    crops = prompt_for_crops()
+
     routes = prompt_for_routes()
     route_legend = bool(routes) and (
         input("Add a key naming each route? [y/N]: ").strip().lower() in ("y", "yes")
@@ -1013,6 +1100,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             tile_cache_dir=tile_cache_dir,
             both_hemispheres=both_hemispheres,
             ice=enable_ice,
+            crops=crops,
         )
     except GoogleTilesError as e:
         print(f"\n{e}")
@@ -1061,6 +1149,13 @@ def run_cli(args: argparse.Namespace) -> None:
         sys.exit(1)
     if args.route_legend and not routes:
         logger.warning("--route-legend is ignored because no --route was given.")
+
+    # Check crop names now, before any tiles or crop data are fetched
+    try:
+        resolve_crops(args.crop or [])
+    except ValueError as e:
+        logger.error("%s", e)
+        sys.exit(1)
 
     try:
         validate_render_options(
@@ -1114,6 +1209,7 @@ def run_cli(args: argparse.Namespace) -> None:
             both_hemispheres=args.both_hemispheres,
             ice=args.ice or args.ice_year is not None,
             ice_year=args.ice_year,
+            crops=args.crop,
         )
     except GoogleTilesError as e:
         logger.error("%s", e)
@@ -1133,6 +1229,9 @@ def main() -> None:
     else:
         parser = build_cli_parser()
         parsed_args = parser.parse_args()
+        if parsed_args.list_crops:
+            print_crop_names()
+            return
         run_cli(parsed_args)
 
 

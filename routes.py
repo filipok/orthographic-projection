@@ -257,7 +257,9 @@ def _legend_handle(route: Route) -> Artist:
     )
 
 
-def add_route_legend(ax: GeoAxes, routes: Sequence[Route], y: float = -0.01, x: float = 0.5) -> None:
+def add_route_legend(
+    ax: GeoAxes, routes: Sequence[Route], y: float = -0.01, x: float = 0.5,
+) -> Legend | None:
     """Add a key below the globe naming each route next to its colour.
 
     Each entry's label is the route's ``legend``, else its ``name``; routes
@@ -267,13 +269,14 @@ def add_route_legend(ax: GeoAxes, routes: Sequence[Route], y: float = -0.01, x: 
     centre, in axes coordinates.
 
     The key is added as a separate artist, so it does not replace another
-    legend on *ax* (such as the Köppen-Geiger one).
+    legend on *ax* (such as the Köppen-Geiger one). Returns the key, or
+    ``None`` when there are no routes.
     """
     entries: dict[str, Artist] = {}
     for route in reversed(routes):
         entries.setdefault(route.legend or route.name, _legend_handle(route))
     if not entries:
-        return
+        return None
 
     legend = Legend(
         ax,
@@ -295,3 +298,4 @@ def add_route_legend(ax: GeoAxes, routes: Sequence[Route], y: float = -0.01, x: 
     # add_artist would clip the key to the globe disc, which it sits outside
     legend.set_clip_on(False)
     ax.add_artist(legend)
+    return legend

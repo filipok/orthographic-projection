@@ -19,6 +19,7 @@ dependencies = [
     "scipy>=1.17.0",
     "pillow>=12.1.0",
     "python-dotenv>=1.2.0",
+    "h5py>=3.16.0",
 ]
 
 [project.optional-dependencies]
@@ -34,4 +35,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.setuptools]
-py-modules = ["ortho", "koppen", "ice", "routes", "google_tiles", "tile_fetch"]
+py-modules = ["ortho", "koppen", "ice", "crops", "routes", "google_tiles", "tile_fetch"]

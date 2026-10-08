@@ -433,6 +433,20 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc", "--ice", "--ice-year", "2012"])
         assert args.ice is True and args.ice_year == 2012
 
+    def test_crop_flags(self):
+        assert self._parse(["--city", "nyc"]).crop is None
+        args = self._parse(["--city", "nyc", "--crop", "wheat", "--crop", "rice:#00ffff"])
+        assert args.crop == ["wheat", "rice:#00ffff"]
+        assert self._parse(["--list-crops"]).list_crops is True
+
+    def test_list_crops_prints_names_and_exits(self, capsys, monkeypatch):
+        monkeypatch.setattr(ortho.sys, "argv", ["ortho.py", "--list-crops"])
+        with mock.patch.object(ortho, "run_cli") as run:
+            ortho.main()
+        run.assert_not_called()
+        out = capsys.readouterr().out
+        assert out.startswith("173 crops") and "wheat" in out and "sugarcane" in out
+
     def test_both_hemispheres_flag(self):
         assert self._parse(["--city", "nyc"]).both_hemispheres is False
         assert self._parse(["--city", "nyc", "--both-hemispheres"]).both_hemispheres is True
@@ -452,7 +466,7 @@ class TestRunCLIValidation:
             provider="osm", zoom=3, dpi=300,
             output=None, output_dir=None, cache_dir=None,
             koppen=False, koppen_alpha=0.45, route=None, route_legend=False,
-            both_hemispheres=False, ice=False, ice_year=None, no_cache=False,
+            both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -610,6 +624,22 @@ class TestRunCLIValidation:
             with pytest.raises(SystemExit):
                 ortho.run_cli(args)
         render.assert_not_called()
+
+    def test_crops_passed_to_renderer(self):
+        args = self._make_args(city="paris", crop=["wheat", "rice:#00ffff"])
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["crops"] == ["wheat", "rice:#00ffff"]
+
+    def test_unknown_crop_exits_before_render(self, caplog):
+        args = self._make_args(city="paris", crop=["whaet"])
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+        assert "Did you mean wheat" in caplog.text
 
     def test_both_hemispheres_dpi_over_cap_exits_before_render(self):
         args = self._make_args(city="lisbon", both_hemispheres=True, dpi=ortho.MAX_DPI)
@@ -772,13 +802,15 @@ class TestGenerateOrthographicMapIntegration:
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
                 mock.patch.object(ortho, "add_koppen_overlay"), \
                 mock.patch.object(ortho, "add_koppen_legend"), \
-                mock.patch.object(ortho, "add_route_legend") as legend:
+                mock.patch.object(ortho, "add_route_legend") as legend, \
+                mock.patch.object(ortho, "_stack_keys") as stack:
             ortho.generate_orthographic_map(
                 lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
                 output_dir=str(tmp_path), routes=[route], route_legend=True, koppen=koppen,
             )
         legend.assert_called_once()
-        assert legend.call_args.kwargs["y"] == expected_y
+        assert stack.call_args.args[1] == [legend.return_value]
+        assert stack.call_args.kwargs["top"] == expected_y
 
     def test_both_hemispheres_draws_two_globes(self, tmp_path):
         """The antipode globe sits right of the city's, keys centre under the pair."""
@@ -846,6 +878,67 @@ class TestGenerateOrthographicMapIntegration:
         assert "Skipping polar ice: no sea ice data" in caplog.text
         draw.assert_not_called()
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
+    def test_crops_drawn_on_every_globe_keyed_and_credited(self, tmp_path):
+        layer = mock.Mock(name="crop_layer")
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_crop_layer", return_value=layer) as load, \
+                mock.patch.object(ortho, "draw_crops") as draw, \
+                mock.patch.object(ortho, "add_crop_legend") as key, \
+                mock.patch.object(ortho, "_stack_keys") as stack, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), crops=["wheat", "rice"], both_hemispheres=True,
+            )
+        load.assert_called_once_with(["wheat", "rice"])
+        assert draw.call_count == 2                       # once per globe, data loaded once
+        key.assert_called_once()
+        assert stack.call_args.args[1] == [key.return_value]
+        assert attribution.call_args.args[1][-1] == ortho.CROP_ATTRIBUTION
+
+    def test_crop_failure_still_saves_map(self, tmp_path, caplog):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_crop_layer",
+                                  side_effect=ortho.CropDataError("no crop data")), \
+                mock.patch.object(ortho, "add_crop_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), crops=["wheat"],
+            )
+        assert os.path.exists(result)
+        assert "Skipping crop areas: no crop data" in caplog.text
+        key.assert_not_called()
+        assert ortho.CROP_ATTRIBUTION not in attribution.call_args.args[1]
+
+    def test_unknown_crop_fails_before_any_work(self, tmp_path):
+        with mock.patch.object(ortho, "create_tile_source") as create:
+            with pytest.raises(ValueError, match="Unknown crop"):
+                ortho.generate_orthographic_map(
+                    lat=0, lon=0, output_filename=str(tmp_path / "m.png"), crops=["whaet"],
+                )
+        create.assert_not_called()
+
+    def test_stacked_keys_do_not_overlap(self):
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        from matplotlib.legend import Legend
+
+        fig, ax = plt.subplots(subplot_kw={"projection": ortho.ccrs.Orthographic(0, 0)})
+        try:
+            keys = []
+            for rows in (3, 5):
+                key = Legend(ax, [mpatches.Patch()] * rows, [f"entry {i}" for i in range(rows)],
+                             loc="upper center")
+                ax.add_artist(key)
+                keys.append(key)
+            ortho._stack_keys(ax, keys, top=-0.01)
+            first, second = (k.get_window_extent() for k in keys)
+            assert second.y1 < first.y0                     # the second sits wholly below the first
+            assert first.y1 <= ax.get_window_extent().y0    # and both sit below the globe
+        finally:
+            plt.close(fig)
 
     def test_no_ice_by_default(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
