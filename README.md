@@ -35,6 +35,7 @@ The main script is [ortho.py](ortho.py).
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
 - Optional second globe centred on the antipode, so one image shows the whole Earth
 - Optional Köppen-Geiger climate classification overlay with compact legend
+- Optional polar ice: sea ice at its latest winter maximum (NSIDC) and permanent polar land ice
 - Optional route overlays loaded from GeoJSON files, drawn as great-circle polylines and translucent filled areas
 - Optional route key below the globe, with short labels and grouping set in the GeoJSON
 - Bundled historical route sets: the Portuguese voyages of discovery and the Viking Age
@@ -122,8 +123,9 @@ You will be prompted to choose:
 3. A zoom level
 4. Whether to also draw the opposite hemisphere (see "Both Hemispheres")
 5. Optional Köppen-Geiger climate overlay and opacity/alpha (0–1)
-6. An optional GeoJSON route file to overlay (leave blank to skip)
-7. Whether to add a key naming each route (asked only when a route file is loaded)
+6. Whether to add polar ice at its winter maximum (see "Polar Ice")
+7. An optional GeoJSON route file to overlay (leave blank to skip)
+8. Whether to add a key naming each route (asked only when a route file is loaded)
 
 ### CLI Mode
 
@@ -150,6 +152,10 @@ python ortho.py --city lisbon --provider google_satellite --route routes/portugu
 
 # The whole Earth: Shanghai's globe and its antipode side by side (see "Both Hemispheres")
 python ortho.py --city shanghai --both-hemispheres
+
+# Polar ice at its latest winter maximum, or at a chosen year's (see "Polar Ice")
+python ortho.py --city moscow --ice
+python ortho.py --lat 90 --lon 0 --ice-year 2012
 ```
 
 #### CLI Flags
@@ -168,6 +174,8 @@ python ortho.py --city shanghai --both-hemispheres
 | `--no-cache` | Download OSM tiles fresh instead of using the cache | off |
 | `--koppen` | Enable Köppen-Geiger climate classification overlay | off |
 | `--koppen-alpha ALPHA` | Opacity of the climate overlay (0–1) | `0.45` |
+| `--ice` | Draw sea ice at its winter maximum and polar land ice | off |
+| `--ice-year YEAR` | Year of the sea ice maxima, 1979 on; implies `--ice` | latest published |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
 | `--route-legend` | Add a key below the globe naming each route next to its colour | off |
 | `--both-hemispheres` | Draw a second globe centred on the antipode, showing the whole Earth; `--dpi` up to 600 | off |
@@ -207,6 +215,7 @@ generate_orthographic_map(
     routes=None,           # optional: list of Route objects, see "Route Overlays"
     route_legend=False,    # optional: add a key naming each route
     both_hemispheres=False,  # optional: add a globe centred on the antipode
+    ice=False,             # optional: polar ice at its winter maximum
 )
 ```
 
@@ -223,7 +232,7 @@ The suite runs fully offline. `tests/conftest.py` blocks any connection to a non
 ## Notes
 
 - Zoom is capped at level `4` to avoid excessive tile downloads. Lower zoom levels are safer for full-globe renders.
-- Web map tiles stop at about ±85° latitude, so a small disc around each pole shows the plain fallback colours. On OSM they match the tiles and are hard to see; on `google_satellite` the disc is visible. This is a known cosmetic limitation.
+- Web map tiles stop at about ±85° latitude, so a small disc around each pole shows the plain fallback colours. On OSM they match the tiles and are hard to see; on `google_satellite` the disc is visible. `--ice` covers both discs with ice; without it this is a known cosmetic limitation.
 - The default 300 DPI gives a ~6,000 px image. Map imagery carries roughly 2,000–4,000 px of real detail at zoom 3–4, so higher DPIs mostly upscale it; they still make text, circles, routes and the keys sharper (`--dpi 600` gives ~12,000 px).
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
 - Google tile backends depend on Cartopy tile services and may be subject to provider availability or usage limits.
@@ -348,6 +357,30 @@ that sea legs stay off land. The homeland and settlement areas are approximate
 outlines clipped to the [Natural Earth](https://www.naturalearthdata.com/)
 1:10m coastline (public domain).
 
+## Polar Ice
+
+`--ice` (`ice=True` in the API, or the interactive prompt) draws the ice at both
+poles as it stands at the end of winter:
+
+- **Sea ice at its winter maximum.** The Arctic usually peaks in March and the
+  Antarctic in September, so the overlay uses NSIDC's monthly extent for those
+  months: the area where at least 15% of the sea surface is ice. By default it
+  uses the latest published maximum of each (the credit line names the months
+  shown); `--ice-year 2012` picks a year instead, back to 1979.
+- **Permanent land ice.** The Greenland and Antarctic ice sheets, the Antarctic
+  ice shelves and the Arctic ice caps, from Natural Earth.
+
+```powershell
+python ortho.py --city lisbon --provider google_satellite --both-hemispheres --ice
+```
+
+Both fills are opaque, sea ice a shade bluer than land ice, so they also cover
+the plain disc the map tiles leave around each pole. The sea ice outline follows
+NSIDC's 25 km grid, smoothed slightly. The extent files are small (under 100 KB)
+and are cached in `~/.cache/ortho_tiles/sea_ice/`; offline, the newest cached
+year is used. If no data can be had, the map is saved without the ice and a
+warning says why.
+
 ## Köppen-Geiger Climate Overlay
 
 Pass `--koppen` (CLI) or `koppen=True` (API) to render a semi-transparent
@@ -376,7 +409,8 @@ block in the bottom-right corner of the image (see below).
 | Data | Authors | License | Reference |
 |---|---|---|---|
 | Köppen-Geiger climate classification V1, present day (1980–2016), used at 0.083° (~10 km) | Beck, H. E. et al. (2018) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/sdata.2018.214](https://doi.org/10.1038/sdata.2018.214) |
-| Natural Earth (land / ocean fallback) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
+| Natural Earth (land / ocean fallback, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
+| Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
 | OpenStreetMap tiles | OpenStreetMap contributors | Data [ODbL](https://www.openstreetmap.org/copyright); attribution required by the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) | [openstreetmap.org](https://www.openstreetmap.org/) |
 | Google map / satellite tiles (Map Tiles API, API key required) | Google | Proprietary, [Google Maps terms](https://cloud.google.com/maps-platform/terms) | [google.com/maps](https://www.google.com/maps) |
 
@@ -388,9 +422,10 @@ the globe:
 | `osm` tiles | *Map tiles © OpenStreetMap contributors* |
 | `google`, `google_satellite` tiles | *Google Maps* plus the copyright string returned by the Map Tiles API |
 | `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |
+| `--ice` overlay | *Sea ice: NSIDC Sea Ice Index v4, extent March YYYY (Arctic) and September YYYY (Antarctic)* |
 
 Keep this block (or credit the same sources elsewhere) when you share or publish
-a map; the OSM tile policy and the CC BY 4.0 licence both require it.
+a map; the OSM tile policy, the CC BY 4.0 licence and NSIDC's data use terms all require it.
 
 ### Google tiles (API key required)
 
@@ -431,6 +466,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 
 - [ortho.py](ortho.py): main script and reusable map-generation functions
 - [koppen.py](koppen.py): Köppen-Geiger climate overlay and legend
+- [ice.py](ice.py): polar ice overlay (NSIDC sea ice extent, Natural Earth land ice)
 - [routes.py](routes.py): GeoJSON route and area loading, drawing and the route key
 - [google_tiles.py](google_tiles.py): Google Map Tiles API client (API key, sessions, attribution)
 - [tile_fetch.py](tile_fetch.py): single-tile downloader shared by the tile sources
