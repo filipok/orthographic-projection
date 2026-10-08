@@ -14,6 +14,7 @@ import pytest
 # Make sure ortho is importable from repo root
 # ---------------------------------------------------------------------------
 import ortho
+from ice import IceLayers
 
 
 # ===================================================================
@@ -426,6 +427,12 @@ class TestCLIParser:
         assert self._parse(["--city", "nyc"]).route_legend is False
         assert self._parse(["--city", "nyc", "--route-legend"]).route_legend is True
 
+    def test_ice_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert args.ice is False and args.ice_year is None
+        args = self._parse(["--city", "nyc", "--ice", "--ice-year", "2012"])
+        assert args.ice is True and args.ice_year == 2012
+
     def test_both_hemispheres_flag(self):
         assert self._parse(["--city", "nyc"]).both_hemispheres is False
         assert self._parse(["--city", "nyc", "--both-hemispheres"]).both_hemispheres is True
@@ -444,7 +451,8 @@ class TestRunCLIValidation:
             city=None, lat=None, lon=None,
             provider="osm", zoom=3, dpi=300,
             output=None, output_dir=None, cache_dir=None,
-            koppen=False, koppen_alpha=0.45, route=None, route_legend=False, both_hemispheres=False, no_cache=False,
+            koppen=False, koppen_alpha=0.45, route=None, route_legend=False,
+            both_hemispheres=False, ice=False, ice_year=None, no_cache=False,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -580,6 +588,28 @@ class TestRunCLIValidation:
         kwargs = render.call_args.kwargs
         assert kwargs["both_hemispheres"] is True
         assert kwargs["output_filename"] == "orthographic_map_lisbon_osm_z3_hemispheres.png"
+
+    @pytest.mark.parametrize("ice, ice_year, expected", [
+        (False, None, False),
+        (True, None, True),
+        (False, 2012, True),   # choosing a year implies --ice
+    ])
+    def test_ice_passed_to_renderer(self, ice, ice_year, expected):
+        args = self._make_args(city="paris", ice=ice, ice_year=ice_year)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["ice"] is expected
+        assert render.call_args.kwargs["ice_year"] == ice_year
+
+    @pytest.mark.parametrize("ice_year", [1978, 3000])
+    def test_ice_year_out_of_range_exits_before_render(self, ice_year):
+        args = self._make_args(city="paris", ice_year=ice_year)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
 
     def test_both_hemispheres_dpi_over_cap_exits_before_render(self):
         args = self._make_args(city="lisbon", both_hemispheres=True, dpi=ortho.MAX_DPI)
@@ -787,6 +817,44 @@ class TestGenerateOrthographicMapIntegration:
         # The far globe marks the antipode and labels its rings by distance from Lisbon
         assert any(t.get_text().strip() == "Antipode of Lisbon" for t in right.texts)
         assert {t.get_text().strip() for t in right.texts} >= {"17,500 km", "15,000 km"}
+
+    def test_ice_drawn_on_every_globe_and_credited(self, tmp_path):
+        layers = IceLayers(sea_ice=(), land_ice=(), years={"N": 2026, "S": 2026})
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_ice_layers", return_value=layers) as load, \
+                mock.patch.object(ortho, "draw_ice") as draw, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), ice=True, ice_year=2026, both_hemispheres=True,
+            )
+        load.assert_called_once_with(year=2026)
+        assert draw.call_count == 2                      # once per globe, data loaded once
+        assert attribution.call_args.args[1][-1] == layers.attribution
+
+    def test_ice_failure_still_saves_map_without_credit(self, tmp_path, caplog):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_ice_layers",
+                                  side_effect=ortho.IceDataError("no sea ice data")), \
+                mock.patch.object(ortho, "draw_ice") as draw, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), ice=True,
+            )
+        assert os.path.exists(result)
+        assert "Skipping polar ice: no sea ice data" in caplog.text
+        draw.assert_not_called()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
+    def test_no_ice_by_default(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_ice_layers") as load:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path),
+            )
+        load.assert_not_called()
 
     def test_route_legend_off_by_default(self, tmp_path):
         route = ortho.Route(name="r", lines=(((0.0, 0.0), (10.0, 10.0)),))

@@ -29,6 +29,7 @@ from google_tiles import (
     GoogleTilesError,
     resolve_api_key,
 )
+from ice import FIRST_ICE_YEAR, IceDataError, draw_ice, load_ice_layers
 from koppen import KOPPEN_ATTRIBUTION, KoppenDataError, add_koppen_overlay, add_koppen_legend
 from routes import Route, add_route_legend, draw_routes, load_routes
 from tile_fetch import download_tile
@@ -292,8 +293,14 @@ MIN_DPI = 10
 MAX_DPI = 1200
 
 
-def validate_render_options(dpi: int, koppen_alpha: float, both_hemispheres: bool = False) -> None:
+def validate_render_options(
+    dpi: int, koppen_alpha: float, both_hemispheres: bool = False, ice_year: int | None = None,
+) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
+    if ice_year is not None and not FIRST_ICE_YEAR <= ice_year <= time.localtime().tm_year:
+        raise ValueError(
+            f"ice_year must be between {FIRST_ICE_YEAR} and this year, got {ice_year}"
+        )
     # Two globes double the width, so halve the cap to keep the same pixel budget
     max_dpi = MAX_DPI // 2 if both_hemispheres else MAX_DPI
     if not MIN_DPI <= dpi <= max_dpi:
@@ -322,6 +329,8 @@ def generate_orthographic_map(
     route_legend: bool = False,
     tile_cache_dir: str | None = None,
     both_hemispheres: bool = False,
+    ice: bool = False,
+    ice_year: int | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -371,6 +380,13 @@ def generate_orthographic_map(
         When True, draw a second globe beside the first, centred on the
         antipode, so the whole Earth is shown. Its distance circles are
         measured from (*lat*, *lon*) too. Limits *dpi* to ``MAX_DPI // 2``.
+    ice : bool
+        When True, draw polar ice: sea ice at its winter maximum (NSIDC
+        March extent in the Arctic, September in the Antarctic) plus
+        permanent polar land ice. This also covers the plain disc the map
+        tiles leave around each pole.
+    ice_year : int or None
+        Year of the sea ice maxima to show; ``None`` uses the latest published.
 
     Returns
     -------
@@ -378,7 +394,9 @@ def generate_orthographic_map(
         Absolute path of the saved PNG.
     """
 
-    validate_render_options(dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres)
+    validate_render_options(
+        dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
+    )
 
     # Resolve output path and create its folder now, not after all the work
     if output_dir:
@@ -454,6 +472,20 @@ def generate_orthographic_map(
             add_koppen_legend(near, x=key_x)
             koppen_drawn = True
 
+    # Step 5c: Polar ice at its winter maximum (above tiles and climate colours)
+    ice_attribution = None
+    if ice:
+        logger.info("Adding polar ice at its winter maximum …")
+        try:
+            ice_layers = load_ice_layers(year=ice_year)
+        except (IceDataError, OSError) as e:
+            # Missing data should not throw away the rest of the map
+            logger.warning("Skipping polar ice: %s", e)
+        else:
+            for ax in axes:
+                draw_ice(ax, ice_layers)
+            ice_attribution = ice_layers.attribution
+
     # Step 6: Gridlines
     for ax in axes:
         ax.gridlines(draw_labels=False, color='black', alpha=0.3, linestyle='--')
@@ -509,6 +541,8 @@ def generate_orthographic_map(
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
     if koppen_drawn:
         credits.append(KOPPEN_ATTRIBUTION)
+    if ice_attribution:
+        credits.append(ice_attribution)
     _add_attribution(axes[-1], credits)
 
     # Step 8: Export
@@ -858,6 +892,19 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Opacity of the Köppen-Geiger overlay (0-1, default: 0.45).",
     )
     parser.add_argument(
+        "--ice",
+        action="store_true",
+        help="Draw polar ice: sea ice at its winter maximum (NSIDC) and polar land ice.",
+    )
+    parser.add_argument(
+        "--ice-year",
+        type=int,
+        default=None,
+        metavar="YEAR",
+        help=f"Year of the sea ice maxima ({FIRST_ICE_YEAR} on; default: latest published). "
+             "Implies --ice.",
+    )
+    parser.add_argument(
         "--route",
         action="append",
         default=None,
@@ -940,6 +987,10 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             except ValueError:
                 print("Invalid number. Using default 0.45.")
 
+    enable_ice = input(
+        "Add polar ice at its winter maximum? [y/N]: "
+    ).strip().lower() in ("y", "yes")
+
     routes = prompt_for_routes()
     route_legend = bool(routes) and (
         input("Add a key naming each route? [y/N]: ").strip().lower() in ("y", "yes")
@@ -961,6 +1012,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             route_legend=route_legend,
             tile_cache_dir=tile_cache_dir,
             both_hemispheres=both_hemispheres,
+            ice=enable_ice,
         )
     except GoogleTilesError as e:
         print(f"\n{e}")
@@ -1013,6 +1065,7 @@ def run_cli(args: argparse.Namespace) -> None:
     try:
         validate_render_options(
             dpi=args.dpi, koppen_alpha=args.koppen_alpha, both_hemispheres=args.both_hemispheres,
+            ice_year=args.ice_year,
         )
     except ValueError as e:
         logger.error("Invalid option: %s.", e)
@@ -1059,6 +1112,8 @@ def run_cli(args: argparse.Namespace) -> None:
             route_legend=args.route_legend,
             tile_cache_dir=tile_cache_dir,
             both_hemispheres=args.both_hemispheres,
+            ice=args.ice or args.ice_year is not None,
+            ice_year=args.ice_year,
         )
     except GoogleTilesError as e:
         logger.error("%s", e)
