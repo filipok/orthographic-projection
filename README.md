@@ -28,6 +28,14 @@ The main script is [ortho.py](ortho.py).
 
 *Both hemispheres: Lisbon's globe and, beside it, the globe centred on its antipode in the Tasman Sea, which shows Magellan's Pacific crossing and Elcano's return across the Indian Ocean (Google Satellite, zoom 3).*
 
+<p align="center">
+  <img src="sample_london_wheat.png" alt="Globe centred on London with wheat-growing areas shaded gold, from Europe and the Black Sea to Kazakhstan, the Middle East and Ethiopia" width="48%">
+  <img src="sample_shanghai_wheat_rice.png" alt="Globe centred on Shanghai with wheat in gold and rice in teal, showing wheat in northern China and north-west India and rice to the south and east" width="48%">
+</p>
+
+*Left: Where wheat is grown, centred on London (OSM, zoom 3), c. 2020.*<br>
+*Right: Wheat or rice, whichever covers more land in each place, centred on Shanghai (OSM, zoom 3): the wheat–rice divide in China and India.*
+
 ## Features
 
 - Interactive city selection from a built-in list of major metropolitan areas
@@ -42,6 +50,7 @@ The main script is [ortho.py](ortho.py).
 - Optional second globe centred on the antipode, so one image shows the whole Earth
 - Optional Köppen-Geiger climate classification overlay with compact legend
 - Optional polar ice: sea ice at its latest winter maximum (NSIDC) and permanent polar land ice
+- Optional crop areas for any of 173 crops (CROPGRIDS), one or several at once, with a key
 - Optional route overlays loaded from GeoJSON files, drawn as great-circle polylines and translucent filled areas
 - Optional route key below the globe, with short labels and grouping set in the GeoJSON
 - Bundled historical route sets: the Portuguese voyages of discovery and the Viking Age
@@ -83,7 +92,7 @@ The interactive menu exposes these providers:
 ## Requirements
 
 - Python 3.12 or newer (developed on 3.14)
-- Internet access for downloading map tiles (and, once, the Köppen data)
+- Internet access for downloading map tiles (and, once each, the Köppen, sea ice and crop data)
 
 `requirements.txt` lists minimum versions, not pins. The versions this was developed and tested with:
 
@@ -95,6 +104,7 @@ The interactive menu exposes these providers:
 - `scipy==1.17.1`
 - `pillow==12.1.1`
 - `python-dotenv==1.2.4`
+- `h5py==3.16.0`
 
 ## Setup
 
@@ -130,8 +140,9 @@ You will be prompted to choose:
 4. Whether to also draw the opposite hemisphere (see "Both Hemispheres")
 5. Optional Köppen-Geiger climate overlay and opacity/alpha (0–1)
 6. Whether to add polar ice at its winter maximum (see "Polar Ice")
-7. An optional GeoJSON route file to overlay (leave blank to skip)
-8. Whether to add a key naming each route (asked only when a route file is loaded)
+7. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
+8. An optional GeoJSON route file to overlay (leave blank to skip)
+9. Whether to add a key naming each route (asked only when a route file is loaded)
 
 ### CLI Mode
 
@@ -162,6 +173,10 @@ python ortho.py --city shanghai --both-hemispheres
 # Polar ice at its latest winter maximum, or at a chosen year's (see "Polar Ice")
 python ortho.py --city moscow --ice
 python ortho.py --lat 90 --lon 0 --ice-year 2012
+
+# Where wheat is grown; several crops show the largest one in each place (see "Crop Areas")
+python ortho.py --lat 45 --lon 40 --crop wheat
+python ortho.py --lat 30 --lon 95 --crop wheat --crop rice --crop maize
 ```
 
 #### CLI Flags
@@ -182,6 +197,8 @@ python ortho.py --lat 90 --lon 0 --ice-year 2012
 | `--koppen-alpha ALPHA` | Opacity of the climate overlay (0–1) | `0.45` |
 | `--ice` | Draw sea ice at its winter maximum and polar land ice | off |
 | `--ice-year YEAR` | Year of the sea ice maxima, 1979 on; implies `--ice` | latest published |
+| `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
+| `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
 | `--route-legend` | Add a key below the globe naming each route next to its colour | off |
 | `--both-hemispheres` | Draw a second globe centred on the antipode, showing the whole Earth; `--dpi` up to 600 | off |
@@ -222,6 +239,7 @@ generate_orthographic_map(
     route_legend=False,    # optional: add a key naming each route
     both_hemispheres=False,  # optional: add a globe centred on the antipode
     ice=False,             # optional: polar ice at its winter maximum
+    crops=None,            # optional: e.g. ["wheat", "rice:#18b5a4"]
 )
 ```
 
@@ -390,6 +408,48 @@ and are cached in `~/.cache/ortho_tiles/sea_ice/`; offline, the newest cached
 year is used. If no data can be had, the map is saved without the ice and a
 warning says why.
 
+## Crop Areas
+
+`--crop NAME` (`crops=[...]` in the API, or the interactive prompt) shades where
+a crop is grown, from [CROPGRIDS](https://doi.org/10.1038/s41597-024-03247-7):
+173 crops circa 2020 on a 0.05° (~5.6 km) grid. Each place is shaded by the
+share of its land planted with the crop, from clear (under 0.5%) to the full
+colour (40% or more). A key below the globe names the crop.
+
+```powershell
+python ortho.py --lat 45 --lon 40 --crop wheat
+python ortho.py --lat 30 --lon 95 --crop wheat --crop rice --crop maize
+python ortho.py --list-crops
+```
+
+The two crop samples above were rendered with:
+
+```powershell
+python ortho.py --city london --crop wheat
+python ortho.py --city shanghai --crop wheat --crop rice
+```
+
+- **Several crops.** Repeat `--crop`. Each place then takes the colour of
+  whichever of the chosen crops covers the most of it, shaded by that crop's
+  share. Wheat, rice and maize over Asia show the north–south wheat–rice divide
+  in China and India, and the maize belt of north-east China.
+- **Names.** `--list-crops` prints all 173. They follow the dataset's file names:
+  `sugarcane`, `oilpalm`, `sweetpotato`; "nes" means not elsewhere specified,
+  "for" a fodder crop. A misspelt name stops before anything is downloaded, with
+  suggestions (`whaet` → "Did you mean wheat?").
+- **Colours.** Common crops have their own (wheat gold, rice teal, maize orange,
+  coffee brown, …), others get distinct colours in turn. Choose one with
+  `NAME:COLOUR`, e.g. `--crop rice:#00a0ff`.
+- **Data.** All 173 crops ship in one 807 MB archive, so each crop's file (a few
+  MB) is read straight out of it with HTTP range requests and cached in
+  `~/.cache/ortho_tiles/cropgrids/`. Reading the files needs `h5py`.
+- **Layering.** Crops are drawn over the Köppen-Geiger colours and under polar
+  ice, routes and areas. Their key sits below the climate key, above the route
+  key.
+- **Accuracy.** CROPGRIDS rates each cell's data quality; major crops in countries
+  with detailed statistics are mapped best, minor crops in data-poor regions are
+  more estimated. At globe scale the patterns hold.
+
 ## Köppen-Geiger Climate Overlay
 
 Pass `--koppen` (CLI) or `koppen=True` (API) to render a semi-transparent
@@ -419,6 +479,7 @@ block in the bottom-right corner of the image (see below).
 |---|---|---|---|
 | Köppen-Geiger climate classification V1, present day (1980–2016), used at 0.083° (~10 km) | Beck, H. E. et al. (2018) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/sdata.2018.214](https://doi.org/10.1038/sdata.2018.214) |
 | Natural Earth (land / ocean fallback, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
+| CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
 | OpenStreetMap tiles | OpenStreetMap contributors | Data [ODbL](https://www.openstreetmap.org/copyright); attribution required by the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) | [openstreetmap.org](https://www.openstreetmap.org/) |
 | Google map / satellite tiles (Map Tiles API, API key required) | Google | Proprietary, [Google Maps terms](https://cloud.google.com/maps-platform/terms) | [google.com/maps](https://www.google.com/maps) |
@@ -432,9 +493,10 @@ the globe:
 | `google`, `google_satellite` tiles | *Google Maps* plus the copyright string returned by the Map Tiles API |
 | `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |
 | `--ice` overlay | *Sea ice: NSIDC Sea Ice Index v4, extent March YYYY (Arctic) and September YYYY (Antarctic)* |
+| `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
 Keep this block (or credit the same sources elsewhere) when you share or publish
-a map; the OSM tile policy, the CC BY 4.0 licence and NSIDC's data use terms all require it.
+a map; the OSM tile policy, the CC BY 4.0 licences and NSIDC's data use terms all require it.
 
 ### Google tiles (API key required)
 
@@ -476,6 +538,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [ortho.py](ortho.py): main script and reusable map-generation functions
 - [koppen.py](koppen.py): Köppen-Geiger climate overlay and legend
 - [ice.py](ice.py): polar ice overlay (NSIDC sea ice extent, Natural Earth land ice)
+- [crops.py](crops.py): crop-area overlay and key (CROPGRIDS, read from the remote archive)
 - [routes.py](routes.py): GeoJSON route and area loading, drawing and the route key
 - [google_tiles.py](google_tiles.py): Google Map Tiles API client (API key, sessions, attribution)
 - [tile_fetch.py](tile_fetch.py): single-tile downloader shared by the tile sources
