@@ -33,6 +33,7 @@ The main script is [ortho.py](ortho.py).
 - Non-interactive CLI mode with `argparse` for scripting and automation
 - City marker and label overlay on the globe for named locations
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
+- Optional second globe centred on the antipode, so one image shows the whole Earth
 - Optional Köppen-Geiger climate classification overlay with compact legend
 - Optional route overlays loaded from GeoJSON files, drawn as great-circle polylines and translucent filled areas
 - Optional route key below the globe, with short labels and grouping set in the GeoJSON
@@ -119,9 +120,10 @@ You will be prompted to choose:
 1. A location (pre-defined city **or** custom coordinates)
 2. A tile provider
 3. A zoom level
-4. Optional Köppen-Geiger climate overlay and opacity/alpha (0–1)
-5. An optional GeoJSON route file to overlay (leave blank to skip)
-6. Whether to add a key naming each route (asked only when a route file is loaded)
+4. Whether to also draw the opposite hemisphere (see "Both Hemispheres")
+5. Optional Köppen-Geiger climate overlay and opacity/alpha (0–1)
+6. An optional GeoJSON route file to overlay (leave blank to skip)
+7. Whether to add a key naming each route (asked only when a route file is loaded)
 
 ### CLI Mode
 
@@ -145,6 +147,9 @@ python ortho.py --city lisbon --zoom 3 --route routes/gibraltar_ascension_falkla
 
 # A route file with a key naming each route (see "Route Overlays")
 python ortho.py --city lisbon --provider google_satellite --route routes/portuguese_explorers.geojson --route-legend
+
+# The whole Earth: Shanghai's globe and its antipode side by side (see "Both Hemispheres")
+python ortho.py --city shanghai --both-hemispheres
 ```
 
 #### CLI Flags
@@ -165,6 +170,7 @@ python ortho.py --city lisbon --provider google_satellite --route routes/portugu
 | `--koppen-alpha ALPHA` | Opacity of the climate overlay (0–1) | `0.45` |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
 | `--route-legend` | Add a key below the globe naming each route next to its colour | off |
+| `--both-hemispheres` | Draw a second globe centred on the antipode, showing the whole Earth; `--dpi` up to 600 | off |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
 
@@ -200,6 +206,7 @@ generate_orthographic_map(
     city_name="Paris",     # optional: adds a marker and label on the map
     routes=None,           # optional: list of Route objects, see "Route Overlays"
     route_legend=False,    # optional: add a key naming each route
+    both_hemispheres=False,  # optional: add a globe centred on the antipode
 )
 ```
 
@@ -224,6 +231,31 @@ The suite runs fully offline. `tests/conftest.py` blocks any connection to a non
 - OSM tiles are cached in `~/.cache/ortho_tiles/osm/` and reused for 7 days, as the OSM tile usage policy asks. Use `--cache-dir` to change the location or `--no-cache` to skip it. Failed downloads are never cached. Google tiles are never cached, because Google's terms don't allow it. In code, pass `tile_cache_dir=configure_tile_cache()` to `generate_orthographic_map`; the default is no cache.
 - When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
 - Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at the top of each circle as drawn on the globe.
+
+## Both Hemispheres
+
+An orthographic globe shows one hemisphere. `--both-hemispheres`
+(`both_hemispheres=True` in the API, or the interactive prompt) adds a second
+globe to the right, centred on the antipode: the point directly opposite the
+centre, at the negated latitude and 180° of longitude away. Together the two
+globes show the whole Earth, the way old atlases drew the world as a pair of
+hemispheres.
+
+```powershell
+python ortho.py --city lisbon --provider google_satellite --route routes/portuguese_explorers.geojson --route-legend --both-hemispheres
+```
+
+- The far globe marks the antipode with a hollow ring ("Antipode of Lisbon").
+- Its distance circles are still measured from the chosen city, at 15,000 and
+  17,500 km, which mirrors the 5,000 and 2,500 km rings on the near globe.
+- Routes, areas and the Köppen-Geiger overlay are drawn on both globes, so a
+  route that goes over the horizon of one carries on in the other. Each key is
+  drawn once, centred under the pair, and the credits sit under the right globe.
+- Auto-named files get a `_hemispheres` suffix, for example
+  `orthographic_map_lisbon_google_satellite_z3_hemispheres.png`.
+- The image is twice as wide (about 9,600 px at 300 DPI), so `--dpi` is
+  capped at 600 instead of 1,200 to keep the same memory budget. Google
+  renders download tiles for both globes.
 
 ## Route Overlays
 
