@@ -664,11 +664,11 @@ Enable the Map Tiles API (with billing) in a Google Cloud project and create an
 API key whose API restrictions allow the Map Tiles API.
 
 The key is read from `GOOGLE_MAPS_API_KEY`, or from `GOOGLE_API_KEY` if that is
-not set. Like newsgrab, the CLI loads keys from a central file before reading the
+not set. The CLI loads keys from a central file before reading the
 environment, without overriding variables that are already set:
 
 1. `$ORTHO_ENV_FILE` (explicit override)
-2. `~/myapikeys.env` (central key file shared with newsgrab)
+2. `~/myapikeys.env` (central key file)
 3. `./.env`
 
 So the simplest setup is one line in `~/myapikeys.env`:
