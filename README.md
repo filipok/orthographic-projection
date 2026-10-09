@@ -36,6 +36,14 @@ The main script is [ortho.py](ortho.py).
 *Left: Where wheat is grown, centred on London (OSM, zoom 3), c. 2020.*<br>
 *Right: Wheat or rice, whichever covers more land in each place, centred on Shanghai (OSM, zoom 3): the wheat–rice divide in China and India.*
 
+<p align="center">
+  <img src="sample_nyc_toward_london.png" alt="Google road-map globe centred on New York and turned so the direction toward London points up, with Europe along the top" width="48%">
+  <img src="sample_lusaka_cwa.png" alt="Globe centred on Lusaka showing only the Cwa humid subtropical dry-winter climate, a band from Angola across Zambia to Mozambique" width="48%">
+</p>
+
+*Left: Centred on New York and turned so London's direction (bearing 51°) is up (Google road map, zoom 3).*<br>
+*Right: Only Cwa, humid subtropical with dry winters, which covers 71% of Zambia, centred on Lusaka (OSM, zoom 3).*
+
 ## Features
 
 - Interactive city selection from a built-in list of major metropolitan areas
@@ -48,9 +56,10 @@ The main script is [ortho.py](ortho.py).
 - City marker and label overlay on the globe for named locations
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
 - Optional second globe centred on the antipode, so one image shows the whole Earth
-- Optional Köppen-Geiger climate classification overlay with compact legend
+- Optional Köppen-Geiger climate classification overlay with compact legend, for all classes or only chosen ones
 - Optional polar ice: sea ice at its latest winter maximum (NSIDC) and permanent polar land ice
 - Optional crop areas for any of 173 crops (CROPGRIDS), one or several at once, with a key
+- Any compass direction at the top of the globe (south up, or the direction toward a place), with text kept upright
 - Optional route overlays loaded from GeoJSON files, drawn as great-circle polylines and translucent filled areas
 - Optional route key below the globe, with short labels and grouping set in the GeoJSON
 - Bundled historical route sets: the Portuguese voyages of discovery and the Viking Age
@@ -75,6 +84,7 @@ The script currently includes:
 - Sao Paulo
 - Lagos
 - Johannesburg
+- Lusaka
 - Sydney
 - Lisbon
 - Honolulu
@@ -138,11 +148,12 @@ You will be prompted to choose:
 2. A tile provider
 3. A zoom level
 4. Whether to also draw the opposite hemisphere (see "Both Hemispheres")
-5. Optional Köppen-Geiger climate overlay and opacity/alpha (0–1)
-6. Whether to add polar ice at its winter maximum (see "Polar Ice")
-7. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
-8. An optional GeoJSON route file to overlay (leave blank to skip)
-9. Whether to add a key naming each route (asked only when a route file is loaded)
+5. The compass bearing to put at the top (blank keeps north up; see "Turning the Globe")
+6. Optional Köppen-Geiger climate overlay, its opacity/alpha (0–1) and the classes to show (blank for all)
+7. Whether to add polar ice at its winter maximum (see "Polar Ice")
+8. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
+9. An optional GeoJSON route file to overlay (leave blank to skip)
+10. Whether to add a key naming each route (asked only when a route file is loaded)
 
 ### CLI Mode
 
@@ -177,6 +188,14 @@ python ortho.py --lat 90 --lon 0 --ice-year 2012
 # Where wheat is grown; several crops show the largest one in each place (see "Crop Areas")
 python ortho.py --lat 45 --lon 40 --crop wheat
 python ortho.py --lat 30 --lon 95 --crop wheat --crop rice --crop maize
+
+# Only some climate classes: oceanic climates, or every Mediterranean one (see "Köppen-Geiger Climate Overlay")
+python ortho.py --city london --koppen-class Cfb --koppen-alpha 0.7
+python ortho.py --lat 30 --lon 0 --koppen-class Cs --both-hemispheres
+
+# South up, or the direction toward a place at the top (see "Turning the Globe")
+python ortho.py --city sydney --up 180
+python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi"
 ```
 
 #### CLI Flags
@@ -195,6 +214,7 @@ python ortho.py --lat 30 --lon 95 --crop wheat --crop rice --crop maize
 | `--no-cache` | Download OSM tiles fresh instead of using the cache | off |
 | `--koppen` | Enable Köppen-Geiger climate classification overlay | off |
 | `--koppen-alpha ALPHA` | Opacity of the climate overlay (0–1) | `0.45` |
+| `--koppen-class CLASS` | Show only this climate class (`Cfb`) or group (`C`, `Cs`); repeat for several; implies `--koppen` | all |
 | `--ice` | Draw sea ice at its winter maximum and polar land ice | off |
 | `--ice-year YEAR` | Year of the sea ice maxima, 1979 on; implies `--ice` | latest published |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
@@ -202,6 +222,8 @@ python ortho.py --lat 30 --lon 95 --crop wheat --crop rice --crop maize
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
 | `--route-legend` | Add a key below the globe naming each route next to its colour | off |
 | `--both-hemispheres` | Draw a second globe centred on the antipode, showing the whole Earth; `--dpi` up to 600 | off |
+| `--up BEARING` | Compass bearing to put at the top, in degrees clockwise from north | `0` |
+| `--up-toward PLACE` | Put the direction toward a city or `LAT,LON` at the top (instead of `--up`) | — |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
 
@@ -240,6 +262,8 @@ generate_orthographic_map(
     both_hemispheres=False,  # optional: add a globe centred on the antipode
     ice=False,             # optional: polar ice at its winter maximum
     crops=None,            # optional: e.g. ["wheat", "rice:#18b5a4"]
+    koppen_classes=None,   # optional: e.g. ["Cfb"] or ["Cs"]; implies koppen=True
+    up=0,                  # optional: compass bearing at the top (180 = south up)
 )
 ```
 
@@ -264,6 +288,41 @@ The suite runs fully offline. `tests/conftest.py` blocks any connection to a non
 - OSM tiles are cached in `~/.cache/ortho_tiles/osm/` and reused for 7 days, as the OSM tile usage policy asks. Use `--cache-dir` to change the location or `--no-cache` to skip it. Failed downloads are never cached. Google tiles are never cached, because Google's terms don't allow it. In code, pass `tile_cache_dir=configure_tile_cache()` to `generate_orthographic_map`; the default is no cache.
 - When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
 - Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at the top of each circle as drawn on the globe.
+
+## Turning the Globe
+
+By default north is up. `--up BEARING` (`up=` in the API, or the interactive
+prompt) turns the globe so another compass direction points up, measured in
+degrees clockwise from north: `--up 180` gives a south-up map, `--up 90` puts
+east at the top. `--up-toward PLACE` works out the bearing for you, so the
+direction toward a city or a `LAT,LON` point is at the top, along the great
+circle:
+
+```powershell
+python ortho.py --city sydney --up 180
+python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi"
+python ortho.py --city london --up-toward 21.42,39.83    # Mecca: the qibla, 119°
+```
+
+The New York sample above was rendered with
+`python ortho.py --city nyc --provider google --up-toward london`.
+
+- The globe turns; the text does not. The city label, distance-ring labels,
+  keys and credits stay upright, and the ring labels stay at the top of their
+  rings. Tiles, routes, areas, ice, crops and climate colours turn with the globe.
+- Place names that are part of the OSM or Google road-map tiles are baked into
+  the imagery, so they turn with it and read sideways or upside down. Google
+  satellite tiles have none, which makes them the best fit for turned globes.
+- With `--both-hemispheres` the far globe turns to match: the point at the top
+  of the near globe is also at the top of the far one, so the pair stays two
+  halves of one Earth.
+- Turned globes are computed on a sphere of the Earth's mean radius rather than
+  the WGS-84 ellipsoid, a difference far below a pixel at globe scale. North-up
+  renders are unchanged.
+- Auto-named files get an `_up<bearing>` suffix, for example
+  `orthographic_map_sydney_osm_z3_up180.png`.
+- For a point with a negative latitude, join the value with `=` so it isn't
+  read as another option: `--up-toward=-33.9,151.2`.
 
 ## Both Hemispheres
 
@@ -469,7 +528,28 @@ checked first. If the data can't be obtained, the map is still rendered without
 the overlay and a warning explains what to do.
 
 The overlay uses the 30-class colour scheme from the official dataset and adds
-a compact legend strip below the globe. The dataset credit
+a compact legend strip below the globe.
+
+**Only some classes.** `--koppen-class` (`koppen_classes=` in the API, or the
+interactive prompt) shows only the classes named and leaves everything else
+clear; it turns `--koppen` on by itself. Give a class (`Cfb`), or the start of
+one to take a whole group: `C` is every temperate class, `Cs` the three
+Mediterranean ones, `BW` both deserts. Repeat it for several; names ignore case.
+With eight classes or fewer the key also names them (*Cfb: Oceanic*). A single
+class reads better with a stronger overlay, for example `--koppen-alpha 0.7`.
+
+```powershell
+python ortho.py --city london --koppen-class Cfb --koppen-alpha 0.7
+python ortho.py --lat 30 --lon 0 --koppen-class Cs --both-hemispheres
+```
+
+The Lusaka sample above shows Zambia's dominant climate, Cwa (71% of the
+country; then savanna, Aw, 19%; highland Cwb, 6%; hot semi-arid BSh, 3%):
+`python ortho.py --city lusaka --koppen-class Cwa --koppen-alpha 0.7`.
+
+The classes are Af, Am, As/Aw (tropical); BWh, BWk, BSh, BSk (arid); Csa, Csb,
+Csc, Cwa, Cwb, Cwc, Cfa, Cfb, Cfc (temperate); Dsa–Dsd, Dwa–Dwd, Dfa–Dfd
+(continental); ET, EF (polar). The dataset credit
 (*Climate data: Beck et al. (2018), CC BY 4.0*) is added to the attribution
 block in the bottom-right corner of the image (see below).
 
@@ -528,6 +608,17 @@ Gemini API, and Google answers with HTTP 403 "Requests to this API … are
 blocked". Use a separate Maps key in `GOOGLE_MAPS_API_KEY`, or add the Map Tiles
 API to that key's allowed APIs.
 
+**Satellite tiles and EEA billing.** Since 8 July 2025, Google no longer serves
+satellite tiles (`google_satellite`) through the Map Tiles API to projects whose
+billing account is in the European Economic Area: projects created after that
+date, and older ones once they are modified. Such a project gets HTTP 403
+"satellite tiles and 3D tiles are not available for your account and region",
+while the `google` road map keeps working. Google's suggested replacements are
+the Maps JavaScript API and the mobile SDKs, which this tool cannot use; see
+[Map Tiles API restrictions for EEA customers](https://developers.google.com/maps/comms/eea/map-tiles).
+The satellite samples in this README were rendered before the restriction
+reached this project's key.
+
 Interactive mode asks for the key (input hidden) if neither variable is set.
 Google renders are credited with "Google Maps" plus the copyright string the
 API returns for the map. Google's policies also restrict caching and some uses
@@ -539,6 +630,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [koppen.py](koppen.py): Köppen-Geiger climate overlay and legend
 - [ice.py](ice.py): polar ice overlay (NSIDC sea ice extent, Natural Earth land ice)
 - [crops.py](crops.py): crop-area overlay and key (CROPGRIDS, read from the remote archive)
+- [rotation.py](rotation.py): orthographic globes with any compass direction at the top
 - [routes.py](routes.py): GeoJSON route and area loading, drawing and the route key
 - [google_tiles.py](google_tiles.py): Google Map Tiles API client (API key, sessions, attribution)
 - [tile_fetch.py](tile_fetch.py): single-tile downloader shared by the tile sources
