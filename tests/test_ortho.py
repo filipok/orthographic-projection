@@ -43,6 +43,7 @@ class TestConstants:
         assert "osm" in ortho.TILE_PROVIDERS
         assert "google" in ortho.TILE_PROVIDERS
         assert "google_satellite" in ortho.TILE_PROVIDERS
+        assert "nasa" in ortho.TILE_PROVIDERS
 
 
 # ===================================================================
@@ -165,8 +166,30 @@ class TestCreateTileSource:
                 ortho.create_tile_source("google")
         create.assert_not_called()
 
+    def test_nasa_is_cached_in_its_own_folder(self, tmp_path):
+        src = ortho.create_tile_source("nasa", cache_dir=str(tmp_path))
+        assert isinstance(src.tile_source, ortho.CachedNASA)
+        assert str(src.tile_source.cache_path) == str(tmp_path)
+        assert src.tile_source._cache_dir == tmp_path / "nasa"
+        assert src.tile_source.max_age_days == 365        # the imagery never changes
+
+    def test_nasa_url_is_zoom_row_column(self):
+        url = ortho.create_tile_source("nasa").tile_source._image_url((4, 2, 3))   # (x, y, z)
+        assert url == ("https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/"
+                       "default/GoogleMapsCompatible_Level8/3/2/4.jpeg")
+
+    def test_nasa_tiles_are_downloaded_and_cached(self, tmp_path):
+        src = ortho.create_tile_source("nasa", cache_dir=str(tmp_path)).tile_source
+        tile = np.full((256, 256, 4), 90, np.uint8)
+        with mock.patch.object(ortho, "download_tile", return_value=tile) as download:
+            first, _, _ = src.get_image((1, 1, 2))
+            second, _, _ = src.get_image((1, 1, 2))
+        assert download.call_count == 1                   # the second read is from the cache
+        np.testing.assert_array_equal(first, second)
+        assert (tmp_path / "nasa" / "1_1_2.npy").exists()
+
     def test_invalid_raises(self):
-        with pytest.raises(ValueError, match="Unsupported"):
+        with pytest.raises(ValueError, match="Unsupported.*nasa"):
             ortho.create_tile_source("bing")
 
 
@@ -452,6 +475,9 @@ class TestCLIParser:
         assert args.ice is False and args.ice_year is None
         args = self._parse(["--city", "nyc", "--ice", "--ice-year", "2012"])
         assert args.ice is True and args.ice_year == 2012
+
+    def test_nasa_provider_accepted(self):
+        assert self._parse(["--city", "nyc", "--provider", "nasa"]).provider == "nasa"
 
     def test_orientation_flags(self):
         args = self._parse(["--city", "nyc"])
@@ -791,6 +817,10 @@ class TestGenerateOrthographicMapIntegration:
     def test_osm_is_credited(self, tmp_path):
         credits = self._render_credits(tmp_path, tile_provider="osm")
         assert credits == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
+    def test_nasa_is_credited(self, tmp_path):
+        credits = self._render_credits(tmp_path, tile_provider="nasa")
+        assert credits == ["Imagery: NASA Blue Marble, via NASA GIBS (ESDIS)"]
 
     @pytest.mark.parametrize("provider", ["google", "google_satellite"])
     def test_google_credit_comes_from_viewport(self, tmp_path, provider):

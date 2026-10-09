@@ -59,7 +59,7 @@ def configure_tile_cache(cache_dir: str | None = None) -> str:
     """Create the tile cache directory (default ``~/.cache/ortho_tiles``) and return it.
 
     Pass the result to :func:`generate_orthographic_map` as ``tile_cache_dir``.
-    Only OSM tiles are cached; Google's terms do not allow caching its tiles.
+    OSM and NASA tiles are cached; Google's terms do not allow caching its tiles.
     """
     cache_dir = cache_dir or DEFAULT_CACHE_DIR
     os.makedirs(cache_dir, exist_ok=True)
@@ -121,6 +121,32 @@ class CachedOSM(cimgt.OSM):
         return img, self.tileextent(tile), "lower"
 
 
+class CachedNASA(CachedOSM):
+    """NASA Blue Marble imagery from GIBS, with the same safe cache as OSM.
+
+    Blue Marble: Next Generation true-colour land (a 2004 composite at
+    500 m) over shaded relief and ocean-floor bathymetry, served in Web
+    Mercator by NASA's Global Imagery Browse Services up to zoom 8. Public
+    domain, no key, no regional limits. The imagery never changes, so cached
+    tiles are kept far longer than OSM's.
+    """
+
+    URL = ("https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/"
+           "default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg")
+
+    def __init__(self, *args: Any, max_age_days: float = 365, **kwargs: Any) -> None:
+        super().__init__(*args, max_age_days=max_age_days, **kwargs)
+
+    @property
+    def _cache_dir(self) -> Path:  # pyright: ignore[reportIncompatibleMethodOverride]
+        assert self.cache_path is not None
+        return Path(self.cache_path) / "nasa"
+
+    def _image_url(self, tile: tuple[int, int, int]) -> str:
+        x, y, z = tile
+        return self.URL.format(x=x, y=y, z=z)
+
+
 def load_env_files() -> list[str]:
     """Load API keys from .env-style files into the process environment.
 
@@ -176,7 +202,8 @@ MAJOR_METROPOLISES = {
 TILE_PROVIDERS = [
     "osm",
     "google",
-    "google_satellite"
+    "google_satellite",
+    "nasa",
 ]
 
 GOOGLE_MAP_TYPES = {"google": "roadmap", "google_satellite": "satellite"}
@@ -185,6 +212,7 @@ GOOGLE_MAP_TYPES = {"google": "roadmap", "google_satellite": "satellite"}
 # credit depends on the data shown and comes from the Map Tiles API instead.
 TILE_ATTRIBUTIONS = {
     "osm": "Map tiles © OpenStreetMap contributors",
+    "nasa": "Imagery: NASA Blue Marble, via NASA GIBS (ESDIS)",
 }
 
 
@@ -264,8 +292,8 @@ def create_tile_source(
 ) -> BufferedTileSource:
     """Create a Cartopy tile source from a simple provider name.
 
-    OSM tiles are cached under *cache_dir* when one is given. Google tiles
-    are never cached. Google providers create a Map Tiles API session here,
+    OSM and NASA tiles are cached under *cache_dir* when one is given.
+    Google tiles are never cached. Google providers create a Map Tiles API session here,
     so a missing or invalid API key raises :class:`GoogleTilesError` before
     any rendering.
     """
@@ -273,14 +301,15 @@ def create_tile_source(
 
     if provider == "osm":
         tile_source = CachedOSM(cache=cache_dir or False, **tile_kwargs)
+    elif provider == "nasa":
+        tile_source = CachedNASA(cache=cache_dir or False, **tile_kwargs)
     elif provider in GOOGLE_MAP_TYPES:
         if cache_dir:
             logger.info("Google tiles are not cached (Google Maps Platform terms).")
         tile_source = GoogleMapTiles(map_type=GOOGLE_MAP_TYPES[provider], **tile_kwargs)
     else:
         raise ValueError(
-            "Unsupported tile_provider. Choose one of: "
-            "osm, google, google_satellite."
+            f"Unsupported tile_provider. Choose one of: {', '.join(TILE_PROVIDERS)}."
         )
 
     logger.debug("Created tile source: %s (buffer_factor=%.1f)", provider, tile_buffer_factor)
@@ -1021,13 +1050,13 @@ def build_cli_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cache-dir",
         default=None,
-        help=f"OSM tile cache directory (default: {DEFAULT_CACHE_DIR}). "
+        help=f"OSM and NASA tile cache directory (default: {DEFAULT_CACHE_DIR}). "
              "Google tiles are never cached.",
     )
     parser.add_argument(
         "--no-cache",
         action="store_true",
-        help="Download OSM tiles fresh instead of using the tile cache.",
+        help="Download OSM and NASA tiles fresh instead of using the tile cache.",
     )
     parser.add_argument(
         "--koppen",
