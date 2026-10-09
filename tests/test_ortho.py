@@ -371,7 +371,7 @@ class TestCachedOSM:
 
 
 class TestLoadEnvFiles:
-    """Key files are loaded like newsgrab's: first file to set a variable wins."""
+    """Key files are loaded in priority order: the first file to set a variable wins."""
 
     @pytest.fixture
     def home(self, tmp_path, monkeypatch):

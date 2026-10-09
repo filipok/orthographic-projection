@@ -126,7 +126,7 @@ The image footer, module docstring and README all credit **Beck et al. (2023)**,
 **Fix:** credit Beck et al. (2018), *Sci. Data* 5, 180214, doi `10.1038/sdata.2018.214`, and state "0.083° (~10 km)".
 
 ### 7. Tile licensing / Terms of Service
-> **Resolved 2026-10-02:** every render carries a provider credit in the bottom-right corner. The Google providers now use the official Map Tiles API (`google_tiles.py`) and are credited "Google Maps" plus the copyright string from the API's viewport endpoint. The key is read from `GOOGLE_MAPS_API_KEY`, falling back to `GOOGLE_API_KEY`; the CLI first loads `$ORTHO_ENV_FILE`, `~/myapikeys.env` and `./.env` (same scheme as newsgrab, never overriding variables already set).
+> **Resolved 2026-10-02:** every render carries a provider credit in the bottom-right corner. The Google providers now use the official Map Tiles API (`google_tiles.py`) and are credited "Google Maps" plus the copyright string from the API's viewport endpoint. The key is read from `GOOGLE_MAPS_API_KEY`, falling back to `GOOGLE_API_KEY`; the CLI first loads `$ORTHO_ENV_FILE`, `~/myapikeys.env` and `./.env` (never overriding variables already set).
 >
 > **Live check 2026-10-02:** the `GOOGLE_API_KEY` in `~/myapikeys.env` is a Gemini key and Google rejects it: `HTTP 403: Requests to this API tile method … are blocked`. The code path works; the key lacks permission.
 >

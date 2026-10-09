@@ -152,7 +152,7 @@ class CachedNASA(CachedOSM):
 def load_env_files() -> list[str]:
     """Load API keys from .env-style files into the process environment.
 
-    Mirrors newsgrab's key handling so both tools share ``~/myapikeys.env``.
+    Keys can live in one central file, ``~/myapikeys.env``.
     Existing environment variables are never overridden, so the first file
     that sets a variable wins. Priority (highest first):
 
