@@ -37,11 +37,11 @@ The main script is [ortho.py](ortho.py).
 *Right: Wheat or rice, whichever covers more land in each place, centred on Shanghai (OSM, zoom 3): the wheat–rice divide in China and India.*
 
 <p align="center">
-  <img src="sample_nyc_toward_london.png" alt="Google road-map globe centred on New York and turned so the direction toward London points up, with Europe along the top" width="48%">
+  <img src="sample_nyc_toward_london.png" alt="NASA Blue Marble globe centred on New York and turned so the direction toward London points up, with Europe along the top" width="48%">
   <img src="sample_lusaka_cwa.png" alt="Globe centred on Lusaka showing only the Cwa humid subtropical dry-winter climate, a band from Angola across Zambia to Mozambique" width="48%">
 </p>
 
-*Left: Centred on New York and turned so London's direction (bearing 51°) is up (Google road map, zoom 3).*<br>
+*Left: Centred on New York and turned so London's direction (bearing 51°) is up (NASA Blue Marble, zoom 3).*<br>
 *Right: Only Cwa, humid subtropical with dry winters, which covers 71% of Zambia, centred on Lusaka (OSM, zoom 3).*
 
 ## Features
@@ -49,7 +49,7 @@ The main script is [ortho.py](ortho.py).
 - Interactive city selection from a built-in list of major metropolitan areas
 - Custom latitude/longitude input for arbitrary locations
 - Orthographic globe projection centered on the chosen location
-- Support for multiple tile providers
+- Support for multiple tile providers, including free NASA Blue Marble satellite imagery with no API key
 - High-resolution PNG export with transparent background
 - Buffered tile fetching to reduce missing imagery near the edge of the globe
 - Non-interactive CLI mode with `argparse` for scripting and automation
@@ -95,9 +95,17 @@ The script currently includes:
 
 The interactive menu exposes these providers:
 
-- `osm`
-- `google`
-- `google_satellite`
+- `osm`: OpenStreetMap
+- `google`: Google road map (API key required)
+- `google_satellite`: Google satellite imagery (API key required; not available to EEA-billed projects, see below)
+- `nasa`: NASA Blue Marble satellite imagery with shaded relief and ocean-floor bathymetry; free, public domain, no key
+
+`nasa` is the free satellite option. It comes from NASA's Global Imagery Browse
+Services (GIBS): the Blue Marble: Next Generation true-colour land composite
+(2004, 500 m per pixel) over shaded relief and bathymetry, in Web Mercator up to
+zoom 8, far more than a globe needs. It needs no account or key, has no regional
+limits, and is cached like OSM (for a year, since the imagery never changes).
+Like Google satellite, it has no place names baked in, so it suits turned globes.
 
 ## Requirements
 
@@ -205,13 +213,13 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--city CITY` | Pre-defined city (case-insensitive) | — |
 | `--lat LAT` | Custom latitude (-90 to 90) | — |
 | `--lon LON` | Custom longitude (-180 to 180) | — |
-| `--provider` | Tile provider: `osm`, `google`, `google_satellite` | `osm` |
+| `--provider` | Tile provider: `osm`, `google`, `google_satellite`, `nasa` | `osm` |
 | `--zoom ZOOM` | Tile zoom level (1–4) | `3` |
 | `--dpi DPI` | Output resolution, 10–1200. The figure is 20 in, so 300 DPI = 6,000 px | `300` |
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
 | `--output-dir` | Directory for auto-named output files | `.` |
-| `--cache-dir` | OSM tile cache directory (Google tiles are never cached) | `~/.cache/ortho_tiles` |
-| `--no-cache` | Download OSM tiles fresh instead of using the cache | off |
+| `--cache-dir` | OSM and NASA tile cache directory (Google tiles are never cached) | `~/.cache/ortho_tiles` |
+| `--no-cache` | Download OSM and NASA tiles fresh instead of using the cache | off |
 | `--koppen` | Enable Köppen-Geiger climate classification overlay | off |
 | `--koppen-alpha ALPHA` | Opacity of the climate overlay (0–1) | `0.45` |
 | `--koppen-class CLASS` | Show only this climate class (`Cfb`) or group (`C`, `Cs`); repeat for several; implies `--koppen` | all |
@@ -280,12 +288,12 @@ The suite runs fully offline. `tests/conftest.py` blocks any connection to a non
 ## Notes
 
 - Zoom is capped at level `4` to avoid excessive tile downloads. Lower zoom levels are safer for full-globe renders.
-- Web map tiles stop at about ±85° latitude, so a small disc around each pole shows the plain fallback colours. On OSM they match the tiles and are hard to see; on `google_satellite` the disc is visible. `--ice` covers both discs with ice; without it this is a known cosmetic limitation.
+- Web map tiles stop at about ±85° latitude, so a small disc around each pole shows the plain fallback colours. On OSM they match the tiles and are hard to see; on `google_satellite` and `nasa` the disc is visible. `--ice` covers both discs with ice; without it this is a known cosmetic limitation.
 - The default 300 DPI gives a ~6,000 px image. Map imagery carries roughly 2,000–4,000 px of real detail at zoom 3–4, so higher DPIs mostly upscale it; they still make text, circles, routes and the keys sharper (`--dpi 600` gives ~12,000 px).
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
 - Google tile backends depend on Cartopy tile services and may be subject to provider availability or usage limits.
 - If some or all map tiles fail to download, the map is still saved: missing tiles are left transparent so the fallback land/ocean features show through, and a warning says how many tiles failed.
-- OSM tiles are cached in `~/.cache/ortho_tiles/osm/` and reused for 7 days, as the OSM tile usage policy asks. Use `--cache-dir` to change the location or `--no-cache` to skip it. Failed downloads are never cached. Google tiles are never cached, because Google's terms don't allow it. In code, pass `tile_cache_dir=configure_tile_cache()` to `generate_orthographic_map`; the default is no cache.
+- OSM tiles are cached in `~/.cache/ortho_tiles/osm/` and reused for 7 days, as the OSM tile usage policy asks; NASA tiles are cached in `~/.cache/ortho_tiles/nasa/` for a year. Use `--cache-dir` to change the location or `--no-cache` to skip it. Failed downloads are never cached. Google tiles are never cached, because Google's terms don't allow it. In code, pass `tile_cache_dir=configure_tile_cache()` to `generate_orthographic_map`; the default is no cache.
 - When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
 - Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at the top of each circle as drawn on the globe.
 
@@ -305,14 +313,15 @@ python ortho.py --city london --up-toward 21.42,39.83    # Mecca: the qibla, 119
 ```
 
 The New York sample above was rendered with
-`python ortho.py --city nyc --provider google --up-toward london`.
+`python ortho.py --city nyc --provider nasa --up-toward london`.
 
 - The globe turns; the text does not. The city label, distance-ring labels,
   keys and credits stay upright, and the ring labels stay at the top of their
   rings. Tiles, routes, areas, ice, crops and climate colours turn with the globe.
 - Place names that are part of the OSM or Google road-map tiles are baked into
-  the imagery, so they turn with it and read sideways or upside down. Google
-  satellite tiles have none, which makes them the best fit for turned globes.
+  the imagery, so they turn with it and read sideways or upside down. Satellite
+  imagery (`nasa`, `google_satellite`) has none, which makes it the best fit for
+  turned globes.
 - With `--both-hemispheres` the far globe turns to match: the point at the top
   of the near globe is also at the top of the far one, so the pair stays two
   halves of one Earth.
@@ -562,6 +571,7 @@ block in the bottom-right corner of the image (see below).
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
 | OpenStreetMap tiles | OpenStreetMap contributors | Data [ODbL](https://www.openstreetmap.org/copyright); attribution required by the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) | [openstreetmap.org](https://www.openstreetmap.org/) |
+| NASA Blue Marble (Next Generation, shaded relief and bathymetry) via GIBS | NASA Earth Observatory; NASA ESDIS | Public domain (NASA open data, CC0); acknowledgement requested | [NASA GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api) |
 | Google map / satellite tiles (Map Tiles API, API key required) | Google | Proprietary, [Google Maps terms](https://cloud.google.com/maps-platform/terms) | [google.com/maps](https://www.google.com/maps) |
 
 Every render carries an attribution block in its bottom-right corner, outside
@@ -570,6 +580,7 @@ the globe:
 | Layer | Credit line |
 |---|---|
 | `osm` tiles | *Map tiles © OpenStreetMap contributors* |
+| `nasa` tiles | *Imagery: NASA Blue Marble, via NASA GIBS (ESDIS)* |
 | `google`, `google_satellite` tiles | *Google Maps* plus the copyright string returned by the Map Tiles API |
 | `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |
 | `--ice` overlay | *Sea ice: NSIDC Sea Ice Index v4, extent March YYYY (Arctic) and September YYYY (Antarctic)* |
@@ -616,8 +627,9 @@ date, and older ones once they are modified. Such a project gets HTTP 403
 while the `google` road map keeps working. Google's suggested replacements are
 the Maps JavaScript API and the mobile SDKs, which this tool cannot use; see
 [Map Tiles API restrictions for EEA customers](https://developers.google.com/maps/comms/eea/map-tiles).
-The satellite samples in this README were rendered before the restriction
-reached this project's key.
+The Google satellite samples in this README were rendered before the restriction
+reached this project's key. For satellite imagery without Google, use
+`--provider nasa`, which is free and has no such limits.
 
 Interactive mode asks for the key (input hidden) if neither variable is set.
 Google renders are credited with "Google Maps" plus the copyright string the
