@@ -492,6 +492,20 @@ class TestCLIParser:
         assert self._parse(["--city", "nyc", "--koppen-class", "Cfb", "--koppen-class", "Cs"]).koppen_class == [
             "Cfb", "Cs"]
 
+    def test_trewartha_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert args.trewartha is False and args.trewartha_class is None
+        args = self._parse(["--city", "nyc", "--trewartha", "--trewartha-class", "Do", "--trewartha-class", "C"])
+        assert args.trewartha is True and args.trewartha_class == ["Do", "C"]
+
+    def test_one_climate_classification_at_a_time(self):
+        with pytest.raises(SystemExit):
+            self._parse(["--city", "nyc", "--koppen", "--trewartha"])
+
+    def test_climate_alpha_and_its_old_name(self):
+        assert self._parse(["--city", "nyc", "--climate-alpha", "0.7"]).koppen_alpha == 0.7
+        assert self._parse(["--city", "nyc", "--koppen-alpha", "0.6"]).koppen_alpha == 0.6
+
     def test_crop_flags(self):
         assert self._parse(["--city", "nyc"]).crop is None
         args = self._parse(["--city", "nyc", "--crop", "wheat", "--crop", "rice:#00ffff"])
@@ -522,7 +536,7 @@ RECIPE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file
 class TestGroupedHelp:
     def test_options_are_grouped_by_topic(self):
         help_text = ortho.build_cli_parser().format_help()
-        for title in ("Location:", "Imagery and output:", "Globe layout:", "Climate (Köppen-Geiger):",
+        for title in ("Location:", "Imagery and output:", "Globe layout:", "Climate (Köppen-Geiger or Trewartha):",
                       "Polar ice:", "Crops (CROPGRIDS):", "Routes and areas:", "Recipes:"):
             assert title in help_text
         city_entry = help_text.index("\n  --city ")             # its entry, not the usage line
@@ -619,6 +633,11 @@ class TestRecipes:
         args = run.call_args.args[0]
         assert args.city == "lusaka" and args.koppen_class == ["Cwa"]
 
+    def test_recipe_accepts_option_aliases(self, tmp_path):
+        path = self._recipe(tmp_path, 'city = "lusaka"\ntrewartha = true\nclimate-alpha = 0.7\n')
+        args = ortho.parse_cli_args(["--config", path])
+        assert args.trewartha is True and args.koppen_alpha == 0.7
+
 
 class TestBundledRecipes:
     RECIPES = sorted(f for f in os.listdir(RECIPE_DIR) if f.endswith(".toml"))
@@ -663,7 +682,7 @@ class TestRunCLIValidation:
             output=None, output_dir=None, cache_dir=None,
             koppen=False, koppen_alpha=0.45, route=None, route_legend=False,
             both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
-            koppen_class=None, up=0.0, up_toward=None,
+            koppen_class=None, up=0.0, up_toward=None, trewartha=False, trewartha_class=None,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -862,6 +881,27 @@ class TestRunCLIValidation:
         render.assert_not_called()
         assert "Unknown Köppen-Geiger class" in caplog.text
 
+    def test_trewartha_passed_to_renderer(self):
+        args = self._make_args(city="paris", trewartha=True, trewartha_class=["Do"])
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["trewartha"] is True
+        assert render.call_args.kwargs["trewartha_classes"] == ["Do"]
+
+    @pytest.mark.parametrize("kwargs, message", [
+        ({"trewartha_class": ["Xx"]}, "Unknown Trewartha class"),
+        ({"koppen_class": ["Cfb"], "trewartha": True}, "Choose one climate classification"),
+    ])
+    def test_bad_trewartha_options_exit_before_render(self, caplog, kwargs, message):
+        args = self._make_args(city="paris", **kwargs)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+        assert message in caplog.text
+
     def test_crops_passed_to_renderer(self):
         args = self._make_args(city="paris", crop=["wheat", "rice:#00ffff"])
         with mock.patch.object(ortho, "generate_orthographic_map") as render, \
@@ -984,6 +1024,27 @@ class TestGenerateOrthographicMapIntegration:
             result = ortho.generate_orthographic_map(
                 lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
                 output_dir=str(tmp_path), koppen=True,
+            )
+        assert os.path.exists(result)
+        legend.assert_not_called()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
+    def test_trewartha_is_credited_when_enabled(self, tmp_path):
+        with mock.patch.object(ortho, "add_trewartha_overlay"), \
+                mock.patch.object(ortho, "add_trewartha_legend"):
+            credits = self._render_credits(tmp_path, trewartha=True)
+        assert credits == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.TREWARTHA_ATTRIBUTION]
+        assert "CHELSA" in ortho.TREWARTHA_ATTRIBUTION
+
+    def test_trewartha_failure_still_saves_map_without_credit(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "add_trewartha_overlay",
+                                  side_effect=ortho.TrewarthaDataError("no data")), \
+                mock.patch.object(ortho, "add_trewartha_legend") as legend, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), trewartha=True,
             )
         assert os.path.exists(result)
         legend.assert_not_called()
@@ -1202,6 +1263,33 @@ class TestGenerateOrthographicMapIntegration:
             with pytest.raises(ValueError, match="Unknown Köppen-Geiger class"):
                 ortho.generate_orthographic_map(
                     lat=0, lon=0, output_filename=str(tmp_path / "m.png"), koppen_classes=["Cxx"],
+                )
+        create.assert_not_called()
+
+    def test_trewartha_classes_imply_the_overlay_and_reach_it(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "add_koppen_overlay") as koppen, \
+                mock.patch.object(ortho, "add_trewartha_overlay") as overlay, \
+                mock.patch.object(ortho, "add_trewartha_legend") as key:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), trewartha_classes=["C"],
+            )
+        codes = ortho.resolve_trewartha_classes(["C"])
+        assert overlay.call_args.kwargs["classes"] == codes
+        assert key.call_args.kwargs["classes"] == codes
+        koppen.assert_not_called()
+
+    @pytest.mark.parametrize("kwargs, message", [
+        ({"trewartha_classes": ["Xx"]}, "Unknown Trewartha class"),
+        ({"koppen": True, "trewartha": True}, "choose one climate classification"),
+        ({"koppen_classes": ["Cs"], "trewartha_classes": ["Cs"]}, "choose one climate classification"),
+    ])
+    def test_bad_trewartha_options_fail_before_any_work(self, tmp_path, kwargs, message):
+        with mock.patch.object(ortho, "create_tile_source") as create:
+            with pytest.raises(ValueError, match=message):
+                ortho.generate_orthographic_map(
+                    lat=0, lon=0, output_filename=str(tmp_path / "m.png"), **kwargs,
                 )
         create.assert_not_called()
 

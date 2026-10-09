@@ -42,6 +42,10 @@ from koppen import (
     resolve_koppen_classes,
 )
 from rotation import far_side_up, globe_projection, initial_bearing, normalise_bearing
+from trewartha import (
+    TREWARTHA_ATTRIBUTION, TrewarthaDataError, add_trewartha_legend, add_trewartha_overlay,
+    resolve_trewartha_classes,
+)
 from routes import Route, add_route_legend, draw_routes, load_routes
 from tile_fetch import download_tile
 
@@ -375,6 +379,8 @@ def generate_orthographic_map(
     crops: Sequence[str] | None = None,
     koppen_classes: Sequence[str] | None = None,
     up: float = 0.0,
+    trewartha: bool = False,
+    trewartha_classes: Sequence[str] | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -410,6 +416,13 @@ def generate_orthographic_map(
         If provided, a marker and label are drawn at the centre point.
     koppen : bool
         When True, render a Köppen-Geiger climate classification overlay.
+    trewartha : bool
+        When True, render a Trewartha climate classification overlay instead,
+        computed from CHELSA v2.1 (see :mod:`trewartha`). Only one climate
+        classification can be drawn; *koppen_alpha* sets its opacity too.
+    trewartha_classes : sequence of str, optional
+        Show only these Trewartha classes or groups (``"Do"``, ``"C"``, see
+        :func:`trewartha.resolve_trewartha_classes`). Implies *trewartha*.
     koppen_alpha : float
         Opacity of the Köppen-Geiger overlay (0–1).
     routes : sequence of Route, optional
@@ -456,6 +469,10 @@ def generate_orthographic_map(
     resolve_crops(crops or [])  # unknown names and bad colours fail before any download
     koppen_codes = resolve_koppen_classes(koppen_classes or [])
     koppen = koppen or bool(koppen_codes)
+    trewartha_codes = resolve_trewartha_classes(trewartha_classes or [])
+    trewartha = trewartha or bool(trewartha_codes)
+    if koppen and trewartha:
+        raise ValueError("choose one climate classification: Köppen-Geiger or Trewartha")
     if not math.isfinite(up):
         raise ValueError(f"up must be a compass bearing in degrees, got {up}")
     up = normalise_bearing(up)
@@ -525,8 +542,9 @@ def generate_orthographic_map(
             interpolation="nearest",
         )
 
-    # Step 5b: Köppen-Geiger overlay (above tiles, below gridlines), one key
-    koppen_drawn = False
+    # Step 5b: Climate overlay, Köppen-Geiger or Trewartha (above tiles, below
+    # gridlines), with one key; its credit line is kept for step 7e
+    climate_credit = None
     if koppen:
         logger.info("Applying Köppen-Geiger climate overlay (alpha=%.2f) …", koppen_alpha)
         try:
@@ -538,7 +556,18 @@ def generate_orthographic_map(
             logger.warning("Skipping Köppen-Geiger overlay: %s", e)
         else:
             add_koppen_legend(near, x=key_x, classes=koppen_codes or None)
-            koppen_drawn = True
+            climate_credit = KOPPEN_ATTRIBUTION
+    elif trewartha:
+        logger.info("Applying Trewartha climate overlay (alpha=%.2f) …", koppen_alpha)
+        try:
+            for ax in axes:
+                add_trewartha_overlay(ax, alpha=koppen_alpha, regrid_shape=regrid_shape,
+                                      classes=trewartha_codes or None)
+        except (TrewarthaDataError, OSError) as e:
+            logger.warning("Skipping Trewartha overlay: %s", e)
+        else:
+            add_trewartha_legend(near, x=key_x, classes=trewartha_codes or None)
+            climate_credit = TREWARTHA_ATTRIBUTION
 
     # Step 5c: Crop areas (above climate colours, below ice)
     crop_layer = None
@@ -616,18 +645,18 @@ def generate_orthographic_map(
             draw_routes(ax, routes)
 
     # Step 7d: Keys below the globe(s): the crop key, then the route key,
-    # under the Köppen-Geiger key when that is drawn too
+    # under the climate key when that is drawn too
     keys = []
     if crop_layer is not None:
         keys.append(add_crop_legend(near, crop_layer, x=key_x))
     if routes and route_legend:
         keys.append(add_route_legend(near, routes, x=key_x))
-    _stack_keys(near, [k for k in keys if k is not None], top=-0.07 if koppen_drawn else -0.01, x=key_x)
+    _stack_keys(near, [k for k in keys if k is not None], top=-0.07 if climate_credit else -0.01, x=key_x)
 
     # Step 7e: Data credits required by the tile and dataset licences
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
-    if koppen_drawn:
-        credits.append(KOPPEN_ATTRIBUTION)
+    if climate_credit:
+        credits.append(climate_credit)
     if crop_layer is not None:
         credits.append(CROP_ATTRIBUTION)
     if ice_attribution:
@@ -946,11 +975,16 @@ def prompt_for_up() -> float:
 
 def prompt_for_koppen_classes() -> list[str]:
     """Prompt for Köppen-Geiger classes or groups to show (comma-separated); blank shows all."""
+    return prompt_for_climate_classes(resolve_koppen_classes, "e.g. Cfb, Cs")
+
+
+def prompt_for_climate_classes(resolve: Any, example: str) -> list[str]:
+    """Prompt for climate classes to show, checked with *resolve*; blank shows all."""
     while True:
-        raw = input("Climate classes to show, comma-separated (e.g. Cfb, Cs) [blank for all]: ").strip()
+        raw = input(f"Climate classes to show, comma-separated ({example}) [blank for all]: ").strip()
         specs = [part.strip() for part in raw.split(",") if part.strip()]
         try:
-            resolve_koppen_classes(specs)
+            resolve(specs)
         except ValueError as e:
             print(f"{e}\n")
             continue
@@ -1086,19 +1120,28 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Put the direction toward PLACE at the top: a city name or LAT,LON.",
     )
 
-    climate = parser.add_argument_group("Climate (Köppen-Geiger)")
-    climate.add_argument(
+    climate = parser.add_argument_group(
+        "Climate (Köppen-Geiger or Trewartha)", "One climate classification at a time.")
+    system = climate.add_mutually_exclusive_group()
+    system.add_argument(
         "--koppen",
         action="store_true",
         default=False,
         help="Enable Köppen-Geiger climate classification overlay.",
     )
+    system.add_argument(
+        "--trewartha",
+        action="store_true",
+        help="Enable the Trewartha climate classification overlay, computed from CHELSA v2.1 "
+             "(one-time download of ~52 MB).",
+    )
     climate.add_argument(
-        "--koppen-alpha",
+        "--climate-alpha", "--koppen-alpha",
+        dest="koppen_alpha",
         type=float,
         default=0.45,
         metavar="ALPHA",
-        help="Opacity of the Köppen-Geiger overlay (0-1, default: 0.45).",
+        help="Opacity of the climate overlay (0-1, default: 0.45).",
     )
     climate.add_argument(
         "--koppen-class",
@@ -1107,6 +1150,14 @@ def build_cli_parser() -> argparse.ArgumentParser:
         metavar="CLASS",
         help="Show only this Köppen-Geiger class (e.g. Cfb) or group (e.g. C, Cs); "
              "repeat for several. Implies --koppen.",
+    )
+    climate.add_argument(
+        "--trewartha-class",
+        action="append",
+        default=None,
+        metavar="CLASS",
+        help="Show only this Trewartha class (e.g. Do) or group (e.g. C); "
+             "repeat for several. Implies --trewartha.",
     )
 
     ice = parser.add_argument_group("Polar ice")
@@ -1170,12 +1221,14 @@ _RECIPE_PATH_KEYS = {"route"}
 
 
 def _option_actions(parser: argparse.ArgumentParser) -> dict[str, argparse.Action]:
-    """Each option's actions by its long name without dashes, e.g. ``"route-legend"``."""
+    """Each option's action by every long name without dashes, e.g. ``"route-legend"``."""
     actions = {}
     for action in parser._actions:  # argparse has no public list of its actions
-        long_names = [s for s in action.option_strings if s.startswith("--")]
-        if long_names and action.dest not in _NOT_IN_RECIPES:
-            actions[long_names[0][2:]] = action
+        if action.dest in _NOT_IN_RECIPES:
+            continue
+        for name in action.option_strings:
+            if name.startswith("--"):
+                actions[name[2:]] = action
     return actions
 
 
@@ -1320,13 +1373,18 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
     )
     print(f"Output file: {output_file}\n")
 
-    # Köppen-Geiger overlay prompt
-    koppen_input = input("Enable Köppen-Geiger climate overlay? [y/N]: ").strip().lower()
-    enable_koppen = koppen_input in ("y", "yes")
+    # Climate overlay prompt: Köppen-Geiger, Trewartha or none
+    climate_input = input(
+        "Climate overlay: [k]öppen-Geiger, [t]rewartha, or blank for none: "
+    ).strip().lower()
+    enable_koppen = climate_input in ("k", "koppen", "köppen", "y", "yes")
+    enable_trewartha = climate_input in ("t", "trewartha")
 
     koppen_alpha = 0.45
-    if enable_koppen:
-        raw_alpha = input("Köppen overlay opacity (0-1) [default: 0.45]: ").strip()
+    koppen_classes: list[str] = []
+    trewartha_classes: list[str] = []
+    if enable_koppen or enable_trewartha:
+        raw_alpha = input("Climate overlay opacity (0-1) [default: 0.45]: ").strip()
         if raw_alpha:
             try:
                 val = float(raw_alpha)
@@ -1336,9 +1394,11 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
                     print("Out of range. Using default 0.45.")
             except ValueError:
                 print("Invalid number. Using default 0.45.")
-        koppen_classes = prompt_for_koppen_classes()
-    else:
-        koppen_classes = []
+        if enable_koppen:
+            koppen_classes = prompt_for_koppen_classes()
+        else:
+            trewartha_classes = prompt_for_climate_classes(
+                resolve_trewartha_classes, "e.g. Do, C")
 
     enable_ice = input(
         "Add polar ice at its winter maximum? [y/N]: "
@@ -1370,6 +1430,8 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             ice=enable_ice,
             crops=crops,
             koppen_classes=koppen_classes,
+            trewartha=enable_trewartha,
+            trewartha_classes=trewartha_classes,
             up=up,
         )
     except GoogleTilesError as e:
@@ -1424,8 +1486,12 @@ def run_cli(args: argparse.Namespace) -> None:
     try:
         resolve_crops(args.crop or [])
         resolve_koppen_classes(args.koppen_class or [])
+        resolve_trewartha_classes(args.trewartha_class or [])
     except ValueError as e:
         logger.error("%s", e)
+        sys.exit(1)
+    if (args.koppen or args.koppen_class) and (args.trewartha or args.trewartha_class):
+        logger.error("Choose one climate classification: Köppen-Geiger or Trewartha.")
         sys.exit(1)
 
     # Orientation: a bearing, or the direction toward a place
@@ -1498,6 +1564,8 @@ def run_cli(args: argparse.Namespace) -> None:
             ice_year=args.ice_year,
             crops=args.crop,
             koppen_classes=args.koppen_class,
+            trewartha=args.trewartha,
+            trewartha_classes=args.trewartha_class,
             up=up,
         )
     except GoogleTilesError as e:

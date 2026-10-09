@@ -1,0 +1,6 @@
+# The Trewartha climate classification across Asia, centred over the Himalaya.
+lat = 28
+lon = 88
+provider = "osm"
+trewartha = true
+output = "orthographic_map_himalaya_osm_z3_trewartha.png"
