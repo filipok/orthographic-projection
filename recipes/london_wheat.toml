@@ -1,0 +1,5 @@
+# Where wheat is grown (CROPGRIDS, c. 2020), centred on London.
+city = "london"
+provider = "osm"
+crop = ["wheat"]
+output = "orthographic_map_london_osm_z3_wheat.png"

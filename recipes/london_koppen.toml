@@ -1,0 +1,5 @@
+# London with the full Köppen-Geiger climate classification and its key.
+city = "london"
+provider = "osm"
+koppen = true
+output = "orthographic_map_london_osm_koppen_z3.png"

@@ -1,0 +1,15 @@
+# The Viking Age: homelands, settlements, trade, raids and exploration, centred on
+# Scandinavia, with today's polar ice at its winter maximum.
+lat = 62
+lon = 15
+provider = "osm"
+route = [
+    "../routes/viking_homelands.geojson",
+    "../routes/viking_settlements.geojson",
+    "../routes/viking_trade.geojson",
+    "../routes/viking_raids.geojson",
+    "../routes/viking_exploration.geojson",
+]
+route-legend = true
+ice = true
+output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"

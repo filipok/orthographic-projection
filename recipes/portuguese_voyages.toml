@@ -1,0 +1,7 @@
+# The Portuguese voyages of discovery, 1415-1522, on satellite imagery, with a key.
+# Needs a Google Maps key (EEA-billed projects: switch to provider = "nasa").
+city = "lisbon"
+provider = "google_satellite"
+route = ["../routes/portuguese_explorers.geojson"]
+route-legend = true
+output = "orthographic_map_lisbon_google_satellite_z3_explorers.png"

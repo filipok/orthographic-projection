@@ -1,0 +1,5 @@
+# New York on NASA Blue Marble imagery, turned so the direction toward London is up.
+city = "nyc"
+provider = "nasa"
+up-toward = "london"
+output = "orthographic_map_nyc_nasa_z3_up51.png"

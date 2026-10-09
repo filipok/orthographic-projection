@@ -1,0 +1,7 @@
+# São Paulo on Google satellite imagery, with the 2,500 and 5,000 km distance rings.
+# Needs a Google Maps key; projects billed in the EEA no longer get satellite tiles
+# (see "Google tiles" in the README). For free satellite imagery use provider = "nasa".
+city = "sao paulo"
+provider = "google_satellite"
+zoom = 3
+output = "orthographic_map_sao_paulo_google_satellite_z3.png"

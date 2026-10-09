@@ -1,0 +1,9 @@
+# The Portuguese voyages on both hemispheres: Lisbon's globe and its antipode's,
+# which shows Magellan's Pacific crossing and Elcano's return.
+# Needs a Google Maps key (EEA-billed projects: switch to provider = "nasa").
+city = "lisbon"
+provider = "google_satellite"
+route = ["../routes/portuguese_explorers.geojson"]
+route-legend = true
+both-hemispheres = true
+output = "orthographic_map_lisbon_google_satellite_z3_hemispheres.png"

@@ -1,0 +1,6 @@
+# Zambia's dominant climate, Cwa (humid subtropical, dry winter), centred on Lusaka.
+city = "lusaka"
+provider = "osm"
+koppen-class = ["Cwa"]
+koppen-alpha = 0.7
+output = "orthographic_map_lusaka_osm_z3.png"

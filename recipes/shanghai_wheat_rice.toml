@@ -1,0 +1,6 @@
+# Wheat or rice, whichever covers more land in each place, centred on Shanghai:
+# the wheat-rice divide in China and India.
+city = "shanghai"
+provider = "osm"
+crop = ["wheat", "rice"]
+output = "orthographic_map_shanghai_osm_z3_wheat_rice.png"

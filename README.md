@@ -52,7 +52,8 @@ The main script is [ortho.py](ortho.py).
 - Support for multiple tile providers, including free NASA Blue Marble satellite imagery with no API key
 - High-resolution PNG export with transparent background
 - Buffered tile fetching to reduce missing imagery near the edge of the globe
-- Non-interactive CLI mode with `argparse` for scripting and automation
+- Non-interactive CLI mode with `argparse` for scripting and automation, its options grouped by topic in `--help`
+- Recipe files (`--config`): a map's settings in a small TOML file, one per sample map in [recipes/](recipes/)
 - City marker and label overlay on the globe for named locations
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
 - Optional second globe centred on the antipode, so one image shows the whole Earth
@@ -232,8 +233,68 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--both-hemispheres` | Draw a second globe centred on the antipode, showing the whole Earth; `--dpi` up to 600 | off |
 | `--up BEARING` | Compass bearing to put at the top, in degrees clockwise from north | `0` |
 | `--up-toward PLACE` | Put the direction toward a city or `LAT,LON` at the top (instead of `--up`) | — |
+| `--config FILE` | Read settings from a TOML recipe file; the command line overrides it (see "Recipe Files") | — |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
+
+`python ortho.py --help` lists the options in the same groups: Location, Imagery
+and output, Globe layout, Climate, Polar ice, Crops, Routes and areas, Recipes.
+
+### Recipe Files
+
+A recipe is a small TOML file holding a map's settings, so a long command becomes
+`python ortho.py --config recipes/viking_routes.toml`. Its keys are the option
+names without the dashes (`route-legend` or `route_legend`); a list repeats an
+option and `true` turns a flag on:
+
+```toml
+# recipes/viking_routes.toml
+lat = 62
+lon = 15
+provider = "osm"
+route = [
+    "../routes/viking_homelands.geojson",
+    "../routes/viking_trade.geojson",
+]
+route-legend = true
+ice = true
+output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
+```
+
+- **The command line wins.** Options typed after `--config` override the recipe:
+  `--config recipes/viking_routes.toml --provider nasa --dpi 600`. Repeatable
+  options (`--route`, `--crop`, `--koppen-class`) add to the recipe's list.
+  Giving `--city` or `--lat`/`--lon` replaces the recipe's location, and `--up`
+  or `--up-toward` replaces its orientation, so a recipe works anywhere:
+  `--config recipes/london_wheat.toml --city lusaka -o lusaka_wheat.png`. (The
+  bundled recipes name their output file, so give `-o` when you change the place.)
+- **Paths.** Route files in a recipe are relative to the recipe file, so recipes
+  run from any folder. Output paths (`output`, `output-dir`) are relative to
+  where you run the command, as on the command line.
+- **Checks.** Recipe values go through the same checks as typed options (allowed
+  providers, zoom range, crop and climate names, …). An unknown key stops with a
+  suggestion (`citty` → "Did you mean 'city'?"). `config` and `list-crops` can't
+  be set in a recipe.
+- A `false` flag simply leaves it off; to turn off a flag a recipe sets, edit the
+  recipe.
+
+[recipes/](recipes/) has one recipe per sample map in this README:
+
+| Recipe | Sample |
+|---|---|
+| `sao_paulo.toml` | São Paulo on Google satellite imagery, with distance rings |
+| `london_koppen.toml` | London with the Köppen-Geiger climate overlay |
+| `portuguese_voyages.toml` | The Portuguese voyages of discovery, with a key |
+| `portuguese_hemispheres.toml` | The Portuguese voyages on both hemispheres |
+| `viking_routes.toml` | The Viking Age, with polar ice |
+| `london_wheat.toml` | Where wheat is grown, centred on London |
+| `shanghai_wheat_rice.toml` | Wheat or rice, centred on Shanghai |
+| `nyc_toward_london.toml` | New York turned toward London, NASA imagery |
+| `lusaka_cwa.toml` | Zambia's dominant climate, Cwa |
+
+The Google satellite recipes need a Google Maps key and are affected by Google's
+EEA restriction (see "Google tiles" below); add `--provider nasa` to render them
+with free satellite imagery instead.
 
 ### Output Naming
 
@@ -313,7 +374,8 @@ python ortho.py --city london --up-toward 21.42,39.83    # Mecca: the qibla, 119
 ```
 
 The New York sample above was rendered with
-`python ortho.py --city nyc --provider nasa --up-toward london`.
+`python ortho.py --config recipes/nyc_toward_london.toml`
+(`--city nyc --provider nasa --up-toward london`).
 
 - The globe turns; the text does not. The city label, distance-ring labels,
   keys and credits stay upright, and the ring labels stay at the top of their
@@ -437,13 +499,17 @@ When the Köppen-Geiger overlay is on, the route key goes below the climate key.
 | `viking_exploration.geojson` | purple | Faroes, Iceland and Greenland, Vinland, Ohthere's White Sea voyage |
 
 The Portuguese and Viking files carry `legend` labels, so they make compact keys.
-The three historical sample maps above were rendered with:
+The three historical sample maps above were rendered with these recipes (see
+"Recipe Files"):
 
 ```powershell
-python ortho.py --city lisbon --provider google_satellite --route routes/portuguese_explorers.geojson --route-legend
-python ortho.py --lat 62 --lon 15 --route routes/viking_homelands.geojson --route routes/viking_settlements.geojson --route routes/viking_trade.geojson --route routes/viking_raids.geojson --route routes/viking_exploration.geojson --route-legend --ice
-python ortho.py --city lisbon --provider google_satellite --route routes/portuguese_explorers.geojson --route-legend --both-hemispheres
+python ortho.py --config recipes/portuguese_voyages.toml
+python ortho.py --config recipes/viking_routes.toml
+python ortho.py --config recipes/portuguese_hemispheres.toml
 ```
+
+The Viking recipe, for example, stands for
+`--lat 62 --lon 15 --route routes/viking_homelands.geojson --route routes/viking_settlements.geojson --route routes/viking_trade.geojson --route routes/viking_raids.geojson --route routes/viking_exploration.geojson --route-legend --ice`.
 
 The ice on the Viking map is today's winter maximum, not the Viking Age's.
 
@@ -493,8 +559,8 @@ python ortho.py --list-crops
 The two crop samples above were rendered with:
 
 ```powershell
-python ortho.py --city london --crop wheat
-python ortho.py --city shanghai --crop wheat --crop rice
+python ortho.py --config recipes/london_wheat.toml          # --city london --crop wheat
+python ortho.py --config recipes/shanghai_wheat_rice.toml   # --city shanghai --crop wheat --crop rice
 ```
 
 - **Several crops.** Repeat `--crop`. Each place then takes the colour of
@@ -554,7 +620,8 @@ python ortho.py --lat 30 --lon 0 --koppen-class Cs --both-hemispheres
 
 The Lusaka sample above shows Zambia's dominant climate, Cwa (71% of the
 country; then savanna, Aw, 19%; highland Cwb, 6%; hot semi-arid BSh, 3%):
-`python ortho.py --city lusaka --koppen-class Cwa --koppen-alpha 0.7`.
+`python ortho.py --config recipes/lusaka_cwa.toml`
+(`--city lusaka --koppen-class Cwa --koppen-alpha 0.7`).
 
 The classes are Af, Am, As/Aw (tropical); BWh, BWk, BSh, BSk (arid); Csa, Csb,
 Csc, Cwa, Cwb, Cwc, Cfa, Cfb, Cfc (temperate); Dsa–Dsd, Dwa–Dwd, Dfa–Dfd
@@ -648,6 +715,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [tile_fetch.py](tile_fetch.py): single-tile downloader shared by the tile sources
 - [LICENSE](LICENSE): MIT licence
 - [routes/](routes/): bundled route files
+- [recipes/](recipes/): recipe files for the sample maps (`--config`)
 - [requirements.txt](requirements.txt): minimum dependency versions
 - [pyproject.toml](pyproject.toml): project metadata and `console_scripts` entry point
 - [tests/](tests/): unit test suite
