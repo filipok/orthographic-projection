@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import difflib
 import getpass
 import logging
 import math
 import os
 import sys
 import time
+import tomllib
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -994,13 +996,15 @@ def prompt_for_routes() -> list[Route]:
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
-    """Build and return the argparse parser."""
+    """Build and return the argparse parser, its options grouped by topic for ``--help``."""
     parser = argparse.ArgumentParser(
         description="Generate high-resolution orthographic globe maps.",
-        epilog="Run without arguments for interactive mode.",
+        epilog="Run without arguments for interactive mode. Settings can also come from "
+               "a recipe file (--config); options given on the command line override it.",
     )
 
-    location = parser.add_mutually_exclusive_group()
+    where = parser.add_argument_group("Location", "Where the globe is centred.")
+    location = where.add_mutually_exclusive_group()
     location.add_argument(
         "--city",
         type=str.lower,
@@ -1013,19 +1017,20 @@ def build_cli_parser() -> argparse.ArgumentParser:
         type=float,
         help="Custom latitude (-90 to 90). Must be used with --lon.",
     )
-
-    parser.add_argument(
+    where.add_argument(
         "--lon",
         type=float,
         help="Custom longitude (-180 to 180). Must be used with --lat.",
     )
-    parser.add_argument(
+
+    imagery = parser.add_argument_group("Imagery and output")
+    imagery.add_argument(
         "--provider",
         choices=TILE_PROVIDERS,
         default="osm",
         help="Tile provider (default: osm)",
     )
-    parser.add_argument(
+    imagery.add_argument(
         "--zoom",
         type=int,
         default=3,
@@ -1033,97 +1038,40 @@ def build_cli_parser() -> argparse.ArgumentParser:
         metavar="ZOOM",
         help="Tile zoom level 1-4 (default: 3)",
     )
-    parser.add_argument(
+    imagery.add_argument(
         "--dpi",
         type=int,
         default=DEFAULT_DPI,
         help=f"Output DPI, {MIN_DPI}-{MAX_DPI} (default: {DEFAULT_DPI})",
     )
-    parser.add_argument(
+    imagery.add_argument(
         "-o", "--output",
         help="Explicit output filepath (overrides auto-naming)",
     )
-    parser.add_argument(
+    imagery.add_argument(
         "--output-dir",
         help="Directory to save auto-named files into (default: current dir)",
     )
-    parser.add_argument(
+    imagery.add_argument(
         "--cache-dir",
         default=None,
         help=f"OSM and NASA tile cache directory (default: {DEFAULT_CACHE_DIR}). "
              "Google tiles are never cached.",
     )
-    parser.add_argument(
+    imagery.add_argument(
         "--no-cache",
         action="store_true",
         help="Download OSM and NASA tiles fresh instead of using the tile cache.",
     )
-    parser.add_argument(
-        "--koppen",
-        action="store_true",
-        default=False,
-        help="Enable Köppen-Geiger climate classification overlay.",
-    )
-    parser.add_argument(
-        "--koppen-alpha",
-        type=float,
-        default=0.45,
-        metavar="ALPHA",
-        help="Opacity of the Köppen-Geiger overlay (0-1, default: 0.45).",
-    )
-    parser.add_argument(
-        "--koppen-class",
-        action="append",
-        default=None,
-        metavar="CLASS",
-        help="Show only this Köppen-Geiger class (e.g. Cfb) or group (e.g. C, Cs); "
-             "repeat for several. Implies --koppen.",
-    )
-    parser.add_argument(
-        "--ice",
-        action="store_true",
-        help="Draw polar ice: sea ice at its winter maximum (NSIDC) and polar land ice.",
-    )
-    parser.add_argument(
-        "--ice-year",
-        type=int,
-        default=None,
-        metavar="YEAR",
-        help=f"Year of the sea ice maxima ({FIRST_ICE_YEAR} on; default: latest published). "
-             "Implies --ice.",
-    )
-    parser.add_argument(
-        "--crop",
-        action="append",
-        default=None,
-        metavar="NAME[:COLOUR]",
-        help="Shade where a crop is grown (CROPGRIDS, c. 2020), e.g. wheat or wheat:#f2b705. "
-             "Repeat for several crops; each place then shows the one with the largest share.",
-    )
-    parser.add_argument(
-        "--list-crops",
-        action="store_true",
-        help="List the crop names --crop accepts, then exit.",
-    )
-    parser.add_argument(
-        "--route",
-        action="append",
-        default=None,
-        metavar="GEOJSON",
-        help="GeoJSON file of LineString routes to draw. Repeat for multiple files.",
-    )
-    parser.add_argument(
-        "--route-legend",
-        action="store_true",
-        help="Add a key below the globe naming each route next to its colour.",
-    )
-    parser.add_argument(
+
+    layout = parser.add_argument_group("Globe layout")
+    layout.add_argument(
         "--both-hemispheres",
         action="store_true",
         help="Draw a second globe centred on the antipode, showing the whole Earth "
              f"(max --dpi {MAX_DPI // 2}).",
     )
-    orientation = parser.add_mutually_exclusive_group()
+    orientation = layout.add_mutually_exclusive_group()
     orientation.add_argument(
         "--up",
         type=float,
@@ -1138,7 +1086,193 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Put the direction toward PLACE at the top: a city name or LAT,LON.",
     )
 
+    climate = parser.add_argument_group("Climate (Köppen-Geiger)")
+    climate.add_argument(
+        "--koppen",
+        action="store_true",
+        default=False,
+        help="Enable Köppen-Geiger climate classification overlay.",
+    )
+    climate.add_argument(
+        "--koppen-alpha",
+        type=float,
+        default=0.45,
+        metavar="ALPHA",
+        help="Opacity of the Köppen-Geiger overlay (0-1, default: 0.45).",
+    )
+    climate.add_argument(
+        "--koppen-class",
+        action="append",
+        default=None,
+        metavar="CLASS",
+        help="Show only this Köppen-Geiger class (e.g. Cfb) or group (e.g. C, Cs); "
+             "repeat for several. Implies --koppen.",
+    )
+
+    ice = parser.add_argument_group("Polar ice")
+    ice.add_argument(
+        "--ice",
+        action="store_true",
+        help="Draw polar ice: sea ice at its winter maximum (NSIDC) and polar land ice.",
+    )
+    ice.add_argument(
+        "--ice-year",
+        type=int,
+        default=None,
+        metavar="YEAR",
+        help=f"Year of the sea ice maxima ({FIRST_ICE_YEAR} on; default: latest published). "
+             "Implies --ice.",
+    )
+
+    crops = parser.add_argument_group("Crops (CROPGRIDS)")
+    crops.add_argument(
+        "--crop",
+        action="append",
+        default=None,
+        metavar="NAME[:COLOUR]",
+        help="Shade where a crop is grown (CROPGRIDS, c. 2020), e.g. wheat or wheat:#f2b705. "
+             "Repeat for several crops; each place then shows the one with the largest share.",
+    )
+    crops.add_argument(
+        "--list-crops",
+        action="store_true",
+        help="List the crop names --crop accepts, then exit.",
+    )
+
+    routes = parser.add_argument_group("Routes and areas")
+    routes.add_argument(
+        "--route",
+        action="append",
+        default=None,
+        metavar="GEOJSON",
+        help="GeoJSON file of routes and areas to draw. Repeat for multiple files.",
+    )
+    routes.add_argument(
+        "--route-legend",
+        action="store_true",
+        help="Add a key below the globe naming each route next to its colour.",
+    )
+
+    recipes = parser.add_argument_group("Recipes")
+    recipes.add_argument(
+        "--config",
+        metavar="FILE",
+        help="Read settings from a TOML recipe file; options on the command line override it.",
+    )
+
     return parser
+
+
+# Options a recipe file cannot set: they are about the run, not the map
+_NOT_IN_RECIPES = {"config", "list_crops", "help"}
+# Recipe keys holding input files, resolved relative to the recipe file
+_RECIPE_PATH_KEYS = {"route"}
+
+
+def _option_actions(parser: argparse.ArgumentParser) -> dict[str, argparse.Action]:
+    """Each option's actions by its long name without dashes, e.g. ``"route-legend"``."""
+    actions = {}
+    for action in parser._actions:  # argparse has no public list of its actions
+        long_names = [s for s in action.option_strings if s.startswith("--")]
+        if long_names and action.dest not in _NOT_IN_RECIPES:
+            actions[long_names[0][2:]] = action
+    return actions
+
+
+def _given_dests(parser: argparse.ArgumentParser, argv: Sequence[str]) -> set[str]:
+    """Dests of the options named in *argv*, including abbreviated long options."""
+    option_strings = parser._option_string_actions  # argparse's own name → action map
+    given = set()
+    for token in argv:
+        if token == "--":
+            break
+        if not token.startswith("-") or token == "-":
+            continue
+        name = token.split("=", 1)[0]
+        action = option_strings.get(name)
+        if action is None and name.startswith("--"):
+            matches = {a for s, a in option_strings.items() if s.startswith(name)}
+            action = matches.pop() if len(matches) == 1 else None
+        if action is not None:
+            given.add(action.dest)
+    return given
+
+
+def _recipe_tokens(
+    parser: argparse.ArgumentParser, path: str, cli_argv: Sequence[str],
+) -> list[str]:
+    """Turn the TOML recipe at *path* into command-line tokens for *parser*.
+
+    Keys are option names (``provider``, ``route-legend`` or ``route_legend``).
+    Lists repeat an option; ``true`` turns a flag on. When the command line
+    names an option of a mutually exclusive pair (``--lat``/``--lon`` against
+    ``city``, ``--up-toward`` against ``up``), the recipe's side is dropped.
+    Errors exit through ``parser.error`` like any bad command line.
+    """
+    try:
+        with open(path, "rb") as fh:
+            recipe = tomllib.load(fh)
+    except OSError as e:
+        parser.error(f"cannot read recipe {path}: {e.strerror or e}")
+    except tomllib.TOMLDecodeError as e:
+        parser.error(f"recipe {path} is not valid TOML: {e}")
+
+    actions = _option_actions(parser)
+    given = _given_dests(parser, cli_argv)
+    # Location counts as one choice: city, or lat with lon
+    overridden = {"city", "lat", "lon"} if given & {"city", "lat", "lon"} else set()
+    for group in parser._mutually_exclusive_groups:
+        dests = {a.dest for a in group._group_actions}
+        if dests & given:
+            overridden |= dests
+
+    base = os.path.dirname(os.path.abspath(path))
+    tokens: list[str] = []
+    for key, value in recipe.items():
+        name = key.replace("_", "-")
+        action = actions.get(name)
+        if action is None:
+            close = difflib.get_close_matches(name, actions, n=1)
+            hint = f" Did you mean {close[0]!r}?" if close else ""
+            parser.error(f"recipe {path}: unknown option {key!r}.{hint}")
+        if action.dest in overridden:
+            continue
+        option = f"--{name}"
+        if action.nargs == 0:  # a flag such as --ice
+            if not isinstance(value, bool):
+                parser.error(f"recipe {path}: {key} must be true or false")
+            if value:
+                tokens.append(option)
+            continue
+        values = value if isinstance(value, list) else [value]
+        if len(values) > 1 and not isinstance(action, argparse._AppendAction):
+            parser.error(f"recipe {path}: {key} takes a single value, not a list")
+        for item in values:
+            if isinstance(item, bool) or not isinstance(item, (str, int, float)):
+                parser.error(f"recipe {path}: {key} must be text or a number, got {item!r}")
+            if action.dest in _RECIPE_PATH_KEYS:
+                item = os.path.normpath(os.path.join(base, item))
+            tokens.append(f"{option}={item}")  # "=" keeps values like -33.9 attached
+    return tokens
+
+
+def parse_cli_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse *argv* (default ``sys.argv[1:]``), reading a ``--config`` recipe first.
+
+    The recipe's settings come first, so the command line overrides them;
+    repeatable options (``--route``, ``--crop``, ``--koppen-class``) add to
+    the recipe's lists.
+    """
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = build_cli_parser()
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config")
+    config_path = pre.parse_known_args(argv)[0].config
+    if not config_path:
+        return parser.parse_args(argv)
+    args = parser.parse_args(_recipe_tokens(parser, config_path, argv) + argv)
+    logger.info("Using recipe %s", config_path)
+    return args
 
 
 def load_route_files(paths: Sequence[str]) -> list[Route]:
@@ -1382,8 +1516,7 @@ def main() -> None:
     if len(sys.argv) == 1:
         run_interactive(tile_cache_dir=configure_tile_cache())
     else:
-        parser = build_cli_parser()
-        parsed_args = parser.parse_args()
+        parsed_args = parse_cli_args()
         if parsed_args.list_crops:
             print_crop_names()
             return

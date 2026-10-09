@@ -512,6 +512,143 @@ class TestCLIParser:
 
 
 # ===================================================================
+# Grouped --help and recipe files (--config)
+# ===================================================================
+
+
+RECIPE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "recipes")
+
+
+class TestGroupedHelp:
+    def test_options_are_grouped_by_topic(self):
+        help_text = ortho.build_cli_parser().format_help()
+        for title in ("Location:", "Imagery and output:", "Globe layout:", "Climate (Köppen-Geiger):",
+                      "Polar ice:", "Crops (CROPGRIDS):", "Routes and areas:", "Recipes:"):
+            assert title in help_text
+        city_entry = help_text.index("\n  --city ")             # its entry, not the usage line
+        assert help_text.index("Location:") < city_entry < help_text.index("Imagery and output:")
+
+
+class TestRecipes:
+    def _recipe(self, tmp_path, text, name="recipe.toml"):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return str(path)
+
+    def test_settings_come_from_the_recipe(self, tmp_path):
+        path = self._recipe(tmp_path, 'city = "lisbon"\nprovider = "nasa"\nzoom = 2\n'
+                                      'route_legend = true\nboth-hemispheres = true\ncrop = ["wheat", "rice"]\n')
+        args = ortho.parse_cli_args(["--config", path])
+        assert (args.city, args.provider, args.zoom) == ("lisbon", "nasa", 2)
+        assert args.route_legend and args.both_hemispheres
+        assert args.crop == ["wheat", "rice"]
+        assert args.config == path
+
+    def test_command_line_overrides_and_lists_add_up(self, tmp_path):
+        path = self._recipe(tmp_path, 'city = "lisbon"\nprovider = "nasa"\ncrop = ["wheat"]\n')
+        args = ortho.parse_cli_args(["--config", path, "--provider", "osm", "--crop", "rice"])
+        assert args.provider == "osm"
+        assert args.crop == ["wheat", "rice"]
+
+    def test_command_line_location_replaces_the_recipes(self, tmp_path):
+        path = self._recipe(tmp_path, 'lat = 62\nlon = 15\n')
+        args = ortho.parse_cli_args(["--config", path, "--city", "paris"])
+        assert (args.city, args.lat, args.lon) == ("paris", None, None)
+        path = self._recipe(tmp_path, 'city = "paris"\n', name="city.toml")
+        args = ortho.parse_cli_args(["--config", path, "--lat", "-33.9", "--lon", "151.2"])
+        assert (args.city, args.lat, args.lon) == (None, -33.9, 151.2)
+
+    def test_command_line_orientation_replaces_the_recipes(self, tmp_path):
+        path = self._recipe(tmp_path, 'city = "nyc"\nup-toward = "london"\n')
+        args = ortho.parse_cli_args(["--config", path, "--up", "180"])
+        assert (args.up, args.up_toward) == (180, None)
+
+    def test_abbreviated_options_still_override(self, tmp_path):
+        path = self._recipe(tmp_path, 'city = "nyc"\nup = 90\n')
+        args = ortho.parse_cli_args(["--config", path, "--up-t", "london"])
+        assert (args.up, args.up_toward) == (0.0, "london")
+
+    def test_negative_numbers(self, tmp_path):
+        path = self._recipe(tmp_path, 'lat = -33.9\nlon = 151.2\nup-toward = "-15.4,28.3"\n')
+        args = ortho.parse_cli_args(["--config", path])
+        assert (args.lat, args.lon, args.up_toward) == (-33.9, 151.2, "-15.4,28.3")
+
+    def test_route_paths_are_relative_to_the_recipe(self, tmp_path):
+        path = self._recipe(tmp_path, 'city = "lisbon"\nroute = ["../routes/a.geojson"]\n',
+                            name="recipes/r.toml")
+        args = ortho.parse_cli_args(["--config", path])
+        assert args.route == [str(tmp_path / "routes" / "a.geojson")]
+
+    def test_false_flag_is_simply_off(self, tmp_path):
+        path = self._recipe(tmp_path, 'city = "nyc"\nice = false\n')
+        assert ortho.parse_cli_args(["--config", path]).ice is False
+
+    @pytest.mark.parametrize("text, message", [
+        ('citty = "paris"\n', "unknown option 'citty'. Did you mean 'city'?"),
+        ('config = "other.toml"\n', "unknown option 'config'"),
+        ('list-crops = true\n', "unknown option 'list-crops'"),
+        ('ice = "yes"\n', "ice must be true or false"),
+        ('zoom = [3, 4]\n', "zoom takes a single value"),
+        ('city = {name = "paris"}\n', "city must be text or a number"),
+        ('zoom = 9\n', "invalid choice"),
+        ('city = \n', "is not valid TOML"),
+    ])
+    def test_errors_exit_like_a_bad_command_line(self, tmp_path, capsys, text, message):
+        path = self._recipe(tmp_path, text)
+        with pytest.raises(SystemExit) as excinfo:
+            ortho.parse_cli_args(["--config", path])
+        assert excinfo.value.code == 2
+        assert message in capsys.readouterr().err
+
+    def test_missing_recipe(self, tmp_path, capsys):
+        with pytest.raises(SystemExit):
+            ortho.parse_cli_args(["--config", str(tmp_path / "nope.toml")])
+        assert "cannot read recipe" in capsys.readouterr().err
+
+    def test_without_config_parses_as_before(self):
+        args = ortho.parse_cli_args(["--city", "nyc", "--ice"])
+        assert args.city == "nyc" and args.ice and args.config is None
+
+    def test_main_runs_the_recipe(self, tmp_path, monkeypatch):
+        path = self._recipe(tmp_path, 'city = "lusaka"\nkoppen-class = ["Cwa"]\n')
+        monkeypatch.setattr(ortho.sys, "argv", ["ortho.py", "--config", path])
+        with mock.patch.object(ortho, "run_cli") as run, \
+                mock.patch.object(ortho, "load_env_files"):
+            ortho.main()
+        args = run.call_args.args[0]
+        assert args.city == "lusaka" and args.koppen_class == ["Cwa"]
+
+
+class TestBundledRecipes:
+    RECIPES = sorted(f for f in os.listdir(RECIPE_DIR) if f.endswith(".toml"))
+
+    def test_there_is_a_recipe_per_readme_sample(self):
+        assert len(self.RECIPES) >= 9
+
+    @pytest.mark.parametrize("name", RECIPES)
+    def test_recipe_parses_and_its_routes_exist(self, name):
+        args = ortho.parse_cli_args(["--config", os.path.join(RECIPE_DIR, name)])
+        assert args.city or args.lat is not None
+        assert args.output and args.output.startswith("orthographic_map_")   # ignored by git
+        assert all(os.path.isfile(route) for route in args.route or [])
+
+    def test_viking_recipe_matches_the_command_line(self):
+        root = os.path.dirname(RECIPE_DIR)
+        routes = [os.path.join(root, "routes", f"viking_{n}.geojson")
+                  for n in ("homelands", "settlements", "trade", "raids", "exploration")]
+        typed = ["--lat", "62", "--lon", "15", "--route-legend", "--ice",
+                 "-o", "orthographic_map_scandinavia_osm_z3_vikings_ice.png"]
+        for route in routes:
+            typed += ["--route", route]
+        from_recipe = vars(ortho.parse_cli_args(["--config", os.path.join(RECIPE_DIR, "viking_routes.toml")]))
+        from_flags = vars(ortho.parse_cli_args(typed))
+        from_recipe.pop("config")
+        from_flags.pop("config")
+        assert from_recipe == from_flags
+
+
+# ===================================================================
 # run_cli validation
 # ===================================================================
 
