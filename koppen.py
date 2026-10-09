@@ -21,6 +21,7 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Sequence
 
 import numpy as np
 from PIL import Image
@@ -97,6 +98,38 @@ _GROUPS: list[tuple[str, str, list[int]]] = [
     ("D", "Continental",   [17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]),
     ("E", "Polar",         [29, 30]),
 ]
+
+
+# Up to this many classes, the key spells out each class's name
+_NAMED_KEY_MAX = 8
+
+
+def resolve_koppen_classes(specs: Sequence[str]) -> tuple[int, ...]:
+    """Grid codes of the classes named by *specs*, in climate-group order.
+
+    Each spec is a class symbol (``"Cfb"``; ``"As"``, ``"Aw"`` or ``"As/Aw"``
+    for the tropical savanna class) or the start of one, naming a group:
+    ``"C"`` is every temperate class, ``"Cf"`` is Cfa, Cfb and Cfc, ``"BW"``
+    both deserts. Matching ignores case. Raises ``ValueError`` for a spec
+    that matches no class.
+    """
+    selected: set[int] = set()
+    for spec in specs:
+        key = spec.strip().lower()
+        if key == "as/aw":
+            key = "as"
+        matches = [
+            code for code, (symbol, _, _) in KOPPEN_CLASSES.items()
+            if key and any(part.lower().startswith(key) for part in symbol.split("/"))
+        ]
+        if not matches:
+            valid = ", ".join(symbol for symbol, _, _ in KOPPEN_CLASSES.values())
+            raise ValueError(
+                f"Unknown Köppen-Geiger class {spec!r}. Use a class ({valid}) "
+                "or a group such as C (temperate) or Cf."
+            )
+        selected.update(matches)
+    return tuple(sorted(selected))
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +367,7 @@ def add_koppen_overlay(
     resolution: str = DEFAULT_RESOLUTION,
     period: str = DEFAULT_PERIOD,
     regrid_shape: int = 750,
+    classes: Sequence[int] | None = None,
 ) -> None:
     """Render the Köppen-Geiger overlay on *ax*.
 
@@ -353,9 +387,14 @@ def add_koppen_overlay(
         Resolution (pixels along the longer side) the raster is warped to in
         the target projection. Cartopy's default of 750 looks blocky on large
         renders; match the tiles' regrid shape for consistent sharpness.
+    classes : sequence of int, optional
+        Grid codes to show (see :func:`resolve_koppen_classes`); every other
+        class is left clear. ``None`` shows all 30.
     """
     tif_path = ensure_koppen_data(cache_dir, resolution, period)
     data = _read_koppen_tif(tif_path)
+    if classes:
+        data = np.where(np.isin(data, classes), data, 0).astype(np.uint8)
 
     cmap, norm = build_koppen_colormap()
 
@@ -383,31 +422,33 @@ def add_koppen_overlay(
 # ---------------------------------------------------------------------------
 
 
-def add_koppen_legend(ax: GeoAxes, x: float = 0.5) -> None:
+def add_koppen_legend(ax: GeoAxes, x: float = 0.5, classes: Sequence[int] | None = None) -> None:
     """Add a compact Köppen-Geiger legend strip below the globe.
 
-    The legend lists all 30 sub-classes in climate-group order (A–E) as a
-    flat 15-column grid, each with its canonical colour swatch and
-    abbreviation.  *x* is the strip's horizontal centre in axes coordinates.
-    The dataset credit (:data:`KOPPEN_ATTRIBUTION`) is drawn by the caller.
+    The legend lists the sub-classes shown (all 30 by default) in
+    climate-group order (A–E), each with its canonical colour swatch and
+    abbreviation; with only a few, it also names them ("Cfb: Oceanic").
+    *x* is the strip's horizontal centre in axes coordinates. The dataset
+    credit (:data:`KOPPEN_ATTRIBUTION`) is drawn by the caller.
     """
+    shown = [code for _, _, codes in _GROUPS for code in codes if not classes or code in classes]
+    named = len(shown) <= _NAMED_KEY_MAX
     handles: list[mpatches.Patch] = []
     labels: list[str] = []
 
-    for _group_letter, _group_name, codes in _GROUPS:
-        for code in codes:
-            sym, _desc, (r, g, b) = KOPPEN_CLASSES[code]
-            colour = (r / 255, g / 255, b / 255)
-            handles.append(mpatches.Patch(facecolor=colour, edgecolor="white", linewidth=0.4))
-            labels.append(sym)
+    for code in shown:
+        sym, desc, (r, g, b) = KOPPEN_CLASSES[code]
+        colour = (r / 255, g / 255, b / 255)
+        handles.append(mpatches.Patch(facecolor=colour, edgecolor="white", linewidth=0.4))
+        labels.append(f"{sym}: {desc}" if named else sym)
 
     legend = ax.legend(
         handles,
         labels,
         loc="lower center",
         bbox_to_anchor=(x, -0.06),
-        ncol=15,
-        fontsize=6.5,
+        ncol=min(len(handles), 4) if named else 15,
+        fontsize=8 if named else 6.5,
         frameon=True,
         fancybox=True,
         framealpha=0.85,

@@ -188,6 +188,26 @@ class TestBuildOutputFilename:
         result = ortho.build_output_filename("lisbon", "osm", 3, both_hemispheres=True)
         assert result == "orthographic_map_lisbon_osm_z3_hemispheres.png"
 
+    @pytest.mark.parametrize("up, suffix", [(0, ""), (360, ""), (180, "_up180"), (119.6, "_up120"), (-90, "_up270")])
+    def test_rotation_suffix(self, up, suffix):
+        assert ortho.build_output_filename("sydney", "osm", 3, up=up) == f"orthographic_map_sydney_osm_z3{suffix}.png"
+        assert ortho.build_output_filename("sydney", "osm", 3, True, up).endswith(f"_hemispheres{suffix}.png")
+
+
+class TestResolvePlace:
+    def test_city_names_in_any_case(self):
+        assert ortho.resolve_place("new delhi") == (
+            ortho.MAJOR_METROPOLISES["New Delhi"]["lat"], ortho.MAJOR_METROPOLISES["New Delhi"]["lon"])
+
+    def test_lat_lon(self):
+        assert ortho.resolve_place("21.42, 39.83") == (21.42, 39.83)
+
+    @pytest.mark.parametrize("place, match", [("Atlantis", "not a known city"), ("95,0", "out of range"),
+                                              ("1,2,3", "not a known city")])
+    def test_invalid(self, place, match):
+        with pytest.raises(ValueError, match=match):
+            ortho.resolve_place(place)
+
 
 # ===================================================================
 # antipode and render options
@@ -433,6 +453,19 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc", "--ice", "--ice-year", "2012"])
         assert args.ice is True and args.ice_year == 2012
 
+    def test_orientation_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert args.up == 0 and args.up_toward is None
+        assert self._parse(["--city", "nyc", "--up", "180"]).up == 180
+        assert self._parse(["--city", "nyc", "--up-toward", "Tokyo"]).up_toward == "Tokyo"
+        with pytest.raises(SystemExit):
+            self._parse(["--city", "nyc", "--up", "90", "--up-toward", "Tokyo"])
+
+    def test_koppen_class_flag(self):
+        assert self._parse(["--city", "nyc"]).koppen_class is None
+        assert self._parse(["--city", "nyc", "--koppen-class", "Cfb", "--koppen-class", "Cs"]).koppen_class == [
+            "Cfb", "Cs"]
+
     def test_crop_flags(self):
         assert self._parse(["--city", "nyc"]).crop is None
         args = self._parse(["--city", "nyc", "--crop", "wheat", "--crop", "rice:#00ffff"])
@@ -467,6 +500,7 @@ class TestRunCLIValidation:
             output=None, output_dir=None, cache_dir=None,
             koppen=False, koppen_alpha=0.45, route=None, route_legend=False,
             both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
+            koppen_class=None, up=0.0, up_toward=None,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -624,6 +658,46 @@ class TestRunCLIValidation:
             with pytest.raises(SystemExit):
                 ortho.run_cli(args)
         render.assert_not_called()
+
+    def test_up_passed_to_renderer_and_named(self):
+        args = self._make_args(city="sydney", up=180.0)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["up"] == 180
+        assert render.call_args.kwargs["output_filename"] == "orthographic_map_sydney_osm_z3_up180.png"
+
+    def test_up_toward_becomes_a_bearing(self):
+        args = self._make_args(city="london", up_toward="21.42,39.83")    # Mecca
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["up"] == pytest.approx(119, abs=1)
+
+    @pytest.mark.parametrize("target", ["Atlantis", "london"])   # unknown, and the centre itself
+    def test_bad_up_toward_exits_before_render(self, target):
+        args = self._make_args(city="london", up_toward=target)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+
+    def test_koppen_classes_passed_to_renderer(self):
+        args = self._make_args(city="paris", koppen_class=["Cfb", "Cs"])
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["koppen_classes"] == ["Cfb", "Cs"]
+
+    def test_unknown_koppen_class_exits_before_render(self, caplog):
+        args = self._make_args(city="paris", koppen_class=["Cxx"])
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+        assert "Unknown Köppen-Geiger class" in caplog.text
 
     def test_crops_passed_to_renderer(self):
         args = self._make_args(city="paris", crop=["wheat", "rice:#00ffff"])
@@ -911,6 +985,58 @@ class TestGenerateOrthographicMapIntegration:
         assert "Skipping crop areas: no crop data" in caplog.text
         key.assert_not_called()
         assert ortho.CROP_ATTRIBUTION not in attribution.call_args.args[1]
+
+    def test_rotated_globes(self, tmp_path):
+        """Both globes turn; the far one keeps the near globe's top point at its top."""
+        from rotation import RotatedOrthographic, far_side_up
+
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=51.5, lon=-0.13, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), up=90, both_hemispheres=True, city_name="London",
+            )
+        near, far = attribution.call_args.args[0].figure.axes
+        assert isinstance(near.projection, RotatedOrthographic) and near.projection.up == 90
+        assert isinstance(far.projection, RotatedOrthographic)
+        assert far.projection.up == pytest.approx(far_side_up(51.5, -0.13, 90, -51.5, 179.87))
+        assert any(t.get_text().strip() == "London" for t in near.texts)
+
+    def test_north_up_keeps_cartopys_orthographic(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path),
+            )
+        assert type(attribution.call_args.args[0].projection) is ortho.ccrs.Orthographic
+
+    def test_non_finite_up_fails_before_any_work(self, tmp_path):
+        with mock.patch.object(ortho, "create_tile_source") as create:
+            with pytest.raises(ValueError, match="bearing"):
+                ortho.generate_orthographic_map(
+                    lat=0, lon=0, output_filename=str(tmp_path / "m.png"), up=float("nan"),
+                )
+        create.assert_not_called()
+
+    def test_koppen_classes_imply_the_overlay_and_reach_it(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "add_koppen_overlay") as overlay, \
+                mock.patch.object(ortho, "add_koppen_legend") as key:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), koppen_classes=["Cs"],
+            )
+        codes = ortho.resolve_koppen_classes(["Cs"])
+        assert overlay.call_args.kwargs["classes"] == codes
+        assert key.call_args.kwargs["classes"] == codes
+
+    def test_unknown_koppen_class_fails_before_any_work(self, tmp_path):
+        with mock.patch.object(ortho, "create_tile_source") as create:
+            with pytest.raises(ValueError, match="Unknown Köppen-Geiger class"):
+                ortho.generate_orthographic_map(
+                    lat=0, lon=0, output_filename=str(tmp_path / "m.png"), koppen_classes=["Cxx"],
+                )
+        create.assert_not_called()
 
     def test_unknown_crop_fails_before_any_work(self, tmp_path):
         with mock.patch.object(ortho, "create_tile_source") as create:

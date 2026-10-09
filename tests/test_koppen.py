@@ -7,6 +7,7 @@ import urllib.error
 import zipfile
 from unittest import mock
 
+import numpy as np
 import pytest
 
 import koppen
@@ -224,3 +225,66 @@ class TestLegend:
         for patch, code in zip(legend.get_patches(), expected_codes):
             r, g, b, _a = mcolors.to_rgba(patch.get_facecolor())
             assert (round(r * 255), round(g * 255), round(b * 255)) == koppen.KOPPEN_CLASSES[code][2]
+
+
+# ===================================================================
+# Showing only some classes
+# ===================================================================
+
+
+class TestKoppenClasses:
+    @pytest.mark.parametrize("specs, symbols", [
+        (["Cfb"], ["Cfb"]),
+        (["cfb"], ["Cfb"]),                                  # any case
+        (["Cf"], ["Cfa", "Cfb", "Cfc"]),                     # a sub-group
+        (["C"], ["Csa", "Csb", "Csc", "Cwa", "Cwb", "Cwc", "Cfa", "Cfb", "Cfc"]),
+        (["BW"], ["BWh", "BWk"]),
+        (["Aw"], ["As/Aw"]),                                 # either half of As/Aw
+        (["As/Aw"], ["As/Aw"]),
+        (["E", "Csa"], ["Csa", "ET", "EF"]),                 # unions come back in code order
+        (["Cs", "Csa"], ["Csa", "Csb", "Csc"]),              # overlaps count once
+    ])
+    def test_resolve(self, specs, symbols):
+        codes = koppen.resolve_koppen_classes(specs)
+        assert [koppen.KOPPEN_CLASSES[c][0] for c in codes] == symbols
+        assert list(codes) == sorted(codes)
+
+    @pytest.mark.parametrize("spec", ["Xyz", "", "F"])
+    def test_unknown_class_lists_the_valid_ones(self, spec):
+        with pytest.raises(ValueError, match="Cfb"):
+            koppen.resolve_koppen_classes([spec])
+
+    def test_overlay_clears_other_classes(self, monkeypatch):
+        import cartopy.crs as ccrs
+        from matplotlib.figure import Figure
+
+        raster = np.array([[0, 14, 15], [16, 15, 29]], dtype=np.uint8)
+        monkeypatch.setattr(koppen, "ensure_koppen_data", lambda *a, **k: "unused.tif")
+        monkeypatch.setattr(koppen, "_read_koppen_tif", lambda path: raster)
+        fig = Figure()
+        ax = fig.add_subplot(projection=ccrs.Orthographic(0, 0))
+        with mock.patch.object(ax, "imshow") as imshow:
+            koppen.add_koppen_overlay(ax, classes=(15,))
+        drawn = imshow.call_args.args[0]
+        np.testing.assert_array_equal(drawn, [[0, 0, 15], [0, 15, 0]])
+
+    def test_key_names_a_few_classes(self):
+        import cartopy.crs as ccrs
+        from matplotlib.figure import Figure
+
+        fig = Figure()
+        ax = fig.add_subplot(projection=ccrs.Orthographic(0, 0))
+        koppen.add_koppen_legend(ax, classes=koppen.resolve_koppen_classes(["Cs"]))
+        labels = [t.get_text() for t in ax.get_legend().get_texts()]
+        assert labels == ["Csa: Mediterranean hot summer", "Csb: Mediterranean warm summer",
+                          "Csc: Mediterranean cold summer"]
+
+    def test_key_uses_symbols_for_many_classes(self):
+        import cartopy.crs as ccrs
+        from matplotlib.figure import Figure
+
+        fig = Figure()
+        ax = fig.add_subplot(projection=ccrs.Orthographic(0, 0))
+        koppen.add_koppen_legend(ax, classes=koppen.resolve_koppen_classes(["C"]))
+        labels = [t.get_text() for t in ax.get_legend().get_texts()]
+        assert labels == ["Csa", "Csb", "Csc", "Cwa", "Cwb", "Cwc", "Cfa", "Cfb", "Cfc"]

@@ -4,6 +4,7 @@ import argparse
 import concurrent.futures
 import getpass
 import logging
+import math
 import os
 import sys
 import time
@@ -34,7 +35,11 @@ from crops import (
     load_crop_layer, resolve_crops,
 )
 from ice import FIRST_ICE_YEAR, IceDataError, draw_ice, load_ice_layers
-from koppen import KOPPEN_ATTRIBUTION, KoppenDataError, add_koppen_overlay, add_koppen_legend
+from koppen import (
+    KOPPEN_ATTRIBUTION, KoppenDataError, add_koppen_overlay, add_koppen_legend,
+    resolve_koppen_classes,
+)
+from rotation import far_side_up, globe_projection, initial_bearing, normalise_bearing
 from routes import Route, add_route_legend, draw_routes, load_routes
 from tile_fetch import download_tile
 
@@ -160,6 +165,7 @@ MAJOR_METROPOLISES = {
     "Sao Paulo": {"lat": -23.5505, "lon": -46.6333, "slug": "sao_paulo"},
     "Lagos": {"lat": 6.5244, "lon": 3.3792, "slug": "lagos"},
     "Johannesburg": {"lat": -26.2041, "lon": 28.0473, "slug": "johannesburg"},
+    "Lusaka": {"lat": -15.3875, "lon": 28.3228, "slug": "lusaka"},
     "Sydney": {"lat": -33.8688, "lon": 151.2093, "slug": "sydney"},
     "Lisbon": {"lat": 38.7223, "lon": -9.1393, "slug": "lisbon"},
     "Honolulu": {"lat": 21.3069, "lon": -157.8583, "slug": "honolulu"},
@@ -336,6 +342,8 @@ def generate_orthographic_map(
     ice: bool = False,
     ice_year: int | None = None,
     crops: Sequence[str] | None = None,
+    koppen_classes: Sequence[str] | None = None,
+    up: float = 0.0,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -397,6 +405,13 @@ def generate_orthographic_map(
         ``"wheat"`` or ``"wheat:#f2b705"`` (see :data:`crops.CROP_NAMES`).
         With several, each cell shows the crop with the largest share. A
         key below the globe names them.
+    koppen_classes : sequence of str, optional
+        Show only these Köppen-Geiger classes or groups (``"Cfb"``, ``"Cs"``,
+        ``"C"``, see :func:`koppen.resolve_koppen_classes`). Implies *koppen*.
+    up : float
+        Compass bearing (degrees clockwise from north) to put at the top of
+        the globe; 0 keeps north up, 180 puts south up. Text stays upright.
+        With *both_hemispheres*, the far globe turns to match.
 
     Returns
     -------
@@ -408,6 +423,11 @@ def generate_orthographic_map(
         dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
     )
     resolve_crops(crops or [])  # unknown names and bad colours fail before any download
+    koppen_codes = resolve_koppen_classes(koppen_classes or [])
+    koppen = koppen or bool(koppen_codes)
+    if not math.isfinite(up):
+        raise ValueError(f"up must be a compass bearing in degrees, got {up}")
+    up = normalise_bearing(up)
 
     # Resolve output path and create its folder now, not after all the work
     if output_dir:
@@ -429,14 +449,19 @@ def generate_orthographic_map(
     # requested point and, with both_hemispheres, its antipode beside it.
     # The Figure is built directly rather than through pyplot, so it is never
     # registered in pyplot's global state and is freed even if rendering fails.
-    centres = [(lat, lon)]
+    # Each globe is (lat, lon, bearing at the top); a turned far globe keeps
+    # the near globe's top point at its own top.
+    if up:
+        logger.info("Turning the globe so bearing %.1f° points up", up)
+    centres = [(lat, lon, up)]
     if both_hemispheres:
-        centres.append(antipode(lat, lon))
-        logger.info("Adding the opposite hemisphere, centred at lat=%.4f, lon=%.4f", *centres[1])
+        anti_lat, anti_lon = antipode(lat, lon)
+        centres.append((anti_lat, anti_lon, far_side_up(lat, lon, up, anti_lat, anti_lon)))
+        logger.info("Adding the opposite hemisphere, centred at lat=%.4f, lon=%.4f", anti_lat, anti_lon)
     fig = Figure(figsize=(20 * len(centres), 20))
     axes = [
-        _add_globe_axes(fig, centre_lat, centre_lon, index, len(centres))
-        for index, (centre_lat, centre_lon) in enumerate(centres)
+        _add_globe_axes(fig, centre_lat, centre_lon, index, len(centres), centre_up)
+        for index, (centre_lat, centre_lon, centre_up) in enumerate(centres)
     ]
     near = axes[0]
     far = axes[1] if both_hemispheres else None
@@ -475,12 +500,13 @@ def generate_orthographic_map(
         logger.info("Applying Köppen-Geiger climate overlay (alpha=%.2f) …", koppen_alpha)
         try:
             for ax in axes:
-                add_koppen_overlay(ax, alpha=koppen_alpha, regrid_shape=regrid_shape)
+                add_koppen_overlay(ax, alpha=koppen_alpha, regrid_shape=regrid_shape,
+                                   classes=koppen_codes or None)
         except (KoppenDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
             logger.warning("Skipping Köppen-Geiger overlay: %s", e)
         else:
-            add_koppen_legend(near, x=key_x)
+            add_koppen_legend(near, x=key_x, classes=koppen_codes or None)
             koppen_drawn = True
 
     # Step 5c: Crop areas (above climate colours, below ice)
@@ -532,7 +558,7 @@ def generate_orthographic_map(
             ],
         )
     if far is not None:
-        anti_lat, anti_lon = centres[1]
+        anti_lat, anti_lon, _ = centres[1]
         far.plot(
             anti_lon, anti_lat,
             marker="o", markersize=10, markeredgewidth=2.5,
@@ -599,9 +625,11 @@ _GLOBE_SIZE_IN = 0.77 * 20
 _GLOBE_GAP_IN = 1.0
 
 
-def _add_globe_axes(fig: Figure, lat: float, lon: float, index: int, count: int) -> GeoAxes:
-    """Add globe *index* of *count* to *fig*, centred on (*lat*, *lon*)."""
-    proj = ccrs.Orthographic(central_longitude=lon, central_latitude=lat)
+def _add_globe_axes(
+    fig: Figure, lat: float, lon: float, index: int, count: int, up: float = 0.0,
+) -> GeoAxes:
+    """Add globe *index* of *count* to *fig*, centred on (*lat*, *lon*), bearing *up* at the top."""
+    proj = globe_projection(lat, lon, up)
     if count == 1:
         ax = fig.add_subplot(projection=proj)
     else:
@@ -809,11 +837,14 @@ def prompt_for_zoom(default_zoom: int = 3, min_zoom: int = 1, max_zoom: int = 4)
 
 
 def build_output_filename(
-    city_slug: str, tile_provider: str, zoom: int, both_hemispheres: bool = False
+    city_slug: str, tile_provider: str, zoom: int, both_hemispheres: bool = False, up: float = 0.0,
 ) -> str:
     """Build a descriptive output filename from the render parameters."""
     sanitized_provider = tile_provider.replace(" ", "_")
     suffix = "_hemispheres" if both_hemispheres else ""
+    up = normalise_bearing(up)
+    if up:
+        suffix += f"_up{round(up) % 360}"
     return f"orthographic_map_{city_slug}_{sanitized_provider}_z{zoom}{suffix}.png"
 
 
@@ -845,6 +876,54 @@ def prompt_for_google_api_key() -> str:
         if key:
             return key
         print("A key is required for Google tiles.\n")
+
+
+def resolve_place(place: str) -> tuple[float, float]:
+    """(lat, lon) of a pre-defined city name (any case) or a "LAT,LON" string.
+
+    Raises ``ValueError`` if *place* is neither.
+    """
+    for name, city in MAJOR_METROPOLISES.items():
+        if name.lower() == place.strip().lower():
+            return city["lat"], city["lon"]
+    try:
+        lat_text, lon_text = place.split(",")
+        lat, lon = float(lat_text), float(lon_text)
+    except ValueError:
+        raise ValueError(
+            f"{place!r} is not a known city or LAT,LON. Cities: {', '.join(MAJOR_METROPOLISES)}"
+        ) from None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise ValueError(f"{place!r} is out of range (latitude -90 to 90, longitude -180 to 180)")
+    return lat, lon
+
+
+def prompt_for_up() -> float:
+    """Prompt for the compass bearing to put at the top; blank keeps north up."""
+    while True:
+        raw = input("Compass bearing to put at the top (0 = north, 180 = south) [default: 0]: ").strip()
+        if not raw:
+            return 0.0
+        try:
+            up = float(raw)
+        except ValueError:
+            up = math.nan
+        if math.isfinite(up):
+            return normalise_bearing(up)
+        print("Please enter a number of degrees.\n")
+
+
+def prompt_for_koppen_classes() -> list[str]:
+    """Prompt for Köppen-Geiger classes or groups to show (comma-separated); blank shows all."""
+    while True:
+        raw = input("Climate classes to show, comma-separated (e.g. Cfb, Cs) [blank for all]: ").strip()
+        specs = [part.strip() for part in raw.split(",") if part.strip()]
+        try:
+            resolve_koppen_classes(specs)
+        except ValueError as e:
+            print(f"{e}\n")
+            continue
+        return specs
 
 
 def print_crop_names() -> None:
@@ -964,6 +1043,14 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Opacity of the Köppen-Geiger overlay (0-1, default: 0.45).",
     )
     parser.add_argument(
+        "--koppen-class",
+        action="append",
+        default=None,
+        metavar="CLASS",
+        help="Show only this Köppen-Geiger class (e.g. Cfb) or group (e.g. C, Cs); "
+             "repeat for several. Implies --koppen.",
+    )
+    parser.add_argument(
         "--ice",
         action="store_true",
         help="Draw polar ice: sea ice at its winter maximum (NSIDC) and polar land ice.",
@@ -1007,6 +1094,20 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Draw a second globe centred on the antipode, showing the whole Earth "
              f"(max --dpi {MAX_DPI // 2}).",
     )
+    orientation = parser.add_mutually_exclusive_group()
+    orientation.add_argument(
+        "--up",
+        type=float,
+        default=0.0,
+        metavar="BEARING",
+        help="Compass bearing to put at the top, in degrees clockwise from north "
+             "(default: 0; 180 = south up).",
+    )
+    orientation.add_argument(
+        "--up-toward",
+        metavar="PLACE",
+        help="Put the direction toward PLACE at the top: a city name or LAT,LON.",
+    )
 
     return parser
 
@@ -1048,7 +1149,8 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
     both_hemispheres = input(
         "Also draw the opposite hemisphere, centred on the antipode? [y/N]: "
     ).strip().lower() in ("y", "yes")
-    output_file = build_output_filename(city_slug, tile_provider, zoom, both_hemispheres)
+    up = prompt_for_up()
+    output_file = build_output_filename(city_slug, tile_provider, zoom, both_hemispheres, up)
 
     print(
         f"\nGenerating map for {city_label} using '{tile_provider}' at zoom level {zoom}."
@@ -1071,6 +1173,9 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
                     print("Out of range. Using default 0.45.")
             except ValueError:
                 print("Invalid number. Using default 0.45.")
+        koppen_classes = prompt_for_koppen_classes()
+    else:
+        koppen_classes = []
 
     enable_ice = input(
         "Add polar ice at its winter maximum? [y/N]: "
@@ -1101,6 +1206,8 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             both_hemispheres=both_hemispheres,
             ice=enable_ice,
             crops=crops,
+            koppen_classes=koppen_classes,
+            up=up,
         )
     except GoogleTilesError as e:
         print(f"\n{e}")
@@ -1150,11 +1257,26 @@ def run_cli(args: argparse.Namespace) -> None:
     if args.route_legend and not routes:
         logger.warning("--route-legend is ignored because no --route was given.")
 
-    # Check crop names now, before any tiles or crop data are fetched
+    # Check crop and climate class names now, before any tiles or data are fetched
     try:
         resolve_crops(args.crop or [])
+        resolve_koppen_classes(args.koppen_class or [])
     except ValueError as e:
         logger.error("%s", e)
+        sys.exit(1)
+
+    # Orientation: a bearing, or the direction toward a place
+    up = args.up
+    if args.up_toward:
+        try:
+            target_lat, target_lon = resolve_place(args.up_toward)
+            up = initial_bearing(lat, lon, target_lat, target_lon)
+        except ValueError as e:
+            logger.error("--up-toward: %s", e)
+            sys.exit(1)
+        logger.info("Direction toward %s: bearing %.1f°", args.up_toward, up)
+    if not math.isfinite(up):
+        logger.error("--up must be a number of degrees.")
         sys.exit(1)
 
     try:
@@ -1182,7 +1304,9 @@ def run_cli(args: argparse.Namespace) -> None:
         output_file = args.output
         output_dir = None  # explicit path, don't prepend output_dir
     else:
-        output_file = build_output_filename(city_slug, args.provider, args.zoom, args.both_hemispheres)
+        output_file = build_output_filename(
+            city_slug, args.provider, args.zoom, args.both_hemispheres, up,
+        )
         output_dir = args.output_dir
 
     logger.info(
@@ -1210,6 +1334,8 @@ def run_cli(args: argparse.Namespace) -> None:
             ice=args.ice or args.ice_year is not None,
             ice_year=args.ice_year,
             crops=args.crop,
+            koppen_classes=args.koppen_class,
+            up=up,
         )
     except GoogleTilesError as e:
         logger.error("%s", e)
