@@ -519,6 +519,13 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc", "--trewartha", "--trewartha-class", "Do", "--trewartha-class", "C"])
         assert args.trewartha is True and args.trewartha_class == ["Do", "C"]
 
+    def test_soil_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert args.soil is False and args.soil_class is None and args.soil_alpha == 0.6
+        args = self._parse(["--city", "nyc", "--soil", "--soil-class", "CH", "--soil-class", "Podzols",
+                            "--soil-alpha", "0.7"])
+        assert args.soil and args.soil_class == ["CH", "Podzols"] and args.soil_alpha == 0.7
+
     def test_elevation_flags(self):
         args = self._parse(["--city", "nyc"])
         assert args.elevation is False and args.elevation_alpha == 0.8
@@ -710,7 +717,7 @@ class TestRunCLIValidation:
             koppen=False, koppen_alpha=0.45, route=None, route_legend=False,
             both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
             koppen_class=None, up=0.0, up_toward=None, trewartha=False, trewartha_class=None,
-            elevation=False, elevation_alpha=0.8,
+            elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -917,6 +924,21 @@ class TestRunCLIValidation:
         assert render.call_args.kwargs["trewartha"] is True
         assert render.call_args.kwargs["trewartha_classes"] == ["Do"]
 
+    def test_soil_passed_to_renderer(self):
+        args = self._make_args(city="paris", soil=True, soil_class=["CH"], soil_alpha=0.7)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert kwargs["soil"] is True and kwargs["soil_classes"] == ["CH"] and kwargs["soil_alpha"] == 0.7
+
+    @pytest.mark.parametrize("overrides", [{"soil_class": ["Xx"]}, {"soil": True, "soil_alpha": 2.0}])
+    def test_bad_soil_options_exit_before_render(self, overrides):
+        args = self._make_args(city="paris", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render:
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+
     def test_elevation_passed_to_renderer(self):
         args = self._make_args(city="paris", elevation=True, elevation_alpha=0.6)
         with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
@@ -1079,6 +1101,35 @@ class TestGenerateOrthographicMapIntegration:
         assert credits == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.TREWARTHA_ATTRIBUTION,
                            ortho.ELEVATION_ATTRIBUTION]
         assert "CHELSA" in ortho.TREWARTHA_ATTRIBUTION
+
+    def test_soil_classes_imply_the_overlay_key_and_credit(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None),                 mock.patch.object(ortho, "add_soil_overlay") as overlay,                 mock.patch.object(ortho, "add_soil_legend") as key,                 mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), soil_classes=["Chernozems", "KS"], soil_alpha=0.7,
+            )
+        codes = ortho.resolve_soil_classes(["Chernozems", "KS"])
+        assert overlay.call_args.kwargs["classes"] == codes and overlay.call_args.kwargs["alpha"] == 0.7
+        assert key.call_args.kwargs["classes"] == codes
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.SOIL_ATTRIBUTION]
+
+    def test_soil_failure_still_saves_map_without_key_or_credit(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None),                 mock.patch.object(ortho, "add_soil_overlay", side_effect=ortho.SoilDataError("offline")),                 mock.patch.object(ortho, "add_soil_legend") as key,                 mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), soil=True,
+            )
+        assert os.path.exists(result)
+        key.assert_not_called()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
+    def test_unknown_soil_group_fails_before_any_work(self, tmp_path):
+        with mock.patch.object(ortho, "create_tile_source") as create:
+            with pytest.raises(ValueError, match="soil group"):
+                ortho.generate_orthographic_map(
+                    lat=0, lon=0, output_filename=str(tmp_path / "m.png"), soil_classes=["Xx"],
+                )
+        create.assert_not_called()
 
     def test_elevation_layer_key_and_credit(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None) as add_image,                 mock.patch.object(ortho, "add_elevation_legend") as key,                 mock.patch.object(ortho, "_add_attribution") as attribution:

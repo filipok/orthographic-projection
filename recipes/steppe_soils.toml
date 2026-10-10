@@ -1,0 +1,7 @@
+# The steppe's dark grassland soils: Chernozems, Kastanozems and Phaeozems, centred on Kazakhstan.
+lat = 50
+lon = 60
+provider = "osm"
+soil-class = ["Chernozems", "Kastanozems", "Phaeozems"]
+soil-alpha = 0.75
+output = "orthographic_map_kazakhstan_osm_z3_steppe_soils.png"

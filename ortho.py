@@ -46,6 +46,9 @@ from rotation import far_side_up, globe_projection, initial_bearing, normalise_b
 from elevation import (
     ELEVATION_ATTRIBUTION, RELIEF_ZOOM, TerrariumTiles, add_elevation_legend, relief_rgba,
 )
+from soil import (
+    SOIL_ATTRIBUTION, SoilDataError, add_soil_legend, add_soil_overlay, resolve_soil_classes,
+)
 from trewartha import (
     TREWARTHA_ATTRIBUTION, TrewarthaDataError, add_trewartha_legend, add_trewartha_overlay,
     resolve_trewartha_classes,
@@ -353,7 +356,7 @@ MAX_DPI = 1200
 
 def validate_render_options(
     dpi: int, koppen_alpha: float, both_hemispheres: bool = False, ice_year: int | None = None,
-    elevation_alpha: float = 0.8,
+    elevation_alpha: float = 0.8, soil_alpha: float = 0.6,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if ice_year is not None and not FIRST_ICE_YEAR <= ice_year <= time.localtime().tm_year:
@@ -369,6 +372,8 @@ def validate_render_options(
         raise ValueError(f"koppen_alpha must be between 0 and 1, got {koppen_alpha}")
     if not 0.0 <= elevation_alpha <= 1.0:
         raise ValueError(f"elevation_alpha must be between 0 and 1, got {elevation_alpha}")
+    if not 0.0 <= soil_alpha <= 1.0:
+        raise ValueError(f"soil_alpha must be between 0 and 1, got {soil_alpha}")
 
 
 def generate_orthographic_map(
@@ -399,6 +404,9 @@ def generate_orthographic_map(
     trewartha_classes: Sequence[str] | None = None,
     elevation: bool = False,
     elevation_alpha: float = 0.8,
+    soil: bool = False,
+    soil_classes: Sequence[str] | None = None,
+    soil_alpha: float = 0.6,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -480,6 +488,14 @@ def generate_orthographic_map(
         every other layer, with a key below the globe.
     elevation_alpha : float
         Opacity of the elevation layer (0–1).
+    soil : bool
+        When True, colour the land by its most probable soil group
+        (SoilGrids 2.0, see :mod:`soil`), above the climate colours, with a key.
+    soil_classes : sequence of str, optional
+        Show only these soil groups, by name or WRB code (``"Chernozems"``,
+        ``"CH"``, see :func:`soil.resolve_soil_classes`). Implies *soil*.
+    soil_alpha : float
+        Opacity of the soil overlay (0–1).
 
     Returns
     -------
@@ -489,8 +505,10 @@ def generate_orthographic_map(
 
     validate_render_options(
         dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
-        elevation_alpha=elevation_alpha,
+        elevation_alpha=elevation_alpha, soil_alpha=soil_alpha,
     )
+    soil_codes = resolve_soil_classes(soil_classes or [])
+    soil = soil or bool(soil_codes)
     resolve_crops(crops or [])  # unknown names and bad colours fail before any download
     koppen_codes = resolve_koppen_classes(koppen_classes or [])
     koppen = koppen or bool(koppen_codes)
@@ -608,6 +626,20 @@ def generate_orthographic_map(
             # Its highland group uses the terrain tiles' heights
             climate_credits = [TREWARTHA_ATTRIBUTION, ELEVATION_ATTRIBUTION]
 
+    # Step 5b2: Soil groups (above the climate colours, below crops)
+    soil_drawn = False
+    if soil:
+        logger.info("Applying soil overlay (alpha=%.2f) …", soil_alpha)
+        try:
+            for ax in axes:
+                add_soil_overlay(ax, alpha=soil_alpha, regrid_shape=regrid_shape,
+                                 classes=soil_codes or None)
+        except (SoilDataError, OSError) as e:
+            # Missing data should not throw away the rest of the map
+            logger.warning("Skipping soil overlay: %s", e)
+        else:
+            soil_drawn = True
+
     # Step 5c: Crop areas (above climate colours, below ice)
     crop_layer = None
     if crops:
@@ -683,11 +715,13 @@ def generate_orthographic_map(
         for ax in axes:
             draw_routes(ax, routes)
 
-    # Step 7d: Keys below the globe(s): the elevation key, the crop key, then
-    # the route key, under the climate key when that is drawn too
+    # Step 7d: Keys below the globe(s): the elevation, soil, crop and route
+    # keys, under the climate key when that is drawn too
     keys = []
     if relief is not None:
         keys.append(add_elevation_legend(near, x=key_x))
+    if soil_drawn:
+        keys.append(add_soil_legend(near, x=key_x, classes=soil_codes or None))
     if crop_layer is not None:
         keys.append(add_crop_legend(near, crop_layer, x=key_x))
     if routes and route_legend:
@@ -699,6 +733,8 @@ def generate_orthographic_map(
     for credit in climate_credits + ([ELEVATION_ATTRIBUTION] if relief is not None else []):
         if credit not in credits:
             credits.append(credit)
+    if soil_drawn:
+        credits.append(SOIL_ATTRIBUTION)
     if crop_layer is not None:
         credits.append(CROP_ATTRIBUTION)
     if ice_attribution:
@@ -1024,10 +1060,10 @@ def prompt_for_koppen_classes() -> list[str]:
     return prompt_for_climate_classes(resolve_koppen_classes, "e.g. Cfb, Cs")
 
 
-def prompt_for_climate_classes(resolve: Any, example: str) -> list[str]:
-    """Prompt for climate classes to show, checked with *resolve*; blank shows all."""
+def prompt_for_climate_classes(resolve: Any, example: str, what: str = "Climate classes") -> list[str]:
+    """Prompt for classes to show (*what*), checked with *resolve*; blank shows all."""
     while True:
-        raw = input(f"Climate classes to show, comma-separated ({example}) [blank for all]: ").strip()
+        raw = input(f"{what} to show, comma-separated ({example}) [blank for all]: ").strip()
         specs = [part.strip() for part in raw.split(",") if part.strip()]
         try:
             resolve(specs)
@@ -1218,6 +1254,29 @@ def build_cli_parser() -> argparse.ArgumentParser:
         default=0.8,
         metavar="ALPHA",
         help="Opacity of the elevation layer (0-1, default: 0.8).",
+    )
+
+    soils = parser.add_argument_group("Soil (SoilGrids)")
+    soils.add_argument(
+        "--soil",
+        action="store_true",
+        help="Colour the land by its most probable soil group (WRB, SoilGrids 2.0; "
+             "one-time download of ~220 MB).",
+    )
+    soils.add_argument(
+        "--soil-class",
+        action="append",
+        default=None,
+        metavar="GROUP",
+        help="Show only this soil group, by name or WRB code (e.g. Chernozems or CH); "
+             "repeat for several. Implies --soil.",
+    )
+    soils.add_argument(
+        "--soil-alpha",
+        type=float,
+        default=0.6,
+        metavar="ALPHA",
+        help="Opacity of the soil overlay (0-1, default: 0.6).",
     )
 
     ice = parser.add_argument_group("Polar ice")
@@ -1464,6 +1523,14 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
         "Colour the land by height, with relief shading? [y/N]: "
     ).strip().lower() in ("y", "yes")
 
+    soil_classes: list[str] = []
+    enable_soil = input(
+        "Colour the land by soil group (SoilGrids)? [y/N]: "
+    ).strip().lower() in ("y", "yes")
+    if enable_soil:
+        soil_classes = prompt_for_climate_classes(
+            resolve_soil_classes, "e.g. Chernozems, PZ", what="Soil groups")
+
     enable_ice = input(
         "Add polar ice at its winter maximum? [y/N]: "
     ).strip().lower() in ("y", "yes")
@@ -1497,6 +1564,8 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             trewartha=enable_trewartha,
             trewartha_classes=trewartha_classes,
             elevation=enable_elevation,
+            soil=enable_soil,
+            soil_classes=soil_classes,
             up=up,
         )
     except GoogleTilesError as e:
@@ -1552,6 +1621,7 @@ def run_cli(args: argparse.Namespace) -> None:
         resolve_crops(args.crop or [])
         resolve_koppen_classes(args.koppen_class or [])
         resolve_trewartha_classes(args.trewartha_class or [])
+        resolve_soil_classes(args.soil_class or [])
     except ValueError as e:
         logger.error("%s", e)
         sys.exit(1)
@@ -1576,7 +1646,7 @@ def run_cli(args: argparse.Namespace) -> None:
     try:
         validate_render_options(
             dpi=args.dpi, koppen_alpha=args.koppen_alpha, both_hemispheres=args.both_hemispheres,
-            ice_year=args.ice_year, elevation_alpha=args.elevation_alpha,
+            ice_year=args.ice_year, elevation_alpha=args.elevation_alpha, soil_alpha=args.soil_alpha,
         )
     except ValueError as e:
         logger.error("Invalid option: %s.", e)
@@ -1633,6 +1703,9 @@ def run_cli(args: argparse.Namespace) -> None:
             trewartha_classes=args.trewartha_class,
             elevation=args.elevation,
             elevation_alpha=args.elevation_alpha,
+            soil=args.soil,
+            soil_classes=args.soil_class,
+            soil_alpha=args.soil_alpha,
             up=up,
         )
     except GoogleTilesError as e:

@@ -52,6 +52,12 @@ The main script is [ortho.py](ortho.py).
 *Left: The Trewartha climate classification across Asia, centred over the Himalaya (OSM, zoom 3), with the Tibetan Plateau in the highland group (H).*<br>
 *Right: Elevation, coloured by height and hill-shaded, centred on South America (OSM, zoom 3).*
 
+<p align="center">
+  <img src="sample_steppe_soils.png" alt="Globe centred on Kazakhstan showing only the steppe soils: black Chernozems from Romania through Ukraine and southern Russia into Siberia, chestnut Kastanozems to the south across Kazakhstan and Mongolia, and Phaeozems along the northern edge" width="48%">
+</p>
+
+*The steppe's dark grassland soils, Chernozems, Kastanozems and Phaeozems, centred on Kazakhstan (OSM, zoom 3, SoilGrids 2.0).*
+
 ## Features
 
 - Interactive city selection from a built-in list of major metropolitan areas
@@ -68,6 +74,7 @@ The main script is [ortho.py](ortho.py).
 - Optional Köppen-Geiger climate classification overlay with compact legend, for all classes or only chosen ones
 - Optional Trewartha climate classification overlay, computed from CHELSA v2.1 monthly climate and terrain heights (with a highland group), for all classes or only chosen ones
 - Optional elevation layer: land coloured by height and hill-shaded, from open terrain tiles, with a key
+- Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional polar ice: sea ice at its latest winter maximum (NSIDC) and permanent polar land ice
 - Optional crop areas for any of 173 crops (CROPGRIDS), one or several at once, with a key
 - Any compass direction at the top of the globe (south up, or the direction toward a place), with text kept upright
@@ -121,7 +128,7 @@ Like Google satellite, it has no place names baked in, so it suits turned globes
 ## Requirements
 
 - Python 3.12 or newer (developed on 3.14)
-- Internet access for downloading map tiles (and, once each, the Köppen, Trewartha, elevation, sea ice and crop data)
+- Internet access for downloading map tiles (and, once each, the Köppen, Trewartha, elevation, soil, sea ice and crop data)
 
 `requirements.txt` lists minimum versions, not pins. The versions this was developed and tested with:
 
@@ -170,10 +177,11 @@ You will be prompted to choose:
 5. The compass bearing to put at the top (blank keeps north up; see "Turning the Globe")
 6. An optional climate overlay, Köppen-Geiger or Trewartha, its opacity/alpha (0–1) and the classes to show (blank for all)
 7. Whether to colour the land by height, with relief shading (see "Elevation")
-8. Whether to add polar ice at its winter maximum (see "Polar Ice")
-9. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
-10. An optional GeoJSON route file to overlay (leave blank to skip)
-11. Whether to add a key naming each route (asked only when a route file is loaded)
+8. Whether to colour the land by soil group, and which groups (blank for all; see "Soil Groups")
+9. Whether to add polar ice at its winter maximum (see "Polar Ice")
+10. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
+11. An optional GeoJSON route file to overlay (leave blank to skip)
+12. Whether to add a key naming each route (asked only when a route file is loaded)
 
 ### CLI Mode
 
@@ -220,6 +228,10 @@ python ortho.py --city lusaka --trewartha-class C --climate-alpha 0.7
 # Land coloured by height, with hill shading (see "Elevation")
 python ortho.py --lat -15 --lon -65 --elevation
 
+# Soil groups, all or some: the steppe's black earths (see "Soil Groups")
+python ortho.py --lat 35 --lon 40 --soil
+python ortho.py --lat 50 --lon 60 --soil-class Chernozems --soil-class Kastanozems
+
 # South up, or the direction toward a place at the top (see "Turning the Globe")
 python ortho.py --city sydney --up 180
 python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi"
@@ -246,6 +258,9 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--climate-alpha ALPHA` | Opacity of the climate overlay (0–1); `--koppen-alpha` is the same option | `0.45` |
 | `--elevation` | Colour the land by height and shade its relief, with a key | off |
 | `--elevation-alpha ALPHA` | Opacity of the elevation layer (0–1) | `0.8` |
+| `--soil` | Colour the land by its most probable soil group, with a key | off |
+| `--soil-class GROUP` | Show only this soil group, by name (`Chernozems`) or WRB code (`CH`); repeat for several; implies `--soil` | all |
+| `--soil-alpha ALPHA` | Opacity of the soil overlay (0–1) | `0.6` |
 | `--ice` | Draw sea ice at its winter maximum and polar land ice | off |
 | `--ice-year YEAR` | Year of the sea ice maxima, 1979 on; implies `--ice` | latest published |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
@@ -285,7 +300,7 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 
 - **The command line wins.** Options typed after `--config` override the recipe:
   `--config recipes/viking_routes.toml --provider nasa --dpi 600`. Repeatable
-  options (`--route`, `--crop`, `--koppen-class`, `--trewartha-class`) add to the recipe's list.
+  options (`--route`, `--crop`, `--koppen-class`, `--trewartha-class`, `--soil-class`) add to the recipe's list.
   Giving `--city` or `--lat`/`--lon` replaces the recipe's location, and `--up`
   or `--up-toward` replaces its orientation, so a recipe works anywhere:
   `--config recipes/london_wheat.toml --city lusaka -o lusaka_wheat.png`. (The
@@ -315,6 +330,7 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `lusaka_cwa.toml` | Zambia's dominant climate, Cwa |
 | `himalaya_trewartha.toml` | The Trewartha climate classification across Asia |
 | `andes_elevation.toml` | Elevation, centred on South America |
+| `steppe_soils.toml` | The steppe soils, centred on Kazakhstan |
 
 The Google satellite recipes need a Google Maps key and are affected by Google's
 EEA restriction (see "Google tiles" below); add `--provider nasa` to render them
@@ -356,6 +372,7 @@ generate_orthographic_map(
     ice=False,             # optional: polar ice at its winter maximum
     crops=None,            # optional: e.g. ["wheat", "rice:#18b5a4"]
     elevation=False,       # optional: land coloured by height, hill-shaded
+    soil_classes=None,     # optional: e.g. ["Chernozems", "PZ"]; implies soil=True
     koppen_classes=None,   # optional: e.g. ["Cfb"] or ["Cs"]; implies koppen=True
     trewartha_classes=None,  # optional: e.g. ["Do"] or ["C"]; implies trewartha=True (not with koppen)
     up=0,                  # optional: compass bearing at the top (180 = south up)
@@ -599,6 +616,53 @@ python ortho.py --config recipes/andes_elevation.toml
   and 85°S. A tile that fails to download leaves the base map showing there,
   with a warning.
 
+## Soil Groups
+
+Pass `--soil` (CLI) or `soil=True` (API) to colour the land by its most probable
+soil: one of the 30 Reference Soil Groups of the World Reference Base (WRB), the
+international soil classification, as mapped by
+[SoilGrids 2.0](https://www.isric.org/explore/soilgrids) (ISRIC). A key below the
+globe names them.
+
+```powershell
+python ortho.py --lat 35 --lon 40 --soil
+python ortho.py --lat 50 --lon 60 --soil-class Chernozems --soil-class KS --soil-class Phaeozems
+```
+
+The steppe sample above is `python ortho.py --config recipes/steppe_soils.toml`
+(those three groups, with `--soil-alpha 0.75`).
+
+**Only some groups.** `--soil-class` (`soil_classes=` in the API, or the
+interactive prompt) shows only the groups named and leaves the rest clear; it
+turns `--soil` on by itself. Name a group in full, singular or plural, or by its
+start (`Chernozem`, `ferral`), or give its two-letter WRB code (`CH`, `FR`).
+Repeat it for several; names ignore case. With eight groups or fewer the key
+also says what each one is (*Chernozems: black earths, deep humus*).
+
+The groups, with their codes: Acrisols (AC), Albeluvisols (AB), Alisols (AL),
+Andosols (AN), Arenosols (AR), Calcisols (CL), Cambisols (CM), Chernozems (CH),
+Cryosols (CR), Durisols (DU), Ferralsols (FR), Fluvisols (FL), Gleysols (GL),
+Gypsisols (GY), Histosols (HS), Kastanozems (KS), Leptosols (LP), Lixisols (LX),
+Luvisols (LV), Nitisols (NT), Phaeozems (PH), Planosols (PL), Plinthosols (PT),
+Podzols (PZ), Regosols (RG), Solonchaks (SC), Solonetz (SN), Stagnosols (ST),
+Umbrisols (UM), Vertisols (VR).
+
+- **Data.** SoilGrids maps the most probable group for every 250 m cell from
+  56°S to 84°N (WRB 2006, CC BY 4.0); the sea, lakes, ice and Antarctica have
+  none. ISRIC's web services can return a coarse world grid quickly, but they
+  shrink it by averaging the class *numbers*, which is meaningless for
+  categories (London's Cambisols and Luvisols average to "Cryosols"). So the
+  first `--soil` run downloads the 459 full-resolution files instead, about
+  220 MB in a minute or so, and keeps the commonest group in each block of
+  32 × 32 cells (0.067°, ~7 km). The result, about 0.5 MB, is cached in
+  `~/.cache/ortho_tiles/soil/`; an interrupted download resumes where it stopped.
+- **Majority vote.** A block needs at least a third of its cells to be soil to
+  get a group, and the commonest group wins, so groups that only occur in small
+  patches (Stagnosols, Umbrisols) mostly disappear at this scale.
+- **Layering.** The soils are drawn over the climate colours and under crops,
+  ice and routes; `--soil-alpha` sets their opacity (default 0.6). Their key
+  sits below the climate and elevation keys.
+
 ## Crop Areas
 
 `--crop NAME` (`crops=[...]` in the API, or the interactive prompt) shades where
@@ -789,6 +853,7 @@ to the attribution block.
 | Köppen-Geiger climate classification V1, present day (1980–2016), used at 0.083° (~10 km) | Beck, H. E. et al. (2018) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/sdata.2018.214](https://doi.org/10.1038/sdata.2018.214) |
 | CHELSA v2.1 monthly mean temperature and precipitation, 1981–2010, used at 0.133° (~15 km) for the Trewartha classes | Karger, D. N. et al. (2017) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2017.122](https://doi.org/10.1038/sdata.2017.122), [chelsa-climate.org](https://chelsa-climate.org/) |
 | Mapzen Terrain Tiles (Terrarium), from GMTED2010 and SRTM (USGS) and ETOPO1 (NOAA), used at zoom 4–5 for the elevation layer and the Trewartha highlands | Mapzen / Tilezen, AWS Open Data | Free to use; the sources must be credited ([attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | [registry.opendata.aws/terrain-tiles](https://registry.opendata.aws/terrain-tiles/) |
+| SoilGrids 2.0, most probable WRB Reference Soil Group, 250 m, used at 0.067° (~7 km) | Poggio, L. et al. (2021), ISRIC World Soil Information | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.5194/soil-7-217-2021](https://doi.org/10.5194/soil-7-217-2021), [isric.org/explore/soilgrids](https://www.isric.org/explore/soilgrids) |
 | Natural Earth (land / ocean fallback, Trewartha and elevation land masks, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
@@ -807,6 +872,7 @@ the globe:
 | `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |
 | `--trewartha` overlay | *Climate data: CHELSA v2.1 (Karger et al. 2017), CC0; Trewartha classes computed*, plus the elevation credit |
 | `--elevation` layer | *Elevation: Mapzen Terrain Tiles (AWS Open Data); GMTED2010 and SRTM courtesy of the USGS; ETOPO1, NOAA NCEI* |
+| `--soil` overlay | *Soil groups: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
 | `--ice` overlay | *Sea ice: NSIDC Sea Ice Index v4, extent March YYYY (Arctic) and September YYYY (Antarctic)* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
@@ -866,6 +932,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [koppen.py](koppen.py): Köppen-Geiger climate overlay and legend
 - [trewartha.py](trewartha.py): Trewartha climate classes computed from CHELSA v2.1, overlay and legend
 - [elevation.py](elevation.py): elevation layer and heights from the Mapzen terrain tiles
+- [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)
 - [ice.py](ice.py): polar ice overlay (NSIDC sea ice extent, Natural Earth land ice)
 - [crops.py](crops.py): crop-area overlay and key (CROPGRIDS, read from the remote archive)
 - [rotation.py](rotation.py): orthographic globes with any compass direction at the top
