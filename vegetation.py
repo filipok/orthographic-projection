@@ -179,8 +179,12 @@ class GibsTiles(cimgt.GoogleWTS):
     """
 
     def __init__(self, layer: str, matrix: str, time: str, cache_dir: str | None = None,
-                 timeout: float = 30) -> None:
+                 timeout: float = 30, use_cache: bool = True) -> None:
+        # The time goes into the URL and the cache path, so only a plain date is accepted
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", time):
+            raise ValueError(f"GIBS time must be YYYY-MM-DD, got {time!r}")
         super().__init__(desired_tile_form="RGBA", user_agent="ortho/1.0")
+        self.use_cache = use_cache
         self.layer, self.matrix, self.time = layer, matrix, time
         self.tile_cache_dir = cache_dir or os.path.join(os.path.expanduser("~"), ".cache", "ortho_tiles")
         self.timeout = timeout
@@ -200,7 +204,7 @@ class GibsTiles(cimgt.GoogleWTS):
         """
         x, y, z = tile
         path = Path(self.tile_cache_dir) / "gibs" / self.layer / self.time / f"{z}_{x}_{y}.png"
-        if path.is_file():
+        if self.use_cache and path.is_file():
             image = Image.open(io.BytesIO(path.read_bytes()))
         else:
             image = None
@@ -214,6 +218,8 @@ class GibsTiles(cimgt.GoogleWTS):
                         raise
                     continue
                 image = Image.open(io.BytesIO(data))
+                if image.mode == "P" and not self.use_cache:
+                    break
                 if image.mode == "P":
                     path.parent.mkdir(parents=True, exist_ok=True)
                     part = path.with_name(path.name + ".part")
@@ -233,14 +239,14 @@ class GibsTiles(cimgt.GoogleWTS):
             return resp.read()
 
 
-def land_cover_tiles(year: int, cache_dir: str | None = None) -> GibsTiles:
+def land_cover_tiles(year: int, cache_dir: str | None = None, use_cache: bool = True) -> GibsTiles:
     layer, matrix = LAND_COVER_LAYER
-    return GibsTiles(layer, matrix, f"{year}-01-01", cache_dir)
+    return GibsTiles(layer, matrix, f"{int(year):04d}-01-01", cache_dir, use_cache=use_cache)
 
 
-def ndvi_tiles(year: int, month: int, cache_dir: str | None = None) -> GibsTiles:
+def ndvi_tiles(year: int, month: int, cache_dir: str | None = None, use_cache: bool = True) -> GibsTiles:
     layer, matrix = NDVI_LAYER
-    return GibsTiles(layer, matrix, f"{year}-{month:02d}-01", cache_dir)
+    return GibsTiles(layer, matrix, f"{int(year):04d}-{int(month):02d}-01", cache_dir, use_cache=use_cache)
 
 
 # ---------------------------------------------------------------------------

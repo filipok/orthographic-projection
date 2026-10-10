@@ -646,9 +646,10 @@ def generate_orthographic_map(
     if elevation:
         logger.info("Adding elevation (alpha=%.2f) …", elevation_alpha)
         relief = BufferedTileSource(
-            TerrariumTiles(cache_dir=tile_cache_dir),
+            TerrariumTiles(cache_dir=tile_cache_dir, use_cache=tile_cache_dir is not None),
             tile_buffer_factor=tile_buffer_factor,
-            postprocess=functools.partial(relief_rgba, alpha=elevation_alpha, cache_dir=tile_cache_dir),
+            postprocess=functools.partial(relief_rgba, alpha=elevation_alpha, cache_dir=tile_cache_dir,
+                                          use_cache=tile_cache_dir is not None),
         )
         for ax in axes:
             ax.add_image(relief, RELIEF_ZOOM, regrid_shape=regrid_shape, interpolation="bilinear", zorder=1)
@@ -661,7 +662,8 @@ def generate_orthographic_map(
         year = land_cover_year or LATEST_LAND_COVER_YEAR
         logger.info("Adding MODIS land cover %d (alpha=%.2f) …", year, vegetation_alpha)
         vegetation = BufferedTileSource(
-            land_cover_tiles(year, tile_cache_dir), tile_buffer_factor=tile_buffer_factor,
+            land_cover_tiles(year, tile_cache_dir, use_cache=tile_cache_dir is not None),
+            tile_buffer_factor=tile_buffer_factor,
             postprocess=functools.partial(land_cover_rgba, alpha=vegetation_alpha,
                                           classes=land_cover_codes or None),
         )
@@ -669,7 +671,8 @@ def generate_orthographic_map(
     elif ndvi_month:
         logger.info("Adding MODIS NDVI for %d-%02d (alpha=%.2f) …", *ndvi_month, vegetation_alpha)
         vegetation = BufferedTileSource(
-            ndvi_tiles(*ndvi_month, tile_cache_dir), tile_buffer_factor=tile_buffer_factor,
+            ndvi_tiles(*ndvi_month, tile_cache_dir, use_cache=tile_cache_dir is not None),
+            tile_buffer_factor=tile_buffer_factor,
             postprocess=functools.partial(ndvi_rgba, alpha=vegetation_alpha),
         )
         vegetation_credit = ndvi_attribution(*ndvi_month)
@@ -1281,7 +1284,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     imagery.add_argument(
         "--no-cache",
         action="store_true",
-        help="Download OSM and NASA tiles fresh instead of using the tile cache.",
+        help="Download map, terrain and vegetation tiles fresh, without reading or filling the tile cache.",
     )
 
     layout = parser.add_argument_group("Globe layout")

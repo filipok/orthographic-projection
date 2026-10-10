@@ -99,6 +99,18 @@ class TestGibsTiles:
         assert len(calls) == 1
         assert (tmp_path / "gibs" / veg.LAND_COVER_LAYER[0] / "2024-01-01" / "5_1_2.png").is_file()
 
+    def test_without_the_cache_nothing_is_read_or_written(self, tmp_path, monkeypatch):
+        source, calls = self._source(tmp_path, monkeypatch, [_png("P")])
+        source.use_cache = False
+        for _ in range(2):
+            assert source.get_image((1, 2, 5))[0][..., 3].all()
+        assert len(calls) == 2 and not (tmp_path / "gibs").exists()
+
+    @pytest.mark.parametrize("time", ["2024", "2024-01-01/../../x", "latest"])
+    def test_time_must_be_a_date(self, time):
+        with pytest.raises(ValueError, match="YYYY-MM-DD"):
+            veg.GibsTiles(*veg.LAND_COVER_LAYER, time)
+
     def test_true_colour_substitute_is_retried_then_left_clear(self, tmp_path, monkeypatch):
         source, calls = self._source(tmp_path, monkeypatch, [_png("RGBA")])
         img, _, _ = source.get_image((1, 2, 5))

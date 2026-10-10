@@ -1241,6 +1241,20 @@ class TestGenerateOrthographicMapIntegration:
         assert key.call_args.args[1] == 2010 and key.call_args.kwargs["classes"] == (12, 14)
         assert credits[-1] == ortho.land_cover_attribution(2010)
 
+    def test_no_cache_reaches_the_vegetation_and_elevation_tiles(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None) as add_image, \
+                mock.patch.object(ortho, "add_elevation_legend"), \
+                mock.patch.object(ortho, "add_land_cover_legend"):
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path),
+                elevation=True, land_cover=True, tile_cache_dir=None,
+            )
+        sources = [c.args[0] for c in add_image.call_args_list]
+        layers = [s for s in sources if isinstance(s.tile_source, (GibsTiles, ortho.TerrariumTiles))]
+        assert len(layers) == 2 and not any(s.tile_source.use_cache for s in layers)
+        relief = next(s for s in layers if isinstance(s.tile_source, ortho.TerrariumTiles))
+        assert relief.postprocess.keywords["use_cache"] is False
+
     def test_ndvi_layer_key_and_credit(self, tmp_path):
         with mock.patch.object(ortho, "add_ndvi_legend") as key:
             layers, credits = self._vegetation_render(tmp_path, ndvi="2020-07")

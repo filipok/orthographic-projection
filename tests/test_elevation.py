@@ -57,6 +57,28 @@ class TestFetchTile:
         assert calls == ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/4/3/2.png"]
         assert (tmp_path / "terrarium" / "4_3_2.png").is_file()
 
+    def test_without_the_cache_nothing_is_read_or_written(self, tmp_path, monkeypatch):
+        buf = io.BytesIO()
+        Image.fromarray(_encode(np.full((4, 4), 250.0))[..., :3]).save(buf, "PNG")
+        calls = []
+
+        class Response(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                self.close()
+
+        def urlopen(request, timeout):
+            calls.append(request.full_url)
+            return Response(buf.getvalue())
+
+        monkeypatch.setattr(elevation.urllib.request, "urlopen", urlopen)
+        for _ in range(2):
+            tile = elevation.fetch_tile((3, 2, 4), cache_dir=str(tmp_path), use_cache=False)
+            assert elevation.decode_terrarium(tile)[0, 0] == 250
+        assert len(calls) == 2 and not (tmp_path / "terrarium").exists()
+
     def test_failures_are_not_cached(self, tmp_path, monkeypatch):
         def urlopen(request, timeout):
             raise elevation.urllib.error.URLError("offline")
@@ -72,19 +94,19 @@ class TestElevationGrid:
         # Zoom 1: four tiles, each one height: NW 100, NE 200, SW 300, SE 400
         heights = {(0, 0): 100, (1, 0): 200, (0, 1): 300, (1, 1): 400}
         monkeypatch.setattr(elevation, "fetch_tile",
-                            lambda tile, cache_dir=None: _encode(np.full((256, 256), heights[tile[:2]])))
+                            lambda tile, cache_dir=None, **k: _encode(np.full((256, 256), heights[tile[:2]])))
         grid = elevation.elevation_grid((3, 6), west=-180, north=90, cell=60, zoom=1)
         # Cell centres at 60°N, 0° and 60°S, and from 150°W to 150°E
         assert grid[0].tolist() == [100] * 3 + [200] * 3
         assert grid[2].tolist() == [300] * 3 + [400] * 3
 
     def test_cells_beyond_the_mercator_limit_are_nan(self, monkeypatch):
-        monkeypatch.setattr(elevation, "fetch_tile", lambda tile, cache_dir=None: _encode(np.zeros((256, 256))))
+        monkeypatch.setattr(elevation, "fetch_tile", lambda tile, cache_dir=None, **k: _encode(np.zeros((256, 256))))
         grid = elevation.elevation_grid((2, 1), west=-180, north=90, cell=4, zoom=1)
         assert np.isnan(grid[0, 0]) and grid[1, 0] == 0     # centres at 88° and 84°
 
     def test_failed_tile_is_a_data_error(self, monkeypatch):
-        def fetch(tile, cache_dir=None):
+        def fetch(tile, cache_dir=None, **k):
             raise OSError("offline")
 
         monkeypatch.setattr(elevation, "fetch_tile", fetch)
@@ -146,7 +168,7 @@ class TestRelief:
         heights = np.array([[-50, 150, 2500, 6000]], np.float32)
         mosaic = _encode(heights)
         mosaic[0, 3, 3] = 0                                  # a failed tile
-        monkeypatch.setattr(elevation, "with_ice_surface", lambda h, extent, cache_dir=None: h)
+        monkeypatch.setattr(elevation, "with_ice_surface", lambda h, extent, *a, **k: h)
         land = np.array([[False, True, True, True]])
         rgba = elevation.relief_rgba(mosaic, EXTENT, alpha=0.5, land=land)
         assert rgba[0, 0, 3] == 0 and rgba[0, 3, 3] == 0
@@ -156,7 +178,7 @@ class TestRelief:
         assert tuple(rgba[0, 2, :3]) == elevation.ELEVATION_BANDS[4][2]
 
     def test_land_below_sea_level_is_coloured(self, monkeypatch):
-        monkeypatch.setattr(elevation, "with_ice_surface", lambda h, extent, cache_dir=None: h)
+        monkeypatch.setattr(elevation, "with_ice_surface", lambda h, extent, *a, **k: h)
         rgba = elevation.relief_rgba(_encode([[-28.0]]), EXTENT, land=np.array([[True]]))
         assert rgba[0, 0, 3] > 0 and tuple(rgba[0, 0, :3]) == elevation.ELEVATION_BANDS[0][2]
 
@@ -168,13 +190,13 @@ class TestIceSurface:
 
     def test_raises_the_ice_sheet_but_not_valleys(self, monkeypatch):
         monkeypatch.setattr(elevation, "fetch_tile",
-                            lambda tile, cache_dir=None: _encode(np.full((256, 256), 3000.0)))
+                            lambda tile, cache_dir=None, **k: _encode(np.full((256, 256), 3000.0)))
         bedrock = np.array([[-50.0, 2800.0]], np.float32)   # under the ice; a peak near the surface
         out = elevation.with_ice_surface(bedrock, self.POLAR)
         assert out.tolist() == [[3000.0, 2800.0]]
 
     def test_away_from_the_poles_nothing_is_fetched(self, monkeypatch):
-        def fetch(tile, cache_dir=None):
+        def fetch(tile, cache_dir=None, **k):
             raise AssertionError("fetched")
 
         monkeypatch.setattr(elevation, "fetch_tile", fetch)
@@ -182,7 +204,7 @@ class TestIceSurface:
         assert elevation.with_ice_surface(height, EXTENT) is height
 
     def test_offline_keeps_the_bedrock(self, monkeypatch):
-        def fetch(tile, cache_dir=None):
+        def fetch(tile, cache_dir=None, **k):
             raise OSError("offline")
 
         monkeypatch.setattr(elevation, "fetch_tile", fetch)
@@ -192,7 +214,7 @@ class TestIceSurface:
 
 class TestTilesAndKey:
     def test_tile_source_serves_raw_tiles(self, monkeypatch):
-        monkeypatch.setattr(elevation, "fetch_tile", lambda tile, cache_dir=None, timeout=30: _encode(np.zeros((2, 2))))
+        monkeypatch.setattr(elevation, "fetch_tile", lambda tile, cache_dir=None, timeout=30, **k: _encode(np.zeros((2, 2))))
         source = elevation.TerrariumTiles()
         img, extent, origin = source.get_image((0, 0, 1))
         assert img.shape == (2, 2, 4) and origin == "lower"

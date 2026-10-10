@@ -80,20 +80,24 @@ def decode_terrarium(rgb: np.ndarray) -> np.ndarray:
     return rgb[..., 0] * 256 + rgb[..., 1] + rgb[..., 2] / 256 - 32768
 
 
-def fetch_tile(tile: tuple[int, int, int], cache_dir: str | None = None, timeout: float = 30) -> np.ndarray:
+def fetch_tile(tile: tuple[int, int, int], cache_dir: str | None = None, timeout: float = 30,
+               use_cache: bool = True) -> np.ndarray:
     """Terrarium tile ``(x, y, z)`` as an RGBA ``uint8`` array, from the cache or the network.
 
-    Raises ``OSError`` if it cannot be downloaded; failures are never cached.
+    With *use_cache* False the cache is neither read nor written. Raises
+    ``OSError`` if it cannot be downloaded; failures are never cached.
     """
     x, y, z = tile
     path = Path(cache_dir or _default_cache_dir()) / "terrarium" / f"{z}_{x}_{y}.png"
-    if path.is_file():
+    if use_cache and path.is_file():
         data = path.read_bytes()
     else:
         request = urllib.request.Request(TERRARIUM_URL.format(x=x, y=y, z=z),
                                          headers={"User-Agent": "ortho/1.0"})
         with urllib.request.urlopen(request, timeout=timeout) as resp:
             data = resp.read()
+        if not use_cache:
+            return np.asarray(Image.open(io.BytesIO(data)).convert("RGBA"))
         path.parent.mkdir(parents=True, exist_ok=True)
         part = path.with_name(path.name + ".part")
         part.write_bytes(data)
@@ -108,17 +112,19 @@ class TerrariumTiles(cimgt.GoogleWTS):
     ``get_image`` raises on a failed download, like ``ortho.CachedOSM``.
     """
 
-    def __init__(self, cache_dir: str | None = None, timeout: float = 30) -> None:
+    def __init__(self, cache_dir: str | None = None, timeout: float = 30, use_cache: bool = True) -> None:
         super().__init__(desired_tile_form="RGBA", user_agent="ortho/1.0")
         self.tile_cache_dir = cache_dir
         self.timeout = timeout
+        self.use_cache = use_cache
 
     def _image_url(self, tile: tuple[int, int, int]) -> str:  # pyright: ignore[reportIncompatibleMethodOverride]
         x, y, z = tile
         return TERRARIUM_URL.format(x=x, y=y, z=z)
 
     def get_image(self, tile: tuple[int, int, int]):  # same (image, extent, origin) shape as Cartopy
-        return fetch_tile(tile, self.tile_cache_dir, self.timeout), self.tileextent(tile), "lower"
+        return (fetch_tile(tile, self.tile_cache_dir, self.timeout, use_cache=self.use_cache),
+                self.tileextent(tile), "lower")
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +250,7 @@ _ICE_SHEET_GAP_M = 500.0
 
 
 def with_ice_surface(height: np.ndarray, extent: tuple[float, float, float, float],
-                     cache_dir: str | None = None) -> np.ndarray:
+                     cache_dir: str | None = None, use_cache: bool = True) -> np.ndarray:
     """*height* with the Greenland and Antarctic ice sheets at their surface.
 
     From zoom 5 the terrain tiles hold the bedrock under the ice sheets
@@ -267,7 +273,7 @@ def with_ice_surface(height: np.ndarray, extent: tuple[float, float, float, floa
     py = np.clip(((world / 2 - merc_y[polar]) / world * n).astype(int), 0, n - 1)
     try:
         coarse = {
-            (tx, ty): decode_terrarium(fetch_tile((int(tx), int(ty), 4), cache_dir))
+            (tx, ty): decode_terrarium(fetch_tile((int(tx), int(ty), 4), cache_dir, use_cache=use_cache))
             for tx in np.unique(px // 256) for ty in np.unique(py // 256)
         }
     except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
@@ -285,7 +291,8 @@ def with_ice_surface(height: np.ndarray, extent: tuple[float, float, float, floa
 
 
 def relief_rgba(mosaic: np.ndarray, extent: tuple[float, float, float, float], alpha: float = 0.8,
-                land: np.ndarray | None = None, cache_dir: str | None = None) -> np.ndarray:
+                land: np.ndarray | None = None, cache_dir: str | None = None,
+                use_cache: bool = True) -> np.ndarray:
     """Colour and shade a merged Terrarium mosaic; the sea, lakes and missing tiles are clear.
 
     *mosaic* is the RGBA mosaic Cartopy merges (rows south to north), whose
@@ -293,7 +300,7 @@ def relief_rgba(mosaic: np.ndarray, extent: tuple[float, float, float, float], a
     defaults to :func:`land_raster`. Ice sheets are raised to their surface
     with :func:`with_ice_surface`.
     """
-    height = with_ice_surface(decode_terrarium(mosaic[..., :3]), extent, cache_dir)
+    height = with_ice_surface(decode_terrarium(mosaic[..., :3]), extent, cache_dir, use_cache)
     if land is None:
         land = land_raster(mosaic.shape[:2], extent)
     land = land & (mosaic[..., 3] > 0)

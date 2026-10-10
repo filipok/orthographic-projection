@@ -66,6 +66,12 @@ The main script is [ortho.py](ortho.py).
 
 *Vegetation greenness (MODIS NDVI) in January and July 2026: the northern winter and summer, and the southern summer and winter (OSM, zoom 3).*
 
+<p align="center">
+  <img src="sample_north_america_landcover.png" alt="Globe centred on North America showing only forests and croplands from MODIS land cover 2024: conifer forests along the Pacific coast and the Rockies, croplands across the Prairies and the Corn Belt, broadleaf and mixed forests in the east, and the Amazon rainforest at the southern edge" width="48%">
+</p>
+
+*MODIS land cover 2024, forests and croplands only, centred on North America (OSM, zoom 3). Much of Canada's boreal forest counts as woody savanna in MODIS, so it is left out.*
+
 ## Features
 
 - Interactive city selection from a built-in list of major metropolitan areas
@@ -271,7 +277,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
 | `--output-dir` | Directory for auto-named output files | `.` |
 | `--cache-dir` | OSM and NASA tile cache directory (Google tiles are never cached) | `~/.cache/ortho_tiles` |
-| `--no-cache` | Download OSM and NASA tiles fresh instead of using the cache | off |
+| `--no-cache` | Download map, terrain (`--elevation`) and vegetation tiles fresh, without reading or filling the cache | off |
 | `--koppen` | Enable Köppen-Geiger climate classification overlay | off |
 | `--koppen-class CLASS` | Show only this climate class (`Cfb`) or group (`C`, `Cs`); repeat for several; implies `--koppen` | all |
 | `--trewartha` | Enable the Trewartha climate classification overlay (not with `--koppen`) | off |
@@ -361,6 +367,7 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `andes_elevation.toml` | Elevation, centred on South America |
 | `steppe_soils.toml` | The steppe soils, centred on Kazakhstan |
 | `topsoil_ph.toml` | Topsoil pH across Africa, Europe and western Asia |
+| `north_america_landcover.toml` | MODIS land cover 2024, forests and croplands, centred on North America |
 | `ndvi_january.toml`, `ndvi_july.toml` | Vegetation greenness in January and July 2026 (the two halves of the NDVI sample) |
 
 The Google satellite recipes need a Google Maps key and are affected by Google's
@@ -431,7 +438,7 @@ The suite runs fully offline. `tests/conftest.py` blocks any connection to a non
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
 - Google tile backends depend on Cartopy tile services and may be subject to provider availability or usage limits.
 - If some or all map tiles fail to download, the map is still saved: missing tiles are left transparent so the fallback land/ocean features show through, and a warning says how many tiles failed.
-- OSM tiles are cached in `~/.cache/ortho_tiles/osm/` and reused for 7 days, as the OSM tile usage policy asks; NASA tiles are cached in `~/.cache/ortho_tiles/nasa/` for a year. Use `--cache-dir` to change the location or `--no-cache` to skip it. Failed downloads are never cached. Google tiles are never cached, because Google's terms don't allow it. In code, pass `tile_cache_dir=configure_tile_cache()` to `generate_orthographic_map`; the default is no cache.
+- OSM tiles are cached in `~/.cache/ortho_tiles/osm/` and reused for 7 days, as the OSM tile usage policy asks; NASA tiles are cached in `~/.cache/ortho_tiles/nasa/` for a year; terrain and vegetation tiles in `terrarium/` and `gibs/` for good. Use `--cache-dir` to change the location or `--no-cache` to skip it. Failed downloads are never cached. Google tiles are never cached, because Google's terms don't allow it. In code, pass `tile_cache_dir=configure_tile_cache()` to `generate_orthographic_map`; the default is no cache.
 - When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
 - Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at the top of each circle as drawn on the globe.
 
@@ -678,7 +685,9 @@ by itself:
 
 Water is left to the base map. MODIS counts tree cover of 10–60% as "woody
 savanna", so much of the boreal forest of Canada and Siberia is woody savanna
-rather than forest; add `--landcover-class savanna` to see it.
+rather than forest; add `--landcover-class savanna` to see it. The North America
+sample above is `python ortho.py --config recipes/north_america_landcover.toml`
+(`--lat 45 --lon -100 --landcover-class forest --landcover-class cropland`).
 
 **NDVI** (`--ndvi MONTH`, `ndvi=`) shows how green the vegetation was in one
 month, from 0 (bare ground) to 1 (dense, growing vegetation): the MODIS Terra

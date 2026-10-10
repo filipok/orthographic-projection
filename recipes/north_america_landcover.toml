@@ -1,0 +1,6 @@
+# MODIS land cover 2024: forests and croplands only, centred on North America.
+lat = 45
+lon = -100
+provider = "osm"
+landcover-class = ["forest", "cropland"]
+output = "orthographic_map_north_america_osm_z3_landcover.png"
