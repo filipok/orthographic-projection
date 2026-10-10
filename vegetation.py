@@ -186,6 +186,7 @@ class GibsTiles(cimgt.GoogleWTS):
         super().__init__(desired_tile_form="RGBA", user_agent="ortho/1.0")
         self.use_cache = use_cache
         self.layer, self.matrix, self.time = layer, matrix, time
+        self.max_zoom = int(matrix.rsplit("Level", 1)[1])     # the deepest zoom GIBS serves
         self.tile_cache_dir = cache_dir or os.path.join(os.path.expanduser("~"), ".cache", "ortho_tiles")
         self.timeout = timeout
 

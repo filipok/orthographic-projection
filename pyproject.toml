@@ -35,4 +35,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.setuptools]
-py-modules = ["ortho", "koppen", "trewartha", "elevation", "soil", "soil_properties", "vegetation", "ice", "crops", "rotation", "routes", "google_tiles", "tile_fetch"]
+py-modules = ["ortho", "koppen", "trewartha", "elevation", "soil", "soil_properties", "vegetation", "wind", "ice", "crops", "rotation", "routes", "google_tiles", "tile_fetch"]

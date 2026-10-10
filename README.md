@@ -68,9 +68,17 @@ The main script is [ortho.py](ortho.py).
 
 <p align="center">
   <img src="sample_north_america_landcover.png" alt="Globe centred on North America showing only forests and croplands from MODIS land cover 2024: conifer forests along the Pacific coast and the Rockies, croplands across the Prairies and the Corn Belt, broadleaf and mixed forests in the east, and the Amazon rainforest at the southern edge" width="48%">
+  <img src="sample_alps_radius.png" alt="A disc 2,500 km around the Alps, from Scandinavia to the Sahara and from Ireland to Turkey, with the land coloured by height and hill-shaded: the Alps, Pyrenees, Carpathians, Atlas and Anatolian plateau stand out, with distance rings every 500 km" width="48%">
 </p>
 
-*MODIS land cover 2024, forests and croplands only, centred on North America (OSM, zoom 3). Much of Canada's boreal forest counts as woody savanna in MODIS, so it is left out.*
+*Left: MODIS land cover 2024, forests and croplands only, centred on North America (OSM, zoom 3). Much of Canada's boreal forest counts as woody savanna in MODIS, so it is left out.*<br>
+*Right: Zoomed in to 2,500 km around the Alps, with elevation (OSM and terrain tiles at zoom 6).*
+
+<p align="center">
+  <img src="sample_wind_monsoon.png" alt="Two globes centred on India showing the prevailing winds: in January dry north-east winds blow off Asia across India and the Arabian Sea; in July the south-west monsoon sweeps from the Somali coast across the Arabian Sea onto India, steady and strong, while the south-east trades and the westerlies of the Southern Ocean blow in both" width="97%">
+</p>
+
+*The prevailing winds in January and July, 1991–2020 means: the north-east winter monsoon off Asia, and the south-west summer monsoon onto India, with the Somali jet off East Africa (OSM, zoom 3, NCEP/NCAR Reanalysis).*
 
 ## Features
 
@@ -84,6 +92,7 @@ The main script is [ortho.py](ortho.py).
 - Recipe files (`--config`): a map's settings in a small TOML file, one per sample map in [recipes/](recipes/)
 - City marker and label overlay on the globe for named locations
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
+- Optional zoomed-in map: only the area within a chosen distance of the centre (2,500 km by default), as a disc, with finer tiles
 - Optional second globe centred on the antipode, so one image shows the whole Earth
 - Optional Köppen-Geiger climate classification overlay with compact legend, for all classes or only chosen ones
 - Optional Trewartha climate classification overlay, computed from CHELSA v2.1 monthly climate and terrain heights (with a highland group), for all classes or only chosen ones
@@ -91,6 +100,7 @@ The main script is [ortho.py](ortho.py).
 - Optional vegetation layer: MODIS land cover (17 IGBP classes, any year 2001–2024, all or chosen classes) or monthly NDVI greenness
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
+- Optional prevailing winds for the year, a season or a month: arrows of the 1991–2020 mean surface wind, coloured by how steady it is
 - Optional polar ice: sea ice at its latest winter maximum (NSIDC) and permanent polar land ice
 - Optional crop areas for any of 173 crops (CROPGRIDS), one or several at once, with a key
 - Any compass direction at the top of the globe (south up, or the direction toward a place), with text kept upright
@@ -188,17 +198,19 @@ You will be prompted to choose:
 
 1. A location (pre-defined city **or** custom coordinates)
 2. A tile provider
-3. A zoom level
-4. Whether to also draw the opposite hemisphere (see "Both Hemispheres")
-5. The compass bearing to put at the top (blank keeps north up; see "Turning the Globe")
-6. An optional climate overlay, Köppen-Geiger or Trewartha, its opacity/alpha (0–1) and the classes to show (blank for all)
-7. Whether to colour the land by height, with relief shading (see "Elevation")
-8. An optional vegetation layer: MODIS land cover and the classes to show, or NDVI for a month (see "Vegetation")
-9. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
-10. Whether to add polar ice at its winter maximum (see "Polar Ice")
-11. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
-12. An optional GeoJSON route file to overlay (leave blank to skip)
-13. Whether to add a key naming each route (asked only when a route file is loaded)
+3. Whether to zoom in to a radius around the centre, in km (`y` for 2,500; blank for the whole hemisphere; see "Radius Maps")
+4. A zoom level (for a radius map, the default suits the radius)
+5. Whether to also draw the opposite hemisphere (whole-globe maps only; see "Both Hemispheres")
+6. The compass bearing to put at the top (blank keeps north up; see "Turning the Globe")
+7. An optional climate overlay, Köppen-Geiger or Trewartha, its opacity/alpha (0–1) and the classes to show (blank for all)
+8. Whether to colour the land by height, with relief shading (see "Elevation")
+9. An optional vegetation layer: MODIS land cover and the classes to show, or NDVI for a month (see "Vegetation")
+10. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
+11. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
+12. Whether to add polar ice at its winter maximum (see "Polar Ice")
+13. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
+14. An optional GeoJSON route file to overlay (leave blank to skip)
+15. Whether to add a key naming each route (asked only when a route file is loaded)
 
 ### CLI Mode
 
@@ -259,6 +271,15 @@ python ortho.py --lat 50 --lon 60 --soil-class Chernozems --soil-class Kastanoze
 python ortho.py --lat 25 --lon 20 --soil-property ph
 python ortho.py --lat 60 --lon -100 --soil-property organic-carbon --soil-depth 15-30cm
 
+# Zoomed in: 2,500 km around the centre, or any radius (see "Radius Maps")
+python ortho.py --lat 46 --lon 10 --radius --elevation
+python ortho.py --city tokyo --radius 800
+
+# Prevailing winds over the year, a season or a month (see "Prevailing Winds")
+python ortho.py --lat 15 --lon -30 --wind
+python ortho.py --lat 15 --lon 75 --wind jja
+python ortho.py --lat 15 --lon 75 --wind january
+
 # South up, or the direction toward a place at the top (see "Turning the Globe")
 python ortho.py --city sydney --up 180
 python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi"
@@ -272,7 +293,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--lat LAT` | Custom latitude (-90 to 90) | — |
 | `--lon LON` | Custom longitude (-180 to 180) | — |
 | `--provider` | Tile provider: `osm`, `google`, `google_satellite`, `nasa` | `osm` |
-| `--zoom ZOOM` | Tile zoom level (1–4) | `3` |
+| `--zoom ZOOM` | Tile zoom level: 1–4 for the whole globe; with `--radius`, up to one above its default | `3`, or chosen from `--radius` and the latitude |
 | `--dpi DPI` | Output resolution, 10–1200. The figure is 20 in, so 300 DPI = 6,000 px | `300` |
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
 | `--output-dir` | Directory for auto-named output files | `.` |
@@ -295,12 +316,14 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--soil-alpha ALPHA` | Opacity of the soil overlay, groups or property (0–1) | `0.6` |
 | `--soil-property PROPERTY` | Draw a soil property instead of the groups: `ph`, `organic-carbon`, `clay`, `sand`, `silt`, `nitrogen`, `cec`, `bulk-density`, `coarse-fragments`, `carbon-stock` | — |
 | `--soil-depth DEPTH` | Depth of `--soil-property`: `0-5cm`, `5-15cm`, `15-30cm`, `30-60cm`, `60-100cm`, `100-200cm` (`carbon-stock`: `0-30cm`) | `0-5cm` |
+| `--wind [PERIOD]` | Draw the prevailing winds (1991–2020 mean 10 m wind) for `year`, a season (`djf`, `mam`, `jja`, `son`) or a month (`july`, `7`) | off (`year` when given alone) |
 | `--ice` | Draw sea ice at its winter maximum and polar land ice | off |
 | `--ice-year YEAR` | Year of the sea ice maxima, 1979 on; implies `--ice` | latest published |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
 | `--route-legend` | Add a key below the globe naming each route next to its colour | off |
+| `--radius [KM]` | Zoom in: show only the area within KM of the centre, 100–10,000 (not with `--both-hemispheres`) | off (`2500` when given alone) |
 | `--both-hemispheres` | Draw a second globe centred on the antipode, showing the whole Earth; `--dpi` up to 600 | off |
 | `--up BEARING` | Compass bearing to put at the top, in degrees clockwise from north | `0` |
 | `--up-toward PLACE` | Put the direction toward a city or `LAT,LON` at the top (instead of `--up`) | — |
@@ -369,6 +392,8 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `topsoil_ph.toml` | Topsoil pH across Africa, Europe and western Asia |
 | `north_america_landcover.toml` | MODIS land cover 2024, forests and croplands, centred on North America |
 | `ndvi_january.toml`, `ndvi_july.toml` | Vegetation greenness in January and July 2026 (the two halves of the NDVI sample) |
+| `alps_radius.toml` | 2,500 km around the Alps, with elevation |
+| `wind_january.toml`, `wind_july.toml` | The prevailing winds over India and the Indian Ocean in January and July (the two halves of the monsoon sample) |
 
 The Google satellite recipes need a Google Maps key and are affected by Google's
 EEA restriction (see "Google tiles" below); add `--provider nasa` to render them
@@ -387,6 +412,9 @@ Example:
 ```text
 orthographic_map_paris_osm_z3.png
 ```
+
+A radius map adds `_r<km>km`, both hemispheres `_hemispheres` and a turned
+globe `_up<bearing>`, e.g. `orthographic_map_tokyo_osm_z8_r800km.png`.
 
 ## Programmatic Use
 
@@ -407,6 +435,8 @@ generate_orthographic_map(
     routes=None,           # optional: list of Route objects, see "Route Overlays"
     route_legend=False,    # optional: add a key naming each route
     both_hemispheres=False,  # optional: add a globe centred on the antipode
+    radius_km=None,        # optional: e.g. 2500 shows only that far from the centre (raise zoom to suit)
+    wind=None,             # optional: prevailing winds for "year", "djf"…"son" or a month such as "july"
     ice=False,             # optional: polar ice at its winter maximum
     crops=None,            # optional: e.g. ["wheat", "rice:#18b5a4"]
     elevation=False,       # optional: land coloured by height, hill-shaded
@@ -432,7 +462,7 @@ The suite runs fully offline. `tests/conftest.py` blocks any connection to a non
 
 ## Notes
 
-- Zoom is capped at level `4` to avoid excessive tile downloads. Lower zoom levels are safer for full-globe renders.
+- Zoom is capped at level `4` for the whole globe to avoid excessive tile downloads. A radius map covers less ground, so it takes finer tiles: its default zoom gives about a dozen tiles across the map at its latitude, and `--zoom` may go one higher (see "Radius Maps").
 - Web map tiles stop at about ±85° latitude, so a small disc around each pole shows the plain fallback colours. On OSM they match the tiles and are hard to see; on `google_satellite` and `nasa` the disc is visible. `--ice` covers both discs with ice; without it this is a known cosmetic limitation.
 - The default 300 DPI gives a ~6,000 px image. Map imagery carries roughly 2,000–4,000 px of real detail at zoom 3–4, so higher DPIs mostly upscale it; they still make text, circles, routes and the keys sharper (`--dpi 600` gives ~12,000 px).
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
@@ -440,7 +470,7 @@ The suite runs fully offline. `tests/conftest.py` blocks any connection to a non
 - If some or all map tiles fail to download, the map is still saved: missing tiles are left transparent so the fallback land/ocean features show through, and a warning says how many tiles failed.
 - OSM tiles are cached in `~/.cache/ortho_tiles/osm/` and reused for 7 days, as the OSM tile usage policy asks; NASA tiles are cached in `~/.cache/ortho_tiles/nasa/` for a year; terrain and vegetation tiles in `terrarium/` and `gibs/` for good. Use `--cache-dir` to change the location or `--no-cache` to skip it. Failed downloads are never cached. Google tiles are never cached, because Google's terms don't allow it. In code, pass `tile_cache_dir=configure_tile_cache()` to `generate_orthographic_map`; the default is no cache.
 - When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
-- Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at the top of each circle as drawn on the globe.
+- Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at the top of each circle as drawn on the globe. A radius map draws round-numbered circles inside its edge instead.
 
 ## Turning the Globe
 
@@ -601,6 +631,80 @@ The routes are approximate, drawn through documented landfalls and checked so
 that sea legs stay off land. The homeland and settlement areas are approximate
 outlines clipped to the [Natural Earth](https://www.naturalearthdata.com/)
 1:10m coastline (public domain).
+
+## Radius Maps
+
+`--radius` (`radius_km=` in the API, or the interactive prompt) zooms in: the
+map shows only the area within that distance of the centre, 2,500 km when no
+distance is given, as a disc filling the same frame as the whole globe.
+
+```powershell
+python ortho.py --lat 46 --lon 10 --radius --elevation
+python ortho.py --city tokyo --radius 800 --up 30
+python ortho.py --config recipes/alps_radius.toml
+```
+
+- **Any radius from 100 to 10,000 km.** It is still an orthographic view of
+  the globe, so a circle on the ground around the centre is a circle on the
+  map, and the edge of the disc is exactly the chosen distance. 10,000 km is
+  about a quarter of the way round the Earth: the whole hemisphere again.
+- **Finer tiles.** With less ground to cover, the default zoom puts about a
+  dozen tiles across the map. Web Mercator tiles shrink away from the equator,
+  so it depends on the latitude too: for 2,500 km, zoom 7 near the equator and
+  6 at 45°; 8 for 1,000 km and 11 for 100 km near the equator (NASA imagery
+  stops at 8). That is some 150–450 tiles the first time. `--zoom` can go one
+  higher, for about 3.5 times as many tiles.
+  The elevation layer follows the map tiles' zoom (up to 10), shading
+  less steeply as the tiles get finer, and uses the Natural Earth 1:10m
+  coastline from zoom 7. The land cover and NDVI tiles go up to zoom 8 and 7.
+- **Distance circles** fall at round steps inside the edge: every 500 km for
+  2,500 km, every 250 km for 800 km.
+- The climate, soil, crop, ice, wind and route layers are drawn as usual; the
+  climate and soil grids (7–15 km) look blocky on small radii.
+- It works with `--up` and `--up-toward`, but not with `--both-hemispheres`.
+- Auto-named files get an `_r<km>km` suffix, for example
+  `orthographic_map_tokyo_osm_z8_r800km.png`.
+
+## Prevailing Winds
+
+`--wind` (`wind=` in the API, or the interactive prompt) draws the prevailing
+surface winds as arrows: the mean wind 10 m above the ground over 1991–2020,
+from the NCEP/NCAR Reanalysis, for the whole year (the default), a season or
+a month.
+
+```powershell
+python ortho.py --lat 15 --lon -30 --wind
+python ortho.py --lat 15 --lon 75 --wind jja
+python ortho.py --config recipes/wind_january.toml
+```
+
+- **Periods.** `year`; the meteorological seasons `djf` (December–February),
+  `mam`, `jja` and `son`; or a month by name or number (`july`, `jul`, `7`).
+  A season averages its months, each weighted by its number of days. Seasons
+  matter where the wind turns: the monsoons of South Asia, West Africa and
+  northern Australia blow one way in summer and the other in winter, and over
+  the year they nearly cancel out.
+- **Arrows.** Each points the way the wind blows (downwind), and its length
+  is the mean wind's speed, with arrows for 2, 5 and 10 m/s in the key. They
+  are spaced evenly across the map, about 40 across, at any radius.
+- **Colours: steadiness.** The mean wind's speed divided by the average wind
+  speed. Where the wind blows from one direction nearly all the time the two
+  are close and steadiness nears 1: the trade winds of Hawaii score about 0.9.
+  Where it comes from every direction in turn the mean wind cancels out:
+  London's westerlies score about 0.3–0.45. The key has four bands:
+  variable (below 0.3), changeable, steady and very steady (0.8 and above).
+- **Data.** NOAA PSL's long-term monthly means of the NCEP/NCAR Reanalysis 1:
+  the eastward and northward wind and the mean wind speed at 10 m, on a
+  1.9° grid (about 200 km), interpolated to the arrows. Three files of about
+  1 MB, downloaded once and cached in `~/.cache/ortho_tiles/wind/`. The
+  average speed is of daily mean winds, so gusts and the daily land and sea
+  breezes are not counted against steadiness.
+- **Limits.** At 200 km the grid smooths out local winds that follow valleys
+  and coasts, like the mistral or the bora, so on a small radius map the
+  arrows show the regional wind, not the local one.
+- The arrows sit above the climate, soil, crop and ice layers and below the
+  routes and distance circles. The credit line is *Winds: NCEP/NCAR
+  Reanalysis 1, 1991–2020 means, NOAA PSL*.
 
 ## Polar Ice
 
@@ -983,6 +1087,7 @@ to the attribution block.
 | MODIS Terra Vegetation Indices monthly (NDVI, MOD13A3 v6.1, 1 km) | Didan, K., NASA LP DAAC | NASA open data, no restrictions | [doi:10.5067/MODIS/MOD13A3.061](https://doi.org/10.5067/MODIS/MOD13A3.061), via NASA GIBS |
 | Mapzen Terrain Tiles (Terrarium), from GMTED2010 and SRTM (USGS) and ETOPO1 (NOAA), used at zoom 4–5 for the elevation layer and the Trewartha highlands | Mapzen / Tilezen, AWS Open Data | Free to use; the sources must be credited ([attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | [registry.opendata.aws/terrain-tiles](https://registry.opendata.aws/terrain-tiles/) |
 | SoilGrids 2.0: most probable WRB Reference Soil Group, 250 m, used at 0.067° (~7 km); soil properties, 5 km aggregates, used at 0.05° | Poggio, L. et al. (2021), ISRIC World Soil Information | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.5194/soil-7-217-2021](https://doi.org/10.5194/soil-7-217-2021), [isric.org/explore/soilgrids](https://www.isric.org/explore/soilgrids) |
+| NCEP/NCAR Reanalysis 1, long-term monthly means 1991–2020 of the 10 m wind (u, v) and wind speed, T62 Gaussian grid (~1.9°) | Kalnay, E. et al. (1996); NOAA PSL | Public domain (US government); acknowledgement requested: "NCEP-NCAR Reanalysis 1 data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/1520-0477(1996)077<0437:TNYRP>2.0.CO;2](https://doi.org/10.1175/1520-0477(1996)077%3C0437:TNYRP%3E2.0.CO;2), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.derived.html) |
 | Natural Earth (land / ocean fallback, Trewartha and elevation land masks, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
@@ -1005,6 +1110,7 @@ the globe:
 | `--ndvi` layer | *NDVI: MODIS Terra monthly, Month YYYY (NASA), via NASA GIBS* |
 | `--soil` overlay | *Soil groups: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
 | `--soil-property` overlay | *Soil properties: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
+| `--wind` layer | *Winds: NCEP/NCAR Reanalysis 1, 1991–2020 means, NOAA PSL* |
 | `--ice` overlay | *Sea ice: NSIDC Sea Ice Index v4, extent March YYYY (Arctic) and September YYYY (Antarctic)* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
@@ -1067,6 +1173,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [vegetation.py](vegetation.py): MODIS land cover and NDVI layers and keys (NASA GIBS tiles)
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)
 - [soil_properties.py](soil_properties.py): soil property overlay and key (SoilGrids 2.0, 5 km)
+- [wind.py](wind.py): prevailing-wind arrows and key (NCEP/NCAR Reanalysis 1991–2020 means)
 - [ice.py](ice.py): polar ice overlay (NSIDC sea ice extent, Natural Earth land ice)
 - [crops.py](crops.py): crop-area overlay and key (CROPGRIDS, read from the remote archive)
 - [rotation.py](rotation.py): orthographic globes with any compass direction at the top

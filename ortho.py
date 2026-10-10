@@ -21,6 +21,7 @@ from matplotlib.figure import Figure
 import cartopy.crs as ccrs
 import cartopy.io.img_tiles as cimgt
 import cartopy.feature as cfeature
+import matplotlib.path as mpath
 import matplotlib.patheffects as pe
 from cartopy.geodesic import Geodesic
 from cartopy.mpl.geoaxes import GeoAxes
@@ -42,7 +43,9 @@ from koppen import (
     KOPPEN_ATTRIBUTION, KoppenDataError, add_koppen_overlay, add_koppen_legend,
     resolve_koppen_classes,
 )
-from rotation import far_side_up, globe_projection, initial_bearing, normalise_bearing
+from rotation import (
+    EARTH_RADIUS_M, far_side_up, globe_projection, initial_bearing, normalise_bearing,
+)
 from elevation import (
     ELEVATION_ATTRIBUTION, RELIEF_ZOOM, TerrariumTiles, add_elevation_legend, relief_rgba,
 )
@@ -57,6 +60,9 @@ from vegetation import (
     FIRST_LAND_COVER_YEAR, LATEST_LAND_COVER_YEAR, VEGETATION_ZOOM, add_land_cover_legend,
     add_ndvi_legend, land_cover_attribution, land_cover_rgba, land_cover_tiles, ndvi_attribution,
     ndvi_rgba, ndvi_tiles, resolve_land_cover_classes, resolve_ndvi_month,
+)
+from wind import (
+    WIND_ATTRIBUTION, WindDataError, add_wind_legend, add_wind_overlay, resolve_wind_period,
 )
 from trewartha import (
     TREWARTHA_ATTRIBUTION, TrewarthaDataError, add_trewartha_legend, add_trewartha_overlay,
@@ -363,12 +369,69 @@ MIN_DPI = 10
 MAX_DPI = 1200
 
 
+# Whole-globe renders take zoom 1-4: zoom 4 already fetches ~150 tiles.
+# Radius maps show less of the Earth, so they take finer tiles (see max_zoom).
+DEFAULT_ZOOM = 3
+MAX_GLOBE_ZOOM = 4
+MAX_TILE_ZOOM = {"nasa": 8}           # NASA's Blue Marble stops at zoom 8; the others go deeper
+MAX_RADIUS_ZOOM = 12
+MAX_RELIEF_ZOOM = 10                  # terrain finer than this adds nothing at the output's size
+DEFAULT_RADIUS_KM = 2_500
+MIN_RADIUS_KM = 100
+MAX_RADIUS_KM = 10_000                # about a quarter of the way round: the whole hemisphere
+_EQUATOR_KM = 2 * math.pi * 6_378.137
+# A radius map's default zoom puts about this many tiles across it
+_TILES_ACROSS = 12
+# Radius maps over-fetch half a tile round their edge; the globe's curved
+# edge needs more (see BufferedTileSource)
+RADIUS_TILE_BUFFER = 0.5
+
+
+def _radius_zoom(radius_km: float, lat: float) -> int:
+    """Zoom with about a dozen tiles across a map *radius_km* around latitude *lat*.
+
+    Web Mercator tiles cover less ground away from the equator (by the cosine
+    of the latitude), so the same map takes a lower zoom there.
+    """
+    tile_km = _EQUATOR_KM * math.cos(math.radians(min(abs(lat), 75.0)))   # a zoom 0 tile, across
+    return round(math.log2(_TILES_ACROSS * tile_km / (2 * radius_km)))
+
+
+def zoom_for_radius(radius_km: float, lat: float = 0.0, tile_provider: str = "osm") -> int:
+    """The default tile zoom for a map *radius_km* around a centre at latitude *lat*.
+
+    About a dozen tiles across the map: for 2,500 km, zoom 7 near the equator
+    and 6 at 45°.
+    """
+    zoom = _radius_zoom(radius_km, lat)
+    return max(DEFAULT_ZOOM, min(zoom, MAX_TILE_ZOOM.get(tile_provider.lower(), MAX_RADIUS_ZOOM)))
+
+
+def max_zoom(radius_km: float | None = None, lat: float = 0.0, tile_provider: str = "osm") -> int:
+    """The highest tile zoom allowed: 4 for the whole globe, one above the default for a radius map."""
+    if radius_km is None:
+        return MAX_GLOBE_ZOOM
+    zoom = _radius_zoom(radius_km, lat) + 1
+    return max(MAX_GLOBE_ZOOM, min(zoom, MAX_TILE_ZOOM.get(tile_provider.lower(), MAX_RADIUS_ZOOM)))
+
+
 def validate_render_options(
     dpi: int, koppen_alpha: float, both_hemispheres: bool = False, ice_year: int | None = None,
     elevation_alpha: float = 0.8, soil_alpha: float = 0.6, vegetation_alpha: float = 0.7,
-    land_cover_year: int | None = None,
+    land_cover_year: int | None = None, zoom: int | None = None, radius_km: float | None = None,
+    tile_provider: str = "osm", lat: float = 0.0,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
+    if radius_km is not None:
+        if not (math.isfinite(radius_km) and MIN_RADIUS_KM <= radius_km <= MAX_RADIUS_KM):
+            raise ValueError(f"radius_km must be between {MIN_RADIUS_KM:,} and {MAX_RADIUS_KM:,}, got {radius_km}")
+        if both_hemispheres:
+            raise ValueError("a radius map shows one globe; it cannot have both hemispheres")
+    if zoom is not None:
+        top = max_zoom(radius_km, lat, tile_provider)
+        if not 1 <= zoom <= top:
+            where = f"a {radius_km:,g} km radius" if radius_km is not None else "the whole globe"
+            raise ValueError(f"zoom must be between 1 and {top} for {where}, got {zoom}")
     if ice_year is not None and not FIRST_ICE_YEAR <= ice_year <= time.localtime().tm_year:
         raise ValueError(
             f"ice_year must be between {FIRST_ICE_YEAR} and this year, got {ice_year}"
@@ -429,6 +492,8 @@ def generate_orthographic_map(
     land_cover_year: int | None = None,
     ndvi: str | None = None,
     vegetation_alpha: float = 0.7,
+    wind: str | None = None,
+    radius_km: float | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -540,6 +605,15 @@ def generate_orthographic_map(
         ``"2026-07"``, or a month name or number for its latest year.
     vegetation_alpha : float
         Opacity of the land cover or NDVI layer (0–1).
+    wind : str, optional
+        Draw the prevailing winds (NCEP/NCAR 1991–2020 mean 10 m wind, see
+        :mod:`wind`) for ``"year"``, a season (``"djf"``, ``"mam"``,
+        ``"jja"``, ``"son"``) or a month (``"july"``, ``"7"``), with a key.
+    radius_km : float, optional
+        Show only the land within this distance of the centre (100–10,000 km),
+        as a disc filling the frame, instead of the whole hemisphere. Use a
+        finer *zoom* to match (see :func:`zoom_for_radius`). Not with
+        *both_hemispheres*.
 
     Returns
     -------
@@ -550,8 +624,10 @@ def generate_orthographic_map(
     validate_render_options(
         dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
         elevation_alpha=elevation_alpha, soil_alpha=soil_alpha, vegetation_alpha=vegetation_alpha,
-        land_cover_year=land_cover_year,
+        land_cover_year=land_cover_year, zoom=zoom, radius_km=radius_km, tile_provider=tile_provider,
+        lat=lat,
     )
+    wind_period = resolve_wind_period(wind) if wind is not None else None
     land_cover_codes = resolve_land_cover_classes(land_cover_classes or [])
     land_cover = land_cover or bool(land_cover_codes) or land_cover_year is not None
     ndvi_month = resolve_ndvi_month(ndvi) if ndvi else None
@@ -584,6 +660,8 @@ def generate_orthographic_map(
 
     # Step 1: Initialize the requested image tile source
     tile_kwargs = tile_kwargs or {}
+    if radius_km is not None:
+        tile_buffer_factor = min(tile_buffer_factor, RADIUS_TILE_BUFFER)
     tiles = create_tile_source(
         tile_provider=tile_provider,
         tile_buffer_factor=tile_buffer_factor,
@@ -605,8 +683,10 @@ def generate_orthographic_map(
         centres.append((anti_lat, anti_lon, far_side_up(lat, lon, up, anti_lat, anti_lon)))
         logger.info("Adding the opposite hemisphere, centred at lat=%.4f, lon=%.4f", anti_lat, anti_lon)
     fig = Figure(figsize=(20 * len(centres), 20))
+    if radius_km is not None:
+        logger.info("Showing %s km around the centre", f"{radius_km:,g}")
     axes = [
-        _add_globe_axes(fig, centre_lat, centre_lon, index, len(centres), centre_up)
+        _add_globe_axes(fig, centre_lat, centre_lon, index, len(centres), centre_up, radius_km)
         for index, (centre_lat, centre_lon, centre_up) in enumerate(centres)
     ]
     near = axes[0]
@@ -644,15 +724,17 @@ def generate_orthographic_map(
     # Its tiles are fetched in savefig too; failed ones leave the map tiles showing.
     relief = None
     if elevation:
-        logger.info("Adding elevation (alpha=%.2f) …", elevation_alpha)
+        # A radius map gets terrain as fine as its map tiles (up to zoom 10)
+        relief_zoom = RELIEF_ZOOM if radius_km is None else max(RELIEF_ZOOM, min(zoom, MAX_RELIEF_ZOOM))
+        logger.info("Adding elevation (alpha=%.2f, zoom %d) …", elevation_alpha, relief_zoom)
         relief = BufferedTileSource(
             TerrariumTiles(cache_dir=tile_cache_dir, use_cache=tile_cache_dir is not None),
             tile_buffer_factor=tile_buffer_factor,
             postprocess=functools.partial(relief_rgba, alpha=elevation_alpha, cache_dir=tile_cache_dir,
-                                          use_cache=tile_cache_dir is not None),
+                                          use_cache=tile_cache_dir is not None, zoom=relief_zoom),
         )
         for ax in axes:
-            ax.add_image(relief, RELIEF_ZOOM, regrid_shape=regrid_shape, interpolation="bilinear", zorder=1)
+            ax.add_image(relief, relief_zoom, regrid_shape=regrid_shape, interpolation="bilinear", zorder=1)
 
     # Step 5a2: Vegetation, land cover or NDVI (above the elevation, below the climate
     # colours); NASA GIBS tiles, fetched in savefig like the map tiles
@@ -677,8 +759,11 @@ def generate_orthographic_map(
         )
         vegetation_credit = ndvi_attribution(*ndvi_month)
     if vegetation is not None:
+        # A radius map gets finer tiles, up to the layer's deepest zoom
+        vegetation_zoom = VEGETATION_ZOOM if radius_km is None else max(
+            VEGETATION_ZOOM, min(zoom, vegetation.tile_source.max_zoom))
         for ax in axes:
-            ax.add_image(vegetation, VEGETATION_ZOOM, regrid_shape=regrid_shape,
+            ax.add_image(vegetation, vegetation_zoom, regrid_shape=regrid_shape,
                          interpolation="nearest", zorder=2)
 
     # Step 5b: Climate overlay, Köppen-Geiger or Trewartha (above tiles, below
@@ -760,6 +845,19 @@ def generate_orthographic_map(
                 draw_ice(ax, ice_layers)
             ice_attribution = ice_layers.attribution
 
+    # Step 5e: Prevailing winds (above the ice, below routes and distance circles)
+    wind_drawn = False
+    if wind_period is not None:
+        logger.info("Adding the prevailing winds for %s …", wind_period.label)
+        try:
+            for ax in axes:
+                add_wind_overlay(ax, wind_period)
+        except (WindDataError, OSError) as e:
+            # Missing data should not throw away the rest of the map
+            logger.warning("Skipping prevailing winds: %s", e)
+        else:
+            wind_drawn = True
+
     # Step 6: Gridlines
     for ax in axes:
         ax.gridlines(draw_labels=False, color='black', alpha=0.3, linestyle='--')
@@ -799,7 +897,10 @@ def generate_orthographic_map(
 
     # Step 7b: Concentric distance circles, all measured from the requested
     # point: 2 500 and 5 000 km on its globe, 17 500 and 15 000 km on the far one
-    _draw_distance_circles(near, lon, lat)
+    if radius_km is not None:
+        _draw_distance_circles(near, lon, lat, radii_km=ring_radii(radius_km))
+    else:
+        _draw_distance_circles(near, lon, lat)
     if far is not None:
         _draw_distance_circles(far, lon, lat, radii_km=FAR_SIDE_RADII_KM)
 
@@ -824,6 +925,8 @@ def generate_orthographic_map(
         keys.append(add_soil_property_legend(near, prop, prop_depth, x=key_x))
     if crop_layer is not None:
         keys.append(add_crop_legend(near, crop_layer, x=key_x))
+    if wind_drawn and wind_period is not None:
+        keys.append(add_wind_legend(near, wind_period, x=key_x))
     if routes and route_legend:
         keys.append(add_route_legend(near, routes, x=key_x))
     _stack_keys(near, [k for k in keys if k is not None], top=-0.07 if climate_credits else -0.01, x=key_x)
@@ -843,6 +946,8 @@ def generate_orthographic_map(
         credits.append(CROP_ATTRIBUTION)
     if ice_attribution:
         credits.append(ice_attribution)
+    if wind_drawn:
+        credits.append(WIND_ATTRIBUTION)
     _add_attribution(axes[-1], credits)
 
     # Step 8: Export
@@ -876,8 +981,13 @@ _GLOBE_GAP_IN = 1.0
 
 def _add_globe_axes(
     fig: Figure, lat: float, lon: float, index: int, count: int, up: float = 0.0,
+    radius_km: float | None = None,
 ) -> GeoAxes:
-    """Add globe *index* of *count* to *fig*, centred on (*lat*, *lon*), bearing *up* at the top."""
+    """Add globe *index* of *count* to *fig*, centred on (*lat*, *lon*), bearing *up* at the top.
+
+    With *radius_km*, the axes show only the disc within that distance of the
+    centre, filling the same frame the whole globe would.
+    """
     proj = globe_projection(lat, lon, up)
     if count == 1:
         ax = fig.add_subplot(projection=proj)
@@ -893,7 +1003,25 @@ def _add_globe_axes(
     if not isinstance(ax, GeoAxes):
         raise RuntimeError("Failed to create GeoAxes")
     ax.set_global()  # full hemisphere view
+    if radius_km is not None:
+        # A circle on the ground around the centre is a circle on an orthographic
+        # globe, of radius R·sin(d / R): zoom to its square and clip to the circle
+        half = proj.x_limits[1] * math.sin(radius_km * 1_000 / EARTH_RADIUS_M)
+        ax.set_extent((-half, half, -half, half), crs=proj)
+        # A many-sided polygon: Cartopy keeps only the vertices of a curved path
+        theta = np.linspace(0, 2 * np.pi, 721)
+        ring = np.column_stack([0.5 + 0.5 * np.cos(theta), 0.5 + 0.5 * np.sin(theta)])
+        ax.set_boundary(mpath.Path(ring, closed=True), transform=ax.transAxes)
     return ax
+
+
+def ring_radii(radius_km: float) -> tuple[float, ...]:
+    """Distance circles for a radius map: round steps inside its edge, two to four of them."""
+    rough = radius_km / 3
+    magnitude = 10 ** math.floor(math.log10(rough))
+    step = max(m * magnitude for m in (1, 2, 2.5, 5) if m * magnitude <= rough)
+    count = math.ceil(radius_km / step) - 1                 # a ring on the edge would hide it
+    return tuple(step * i for i in range(1, count + 1))
 
 
 
@@ -1040,7 +1168,7 @@ def _draw_distance_circles(
         visible = np.vstack(runs)
         label_x, label_y = visible[int(np.argmax(visible[:, 1]))]
         ax.text(
-            label_x, label_y, f" {int(radius_km):,} km",
+            label_x, label_y, f" {radius_km:,g} km",
             transform=proj,
             fontsize=9, color="white", alpha=alphas[idx % len(alphas)],
             fontweight="bold", va="bottom", ha="center", zorder=10,
@@ -1087,10 +1215,13 @@ def prompt_for_zoom(default_zoom: int = 3, min_zoom: int = 1, max_zoom: int = 4)
 
 def build_output_filename(
     city_slug: str, tile_provider: str, zoom: int, both_hemispheres: bool = False, up: float = 0.0,
+    radius_km: float | None = None,
 ) -> str:
     """Build a descriptive output filename from the render parameters."""
     sanitized_provider = tile_provider.replace(" ", "_")
     suffix = "_hemispheres" if both_hemispheres else ""
+    if radius_km is not None:
+        suffix += f"_r{round(radius_km)}km"
     up = normalise_bearing(up)
     if up:
         suffix += f"_up{round(up) % 360}"
@@ -1145,6 +1276,26 @@ def resolve_place(place: str) -> tuple[float, float]:
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise ValueError(f"{place!r} is out of range (latitude -90 to 90, longitude -180 to 180)")
     return lat, lon
+
+
+def prompt_for_radius() -> float | None:
+    """Prompt for the radius of a zoomed-in map; blank shows the whole hemisphere."""
+    while True:
+        raw = input(
+            f"Show only a radius around the centre, in km ({MIN_RADIUS_KM:,}-{MAX_RADIUS_KM:,}; "
+            f"'y' for {DEFAULT_RADIUS_KM:,}) [default: whole hemisphere]: "
+        ).strip().lower().replace(",", "")
+        if not raw or raw in ("n", "no"):
+            return None
+        if raw in ("y", "yes"):
+            return float(DEFAULT_RADIUS_KM)
+        try:
+            radius = float(raw)
+        except ValueError:
+            radius = math.nan
+        if math.isfinite(radius) and MIN_RADIUS_KM <= radius <= MAX_RADIUS_KM:
+            return radius
+        print(f"Please enter a distance between {MIN_RADIUS_KM:,} and {MAX_RADIUS_KM:,} km.\n")
 
 
 def prompt_for_up() -> float:
@@ -1256,10 +1407,11 @@ def build_cli_parser() -> argparse.ArgumentParser:
     imagery.add_argument(
         "--zoom",
         type=int,
-        default=3,
-        choices=range(1, 5),
+        default=None,
         metavar="ZOOM",
-        help="Tile zoom level 1-4 (default: 3)",
+        help=f"Tile zoom level: 1-{MAX_GLOBE_ZOOM} for the whole globe (default: {DEFAULT_ZOOM}); with --radius, "
+             "up to one above its default, which gives about a dozen tiles across the map "
+             "(e.g. 6 for 2,500 km at 45°).",
     )
     imagery.add_argument(
         "--dpi",
@@ -1288,6 +1440,16 @@ def build_cli_parser() -> argparse.ArgumentParser:
     )
 
     layout = parser.add_argument_group("Globe layout")
+    layout.add_argument(
+        "--radius",
+        type=float,
+        nargs="?",
+        const=float(DEFAULT_RADIUS_KM),
+        default=None,
+        metavar="KM",
+        help=f"Zoom in: show only the area within KM of the centre ({MIN_RADIUS_KM:,}-{MAX_RADIUS_KM:,}; "
+             f"default when given without a value: {DEFAULT_RADIUS_KM:,}).",
+    )
     layout.add_argument(
         "--both-hemispheres",
         action="store_true",
@@ -1436,6 +1598,17 @@ def build_cli_parser() -> argparse.ArgumentParser:
         metavar="DEPTH",
         help="Depth of --soil-property: " + ", ".join(SOIL_DEPTHS)
              + " (default: 0-5cm; carbon-stock is 0-30cm only).",
+    )
+
+    winds = parser.add_argument_group("Winds (NCEP/NCAR Reanalysis)")
+    winds.add_argument(
+        "--wind",
+        nargs="?",
+        const="year",
+        default=None,
+        metavar="PERIOD",
+        help="Draw the prevailing winds, the 1991-2020 mean 10 m wind, for a PERIOD: year (the default), "
+             "a season (djf, mam, jja, son) or a month (e.g. july or 7).",
     )
 
     ice = parser.add_argument_group("Polar ice")
@@ -1639,12 +1812,18 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
     tile_kwargs = {}
     if tile_provider in GOOGLE_MAP_TYPES:
         tile_kwargs["api_key"] = prompt_for_google_api_key()
-    zoom = prompt_for_zoom(default_zoom=3)
-    both_hemispheres = input(
-        "Also draw the opposite hemisphere, centred on the antipode? [y/N]: "
-    ).strip().lower() in ("y", "yes")
+    radius_km = prompt_for_radius()
+    if radius_km is None:
+        zoom = prompt_for_zoom(default_zoom=DEFAULT_ZOOM)
+        both_hemispheres = input(
+            "Also draw the opposite hemisphere, centred on the antipode? [y/N]: "
+        ).strip().lower() in ("y", "yes")
+    else:
+        zoom = prompt_for_zoom(default_zoom=zoom_for_radius(radius_km, lat, tile_provider),
+                               max_zoom=max_zoom(radius_km, lat, tile_provider))
+        both_hemispheres = False
     up = prompt_for_up()
-    output_file = build_output_filename(city_slug, tile_provider, zoom, both_hemispheres, up)
+    output_file = build_output_filename(city_slug, tile_provider, zoom, both_hemispheres, up, radius_km)
 
     print(
         f"\nGenerating map for {city_label} using '{tile_provider}' at zoom level {zoom}."
@@ -1700,6 +1879,18 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             except ValueError as e:
                 print(f"{e}\n")
 
+    wind_period = None
+    if input("Draw the prevailing winds? [y/N]: ").strip().lower() in ("y", "yes"):
+        while True:
+            wind_period = input(
+                "Wind period: year, a season (djf, mam, jja, son) or a month [default: year]: "
+            ).strip() or "year"
+            try:
+                resolve_wind_period(wind_period)
+                break
+            except ValueError as e:
+                print(f"{e}\n")
+
     soil_classes: list[str] = []
     soil_property = None
     soil_input = input(
@@ -1751,6 +1942,8 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             land_cover=enable_land_cover,
             land_cover_classes=land_cover_classes,
             ndvi=ndvi_month,
+            wind=wind_period,
+            radius_km=radius_km,
             up=up,
         )
     except GoogleTilesError as e:
@@ -1810,6 +2003,8 @@ def run_cli(args: argparse.Namespace) -> None:
         resolve_land_cover_classes(args.landcover_class or [])
         if args.ndvi:
             resolve_ndvi_month(args.ndvi)
+        if args.wind is not None:
+            resolve_wind_period(args.wind)
         if args.soil_property:
             resolve_soil_property(args.soil_property, args.soil_depth)
         elif args.soil_depth:
@@ -1841,11 +2036,16 @@ def run_cli(args: argparse.Namespace) -> None:
         logger.error("--up must be a number of degrees.")
         sys.exit(1)
 
+    # Zoom: as given, or the default for the whole globe or the radius
+    zoom = args.zoom
+    if zoom is None:
+        zoom = DEFAULT_ZOOM if args.radius is None else zoom_for_radius(args.radius, lat, args.provider)
     try:
         validate_render_options(
             dpi=args.dpi, koppen_alpha=args.koppen_alpha, both_hemispheres=args.both_hemispheres,
             ice_year=args.ice_year, elevation_alpha=args.elevation_alpha, soil_alpha=args.soil_alpha,
             vegetation_alpha=args.vegetation_alpha, land_cover_year=args.landcover_year,
+            zoom=zoom, radius_km=args.radius, tile_provider=args.provider, lat=lat,
         )
     except ValueError as e:
         logger.error("Invalid option: %s.", e)
@@ -1868,13 +2068,13 @@ def run_cli(args: argparse.Namespace) -> None:
         output_dir = None  # explicit path, don't prepend output_dir
     else:
         output_file = build_output_filename(
-            city_slug, args.provider, args.zoom, args.both_hemispheres, up,
+            city_slug, args.provider, zoom, args.both_hemispheres, up, args.radius,
         )
         output_dir = args.output_dir
 
     logger.info(
         "Generating map for %s using '%s' at zoom level %d.",
-        city_label, args.provider, args.zoom,
+        city_label, args.provider, zoom,
     )
     logger.info("Output file: %s", output_file)
 
@@ -1884,7 +2084,7 @@ def run_cli(args: argparse.Namespace) -> None:
             lon=lon,
             output_filename=output_file,
             tile_provider=args.provider,
-            zoom=args.zoom,
+            zoom=zoom,
             dpi=args.dpi,
             output_dir=output_dir,
             city_name=city_label if city_slug != "custom" else None,
@@ -1912,6 +2112,8 @@ def run_cli(args: argparse.Namespace) -> None:
             land_cover_year=args.landcover_year,
             ndvi=args.ndvi,
             vegetation_alpha=args.vegetation_alpha,
+            wind=args.wind,
+            radius_km=args.radius,
             up=up,
         )
     except GoogleTilesError as e:

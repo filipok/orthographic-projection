@@ -1,0 +1,7 @@
+# Zoomed in: 2,500 km around the Alps, with elevation (zoom 6 tiles, chosen from the radius and latitude).
+lat = 46
+lon = 10
+provider = "osm"
+radius = 2500
+elevation = true
+output = "orthographic_map_alps_osm_z6_r2500km_elevation.png"

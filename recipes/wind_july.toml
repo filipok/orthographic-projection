@@ -1,0 +1,6 @@
+# Prevailing winds in July (1991-2020 mean): the summer monsoon blows onto India.
+lat = 15
+lon = 75
+provider = "osm"
+wind = "july"
+output = "orthographic_map_indian_ocean_osm_z3_wind_july.png"

@@ -91,6 +91,10 @@ class TestGibsTiles:
             "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_L3_NDVI_Monthly/default/"
             "2026-07-01/GoogleMapsCompatible_Level7/5/2/3.png")
 
+    def test_deepest_zoom_of_each_layer(self):
+        assert veg.land_cover_tiles(2024).max_zoom == 8
+        assert veg.ndvi_tiles(2026, 7).max_zoom == 7
+
     def test_palette_tile_is_cached(self, tmp_path, monkeypatch):
         source, calls = self._source(tmp_path, monkeypatch, [_png("P")])
         for _ in range(2):

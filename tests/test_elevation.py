@@ -154,13 +154,27 @@ def _square(x0, y0, x1, y1):
 
 class TestLandRaster:
     def test_land_minus_lakes_rows_south_to_north(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(elevation, "_land_polygons", [])
-        monkeypatch.setattr(elevation, "_lake_polygons", [])
+        monkeypatch.setattr(elevation, "_land_polygons", {})
+        monkeypatch.setattr(elevation, "_lake_polygons", {})
         natural_earth = _shapes(tmp_path, land=[_square(0, 0, 0.5, 1)], lakes=[_square(0.1, 0.1, 0.3, 0.3)])
         mask = elevation.land_raster((100, 100), EXTENT, natural_earth=natural_earth)
         assert mask[50, 25] and not mask[50, 75]             # western half is land
         assert not mask[20, 20]                              # the lake, near the south-west corner
         assert mask[80, 20]                                  # land north of the lake
+
+    def test_scale_reaches_natural_earth_and_is_cached_separately(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(elevation, "_land_polygons", {})
+        monkeypatch.setattr(elevation, "_lake_polygons", {})
+        shapes = _shapes(tmp_path, land=[_square(0, 0, 0.5, 1)], lakes=[])
+        asked = []
+
+        def natural_earth(resolution, category, name):
+            asked.append(resolution)
+            return shapes(resolution, category, name)
+
+        for scale in ("10m", "10m", "50m"):
+            elevation.land_raster((10, 10), EXTENT, natural_earth=natural_earth, scale=scale)
+        assert asked == ["10m", "10m", "50m", "50m"]         # land and lakes, once per scale
 
 
 class TestRelief:
@@ -176,6 +190,21 @@ class TestRelief:
         # Flat ground keeps its band colour (shading factor 1)
         assert tuple(rgba[0, 1, :3]) == elevation.ELEVATION_BANDS[0][2]
         assert tuple(rgba[0, 2, :3]) == elevation.ELEVATION_BANDS[4][2]
+
+    @pytest.mark.parametrize("zoom, scale", [(5, "50m"), (6, "50m"), (7, "10m"), (10, "10m")])
+    def test_close_views_use_the_fine_coastline(self, monkeypatch, zoom, scale):
+        monkeypatch.setattr(elevation, "with_ice_surface", lambda h, extent, *a, **k: h)
+        scales = []
+        monkeypatch.setattr(elevation, "land_raster",
+                            lambda shape, extent, scale: scales.append(scale) or np.ones(shape, bool))
+        elevation.relief_rgba(_encode([[100.0]]), EXTENT, zoom=zoom)
+        assert scales == [scale]
+
+    def test_finer_tiles_are_shaded_less_steeply(self):
+        assert elevation.shade_exaggeration(5) == 8
+        assert elevation.shade_exaggeration(4) == 8
+        assert elevation.shade_exaggeration(7) == pytest.approx(8 * 0.36)
+        assert elevation.shade_exaggeration(10) == 1.0
 
     def test_land_below_sea_level_is_coloured(self, monkeypatch):
         monkeypatch.setattr(elevation, "with_ice_surface", lambda h, extent, *a, **k: h)

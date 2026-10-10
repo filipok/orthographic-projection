@@ -206,24 +206,28 @@ def _mercator_xy(lon: np.ndarray, lat: np.ndarray) -> tuple[np.ndarray, np.ndarr
     return _EARTH_RADIUS * np.radians(lon), _EARTH_RADIUS * np.arcsinh(np.tan(np.radians(lat)))
 
 
-_land_polygons: list[Any] = []
-_lake_polygons: list[Any] = []
+# Natural Earth land and lake polygons, by scale ("50m", "10m"), read once
+_land_polygons: dict[str, list[Any]] = {}
+_lake_polygons: dict[str, list[Any]] = {}
 
 
 def land_raster(
     shape: tuple[int, int], extent: tuple[float, float, float, float],
-    natural_earth: Callable[..., str] = shapereader.natural_earth,
+    natural_earth: Callable[..., str] = shapereader.natural_earth, scale: str = "50m",
 ) -> np.ndarray:
     """True where a Web Mercator raster (rows south to north) is on land.
 
-    Natural Earth 1:50m land minus its lakes, so land below sea level, like
-    the Caspian Depression or the Dutch polders, still counts as land, while
-    the lakes are left to the base map.
+    Natural Earth land minus its lakes at *scale* (1:50m, or 1:10m for close
+    views), so land below sea level, like the Caspian Depression or the Dutch
+    polders, still counts as land, while the lakes are left to the base map.
     """
-    if not _land_polygons:
-        for name, polygons in (("land", _land_polygons), ("lakes", _lake_polygons)):
-            for geom in shapereader.Reader(natural_earth("50m", "physical", name)).geometries():
+    if scale not in _land_polygons:
+        land: list[Any] = []
+        lakes: list[Any] = []
+        for name, polygons in (("land", land), ("lakes", lakes)):
+            for geom in shapereader.Reader(natural_earth(scale, "physical", name)).geometries():
                 polygons.extend(shapely.get_parts(geom))
+        _land_polygons[scale], _lake_polygons[scale] = land, lakes
     rows, cols = shape
     x0, x1, y0, y1 = extent
     image = Image.new("1", (cols, rows), 0)
@@ -235,13 +239,38 @@ def land_raster(
         # Image rows run north to south; flipped below to match the mosaic
         return list(zip((x - x0) / (x1 - x0) * cols, (y1 - y) / (y1 - y0) * rows))
 
-    for polygon in _land_polygons:
+    view = shapely.box(*(_lon_lat_box(extent)))
+    for polygon in _land_polygons[scale]:
+        if not polygon.intersects(view):
+            continue
         draw.polygon(pixels(polygon.exterior), fill=1)
         for hole in polygon.interiors:
             draw.polygon(pixels(hole), fill=0)
-    for lake in _lake_polygons:
-        draw.polygon(pixels(lake.exterior), fill=0)
+    for lake in _lake_polygons[scale]:
+        if lake.intersects(view):
+            draw.polygon(pixels(lake.exterior), fill=0)
     return np.asarray(image, dtype=bool)[::-1]
+
+
+def _lon_lat_box(extent: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    """``(west, south, east, north)`` of a Web Mercator *extent*, in degrees."""
+    x0, x1, y0, y1 = extent
+    lon0, lon1 = np.degrees(np.array([x0, x1]) / _EARTH_RADIUS)
+    lat0, lat1 = np.degrees(np.arctan(np.sinh(np.array([y0, y1]) / _EARTH_RADIUS)))
+    return float(lon0), float(lat0), float(lon1), float(lat1)
+
+
+# Hill shading is tuned for zoom 5 tiles. Finer tiles resolve steeper slopes,
+# so the shading's vertical exaggeration falls as the zoom rises.
+_SHADE_ZOOM = 5
+_SHADE_EXAGGERATION = 8.0
+# From this zoom the land mask uses the 1:10m coastline
+_FINE_COAST_ZOOM = 7
+
+
+def shade_exaggeration(zoom: int) -> float:
+    """Vertical exaggeration for hill shading terrain tiles at *zoom*."""
+    return max(1.0, _SHADE_EXAGGERATION * 0.6 ** max(0, zoom - _SHADE_ZOOM))
 
 
 # Beyond these latitudes the ice-sheet surface may replace the tiles' bedrock
@@ -292,22 +321,22 @@ def with_ice_surface(height: np.ndarray, extent: tuple[float, float, float, floa
 
 def relief_rgba(mosaic: np.ndarray, extent: tuple[float, float, float, float], alpha: float = 0.8,
                 land: np.ndarray | None = None, cache_dir: str | None = None,
-                use_cache: bool = True) -> np.ndarray:
+                use_cache: bool = True, zoom: int = RELIEF_ZOOM) -> np.ndarray:
     """Colour and shade a merged Terrarium mosaic; the sea, lakes and missing tiles are clear.
 
-    *mosaic* is the RGBA mosaic Cartopy merges (rows south to north), whose
-    fully transparent pixels mark tiles that failed to download. *land*
-    defaults to :func:`land_raster`. Ice sheets are raised to their surface
-    with :func:`with_ice_surface`.
+    *mosaic* is the RGBA mosaic Cartopy merges (rows south to north) from
+    tiles at *zoom*, whose fully transparent pixels mark tiles that failed to
+    download. *land* defaults to :func:`land_raster`. Ice sheets are raised to
+    their surface with :func:`with_ice_surface`.
     """
     height = with_ice_surface(decode_terrarium(mosaic[..., :3]), extent, cache_dir, use_cache)
     if land is None:
-        land = land_raster(mosaic.shape[:2], extent)
+        land = land_raster(mosaic.shape[:2], extent, scale="10m" if zoom >= _FINE_COAST_ZOOM else "50m")
     land = land & (mosaic[..., 3] > 0)
     bounds = np.array([band[0] for band in ELEVATION_BANDS[1:]])
     colours = np.array([band[2] for band in ELEVATION_BANDS], np.float32)
     rgb = colours[np.digitize(height, bounds)]
-    shade = hillshade(np.maximum(height, 0), extent)
+    shade = hillshade(np.maximum(height, 0), extent, vertical_exaggeration=shade_exaggeration(zoom))
     flat = math.sin(math.radians(45))                         # shade of level ground
     # Darken slopes facing away from the light and lighten those facing it
     factor = np.clip(1 + 0.9 * (shade - flat), 0.35, 1.3)

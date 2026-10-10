@@ -228,6 +228,10 @@ class TestBuildOutputFilename:
         result = ortho.build_output_filename("lisbon", "osm", 3, both_hemispheres=True)
         assert result == "orthographic_map_lisbon_osm_z3_hemispheres.png"
 
+    def test_radius_suffix(self):
+        assert ortho.build_output_filename("rome", "osm", 7, radius_km=2500.0, up=90) == \
+            "orthographic_map_rome_osm_z7_r2500km_up90.png"
+
     @pytest.mark.parametrize("up, suffix", [(0, ""), (360, ""), (180, "_up180"), (119.6, "_up120"), (-90, "_up270")])
     def test_rotation_suffix(self, up, suffix):
         assert ortho.build_output_filename("sydney", "osm", 3, up=up) == f"orthographic_map_sydney_osm_z3{suffix}.png"
@@ -274,7 +278,61 @@ class TestAntipode:
         assert ortho.FAR_SIDE_RADII_KM == (17_500, 15_000)
 
 
+class TestRadiusAndZoom:
+    @pytest.mark.parametrize("radius, lat, provider, zoom", [
+        (2_500, 0, "osm", 7), (2_500, 46, "osm", 6), (2_500, -60, "osm", 6), (2_500, 89, "osm", 5),
+        (1_000, 0, "osm", 8), (100, 0, "osm", 11), (100, 0, "nasa", 8),
+        (5_000, 0, "osm", 6), (10_000, 0, "osm", 5), (10_000, 89, "osm", 3),
+    ])
+    def test_default_zoom_for_a_radius(self, radius, lat, provider, zoom):
+        assert ortho.zoom_for_radius(radius, lat, provider) == zoom
+
+    def test_max_zoom(self):
+        assert ortho.max_zoom() == 4
+        assert ortho.max_zoom(2_500) == 8 and ortho.max_zoom(2_500, 46) == 7
+        assert ortho.max_zoom(100) == 12 and ortho.max_zoom(100, 0, "nasa") == 8
+        assert ortho.max_zoom(10_000, 60) == 5 and ortho.max_zoom(10_000, 89) == 4
+
+    @pytest.mark.parametrize("radius, rings", [
+        (2_500, (500, 1_000, 1_500, 2_000)),
+        (1_000, (250, 500, 750)),
+        (800, (250, 500, 750)),
+        (10_000, (2_500, 5_000, 7_500)),
+        (100, (25, 50, 75)),
+        (3_000, (1_000, 2_000)),
+    ])
+    def test_ring_radii_are_round_and_inside_the_edge(self, radius, rings):
+        assert ortho.ring_radii(radius) == rings
+
+    def test_prompt_for_radius(self, monkeypatch, capsys):
+        answers = iter(["", "y", "50", "abc", "1,200"])
+        monkeypatch.setattr("builtins.input", lambda _: next(answers))
+        assert ortho.prompt_for_radius() is None
+        assert ortho.prompt_for_radius() == 2_500
+        assert ortho.prompt_for_radius() == 1_200                  # after two bad answers
+        assert capsys.readouterr().out.count("between 100 and 10,000 km") == 2
+
+
 class TestValidateRenderOptions:
+    @pytest.mark.parametrize("kwargs, match", [
+        (dict(radius_km=99), "radius_km must be between 100 and 10,000"),
+        (dict(radius_km=10_001), "radius_km must be between"),
+        (dict(radius_km=float("nan")), "radius_km must be between"),
+        (dict(radius_km=2_500, both_hemispheres=True), "cannot have both hemispheres"),
+        (dict(zoom=5), "between 1 and 4 for the whole globe"),
+        (dict(zoom=0), "between 1 and 4"),
+        (dict(zoom=9, radius_km=2_500), "between 1 and 8 for a 2,500 km radius"),
+        (dict(zoom=9, radius_km=100, tile_provider="nasa"), "between 1 and 8"),
+        (dict(zoom=8, radius_km=2_500, lat=46), "between 1 and 7"),
+    ])
+    def test_zoom_and_radius(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            ortho.validate_render_options(dpi=100, koppen_alpha=0.5, **kwargs)
+
+    def test_zoom_within_limits(self):
+        ortho.validate_render_options(dpi=100, koppen_alpha=0.5, zoom=4)
+        ortho.validate_render_options(dpi=100, koppen_alpha=0.5, zoom=8, radius_km=2_500)
+
     def test_both_hemispheres_halves_the_dpi_cap(self):
         ortho.validate_render_options(dpi=ortho.MAX_DPI // 2, koppen_alpha=0.5, both_hemispheres=True)
         with pytest.raises(ValueError, match="with both hemispheres"):
@@ -460,7 +518,8 @@ class TestCLIParser:
     def test_defaults(self):
         args = self._parse(["--city", "paris"])
         assert args.provider == "osm"
-        assert args.zoom == 3
+        assert args.zoom is None            # 3 for the globe, or chosen from --radius
+        assert args.radius is None and args.wind is None
         assert args.dpi == ortho.DEFAULT_DPI == 300
         assert args.output is None
         assert args.output_dir is None
@@ -543,6 +602,15 @@ class TestCLIParser:
                             "--landcover-year", "2010", "--vegetation-alpha", "0.5"])
         assert args.landcover_class == ["forest", "cropland"] and args.landcover_year == 2010
         assert self._parse(["--city", "nyc", "--ndvi", "july"]).ndvi == "july"
+
+    def test_radius_flag(self):
+        assert self._parse(["--city", "paris", "--radius"]).radius == 2_500
+        assert self._parse(["--city", "paris", "--radius", "800"]).radius == 800
+        assert self._parse(["--city", "paris", "--zoom", "7"]).zoom == 7
+
+    def test_wind_flag(self):
+        assert self._parse(["--city", "paris", "--wind"]).wind == "year"
+        assert self._parse(["--city", "paris", "--wind", "jja"]).wind == "jja"
 
     def test_elevation_flags(self):
         args = self._parse(["--city", "nyc"])
@@ -657,7 +725,7 @@ class TestRecipes:
         ('ice = "yes"\n', "ice must be true or false"),
         ('zoom = [3, 4]\n', "zoom takes a single value"),
         ('city = {name = "paris"}\n', "city must be text or a number"),
-        ('zoom = 9\n', "invalid choice"),
+        ('provider = "bing"\n', "invalid choice"),
         ('city = \n', "is not valid TOML"),
     ])
     def test_errors_exit_like_a_bad_command_line(self, tmp_path, capsys, text, message):
@@ -738,6 +806,7 @@ class TestRunCLIValidation:
             elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
+            wind=None, radius=None,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -895,6 +964,44 @@ class TestRunCLIValidation:
             with pytest.raises(SystemExit):
                 ortho.run_cli(args)
         render.assert_not_called()
+
+    def test_radius_picks_its_zoom_and_is_named(self):
+        args = self._make_args(city="paris", radius=2_500.0, zoom=None)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert kwargs["radius_km"] == 2_500 and kwargs["zoom"] == 6       # Paris is at 49°N
+        assert kwargs["output_filename"] == "orthographic_map_paris_osm_z6_r2500km.png"
+
+    def test_globe_zoom_defaults_to_3(self):
+        args = self._make_args(city="paris", zoom=None)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["zoom"] == 3 and render.call_args.kwargs["radius_km"] is None
+
+    @pytest.mark.parametrize("overrides, message", [
+        (dict(zoom=6), "between 1 and 4 for the whole globe"),
+        (dict(radius=2_500.0, zoom=8), "between 1 and 7"),
+        (dict(radius=50.0, zoom=None), "radius_km must be between"),
+        (dict(radius=2_500.0, zoom=None, both_hemispheres=True), "both hemispheres"),
+        (dict(wind="monsoon"), "Unknown wind period"),
+    ])
+    def test_bad_radius_zoom_or_wind_exits_before_render(self, caplog, overrides, message):
+        args = self._make_args(city="paris", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                pytest.raises(SystemExit):
+            ortho.run_cli(args)
+        render.assert_not_called()
+        assert message in caplog.text
+
+    def test_wind_passed_to_renderer(self):
+        args = self._make_args(city="paris", wind="jja")
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["wind"] == "jja"
 
     def test_up_passed_to_renderer_and_named(self):
         args = self._make_args(city="sydney", up=180.0)
@@ -1724,3 +1831,77 @@ class TestVisibleRuns:
 
     def test_single_visible_points_are_dropped(self):
         assert ortho._visible_runs(self._ring([True, False, False, False])) == []
+
+
+class TestRadiusAndWindRendering:
+    """Offline renders of a zoomed-in map and of the wind layer."""
+
+    def _render(self, tmp_path, **kwargs):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "_draw_distance_circles") as circles, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(
+                lat=46, lon=10, output_filename="m.png", zoom=kwargs.pop("zoom", 1), dpi=20,
+                output_dir=str(tmp_path), **kwargs,
+            )
+        assert os.path.exists(result)
+        return attribution.call_args.args[0], circles, attribution.call_args.args[1]
+
+    def test_radius_zooms_to_a_disc_of_that_size(self, tmp_path):
+        ax, circles, _ = self._render(tmp_path, radius_km=2_500, zoom=6)
+        half = ax.projection.x_limits[1] * np.sin(2_500_000 / ortho.EARTH_RADIUS_M)
+        assert ax.get_extent(ax.projection) == pytest.approx((-half, half, -half, half))
+        # Clipped to the circle within that square
+        boundary = ax.patch.get_path().vertices
+        assert np.hypot(boundary[:, 0] - 0.5, boundary[:, 1] - 0.5) == pytest.approx(0.5)
+        assert circles.call_args.kwargs["radii_km"] == (500, 1_000, 1_500, 2_000)
+
+    def test_rotated_radius_map(self, tmp_path):
+        ax, _, _ = self._render(tmp_path, radius_km=1_000, zoom=8, up=45)
+        half = ax.projection.x_limits[1] * np.sin(1_000_000 / ortho.EARTH_RADIUS_M)
+        assert ax.get_extent(ax.projection) == pytest.approx((-half, half, -half, half))
+
+    def test_whole_globe_by_default(self, tmp_path):
+        ax, circles, _ = self._render(tmp_path)
+        assert "radii_km" not in circles.call_args.kwargs
+        assert ax.get_extent(ax.projection)[1] == pytest.approx(ax.projection.x_limits[1])
+
+    def test_radius_maps_fetch_a_thinner_border_of_tiles(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None) as add_image:
+            ortho.generate_orthographic_map(lat=46, lon=10, output_filename="m.png", zoom=6, dpi=20,
+                                            output_dir=str(tmp_path), radius_km=2_500)
+        assert add_image.call_args.args[0].tile_buffer_factor == ortho.RADIUS_TILE_BUFFER
+
+    def test_radius_maps_use_finer_terrain_and_vegetation_tiles(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None) as add_image, \
+                mock.patch.object(ortho, "add_elevation_legend"), \
+                mock.patch.object(ortho, "add_land_cover_legend"):
+            ortho.generate_orthographic_map(
+                lat=46, lon=10, output_filename="m.png", zoom=11, dpi=20, output_dir=str(tmp_path),
+                radius_km=200, elevation=True, land_cover=True,
+            )
+        zooms = {type(c.args[0].tile_source).__name__: c.args[1] for c in add_image.call_args_list}
+        assert zooms == {"CachedOSM": 11, "TerrariumTiles": 10, "GibsTiles": 8}
+        relief = next(c.args[0] for c in add_image.call_args_list
+                      if isinstance(c.args[0].tile_source, ortho.TerrariumTiles))
+        assert relief.postprocess.keywords["zoom"] == 10
+
+    def test_wind_layer_key_and_credit(self, tmp_path):
+        with mock.patch.object(ortho, "add_wind_overlay") as overlay, \
+                mock.patch.object(ortho, "add_wind_legend") as key:
+            _, _, credits = self._render(tmp_path, wind="djf")
+        period = overlay.call_args.args[1]
+        assert period.months == (12, 1, 2) and key.call_args.args[1] == period
+        assert credits == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.WIND_ATTRIBUTION]
+
+    def test_wind_failure_still_saves_map(self, tmp_path, caplog):
+        with mock.patch.object(ortho, "add_wind_overlay", side_effect=ortho.WindDataError("offline")), \
+                mock.patch.object(ortho, "add_wind_legend") as key:
+            _, _, credits = self._render(tmp_path, wind="year")
+        key.assert_not_called()
+        assert credits == [ortho.TILE_ATTRIBUTIONS["osm"]] and "Skipping prevailing winds" in caplog.text
+
+    def test_bad_wind_period_fails_before_any_work(self, tmp_path):
+        with pytest.raises(ValueError, match="Unknown wind period"):
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", wind="monsoon",
+                                            output_dir=str(tmp_path))

@@ -1,0 +1,6 @@
+# Prevailing winds in January (1991-2020 mean): the winter monsoon blows off Asia.
+lat = 15
+lon = 75
+provider = "osm"
+wind = "january"
+output = "orthographic_map_indian_ocean_osm_z3_wind_january.png"
