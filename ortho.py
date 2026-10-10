@@ -13,7 +13,7 @@ import time
 import tomllib
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -2092,95 +2092,91 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
         sys.exit(1)
 
 
-def run_cli(args: argparse.Namespace) -> None:
-    """Non-interactive CLI mode driven by argparse namespace."""
+class RenderPlan(NamedTuple):
+    """A checked map request: the place's name and the arguments for :func:`generate_orthographic_map`."""
+    label: str
+    kwargs: dict[str, Any]
+
+
+def prepare_render(args: argparse.Namespace) -> RenderPlan:
+    """Check the options in *args* and turn them into the renderer's arguments.
+
+    *args* holds the options of :func:`build_cli_parser`, from the command line
+    or the web app. Everything that can be checked before any tiles or data are
+    fetched is checked here. Raises ``ValueError`` with a message for the user.
+    """
     # Validate coordinate pairing first
     if args.lon is not None and args.lat is None:
-        logger.error("--lon requires --lat.")
-        sys.exit(1)
+        raise ValueError("--lon requires --lat.")
     if args.lat is not None and args.lon is None:
-        logger.error("--lat requires --lon.")
-        sys.exit(1)
+        raise ValueError("--lat requires --lon.")
 
     # Resolve coordinates
     if args.lat is not None:
         if not (-90 <= args.lat <= 90):
-            logger.error("--lat must be between -90 and 90.")
-            sys.exit(1)
+            raise ValueError("--lat must be between -90 and 90.")
         if not (-180 <= args.lon <= 180):
-            logger.error("--lon must be between -180 and 180.")
-            sys.exit(1)
+            raise ValueError("--lon must be between -180 and 180.")
         lat, lon = args.lat, args.lon
         city_slug = "custom"
         city_label = f"({lat}, {lon})"
     elif args.city:
         # Find the city (case-insensitive match)
-        city_name = next(
-            k for k in MAJOR_METROPOLISES if k.lower() == args.city.lower()
-        )
+        city_name = next((k for k in MAJOR_METROPOLISES if k.lower() == args.city.lower()), None)
+        if city_name is None:
+            raise ValueError(f"Unknown city {args.city!r}. Cities: {', '.join(MAJOR_METROPOLISES)}")
         city = MAJOR_METROPOLISES[city_name]
         lat, lon = city["lat"], city["lon"]
         city_slug = city["slug"]
         city_label = city_name
     else:
-        logger.error("Provide --city or --lat/--lon.")
-        sys.exit(1)
+        raise ValueError("Provide --city or --lat/--lon.")
+    if args.provider not in TILE_PROVIDERS:
+        raise ValueError(f"Unknown tile provider {args.provider!r}. Providers: {', '.join(TILE_PROVIDERS)}")
 
     # Load routes up front so a bad file fails before any tiles are fetched
     try:
         routes = load_route_files(args.route or [])
     except (OSError, ValueError) as e:
-        logger.error("Could not load route: %s", e)
-        sys.exit(1)
+        raise ValueError(f"Could not load route: {e}") from e
     if args.route_legend and not routes:
         logger.warning("--route-legend is ignored because no --route was given.")
 
     # Check crop and climate class names now, before any tiles or data are fetched
-    try:
-        resolve_crops(args.crop or [])
-        resolve_koppen_classes(args.koppen_class or [])
-        resolve_trewartha_classes(args.trewartha_class or [])
-        resolve_soil_classes(args.soil_class or [])
-        resolve_land_cover_classes(args.landcover_class or [])
-        if args.ndvi:
-            resolve_ndvi_month(args.ndvi)
-        if args.wind is not None:
-            resolve_wind_period(args.wind)
-        resolve_climate_mean(args.temperature, args.precipitation, args.humidity)
-        if args.soil_property:
-            resolve_soil_property(args.soil_property, args.soil_depth)
-        elif args.soil_depth:
-            raise ValueError("--soil-depth needs --soil-property.")
-    except ValueError as e:
-        logger.error("%s", e)
-        sys.exit(1)
+    resolve_crops(args.crop or [])
+    resolve_koppen_classes(args.koppen_class or [])
+    resolve_trewartha_classes(args.trewartha_class or [])
+    resolve_soil_classes(args.soil_class or [])
+    resolve_land_cover_classes(args.landcover_class or [])
+    if args.ndvi:
+        resolve_ndvi_month(args.ndvi)
+    if args.wind is not None:
+        resolve_wind_period(args.wind)
+    climate_mean = resolve_climate_mean(args.temperature, args.precipitation, args.humidity)
+    if args.soil_property:
+        resolve_soil_property(args.soil_property, args.soil_depth)
+    elif args.soil_depth:
+        raise ValueError("--soil-depth needs --soil-property.")
     if (args.landcover or args.landcover_class or args.landcover_year is not None) and args.ndvi:
-        logger.error("Choose one vegetation layer: --landcover or --ndvi.")
-        sys.exit(1)
+        raise ValueError("Choose one vegetation layer: --landcover or --ndvi.")
     if (args.soil or args.soil_class) and args.soil_property:
-        logger.error("Choose one soil layer: --soil/--soil-class or --soil-property.")
-        sys.exit(1)
+        raise ValueError("Choose one soil layer: --soil/--soil-class or --soil-property.")
     if (args.koppen or args.koppen_class) and (args.trewartha or args.trewartha_class):
-        logger.error("Choose one climate classification: Köppen-Geiger or Trewartha.")
-        sys.exit(1)
-    if (args.koppen_class or args.trewartha_class) and any(
-            v is not None for v in (args.temperature, args.precipitation, args.humidity)):
-        logger.error("Choose one climate layer: a classification or a climate mean.")
-        sys.exit(1)
+        raise ValueError("Choose one climate classification: Köppen-Geiger or Trewartha.")
+    if (args.koppen or args.koppen_class or args.trewartha or args.trewartha_class) and climate_mean:
+        raise ValueError("Choose one climate layer: a classification or a climate mean.")
 
     # Orientation: a bearing, or the direction toward a place
     up = args.up
     if args.up_toward:
         try:
             target_lat, target_lon = resolve_place(args.up_toward)
-            up = initial_bearing(lat, lon, target_lat, target_lon)
         except ValueError as e:
-            logger.error("--up-toward: %s", e)
-            sys.exit(1)
+            raise ValueError(f"--up-toward: {e}") from e
+        up = initial_bearing(lat, lon, target_lat, target_lon)
         logger.info("Direction toward %s: bearing %.1f°", args.up_toward, up)
     if not math.isfinite(up):
-        logger.error("--up must be a number of degrees.")
-        sys.exit(1)
+        raise ValueError("--up must be a number of degrees.")
 
     # Zoom: as given, or the default for the whole globe or the radius
     zoom = args.zoom
@@ -2194,15 +2190,13 @@ def run_cli(args: argparse.Namespace) -> None:
             zoom=zoom, radius_km=args.radius, tile_provider=args.provider, lat=lat,
         )
     except ValueError as e:
-        logger.error("Invalid option: %s.", e)
-        sys.exit(1)
+        raise ValueError(f"Invalid option: {e}.") from e
 
     if args.provider in GOOGLE_MAP_TYPES:
         try:
             resolve_api_key()
         except GoogleTilesError as e:
-            logger.error("%s", e)
-            sys.exit(1)
+            raise ValueError(str(e)) from e
 
     tile_cache_dir = None if args.no_cache else configure_tile_cache(args.cache_dir)
 
@@ -2218,53 +2212,64 @@ def run_cli(args: argparse.Namespace) -> None:
         )
         output_dir = args.output_dir
 
+    return RenderPlan(city_label, dict(
+        lat=lat,
+        lon=lon,
+        output_filename=output_file,
+        tile_provider=args.provider,
+        zoom=zoom,
+        dpi=args.dpi,
+        output_dir=output_dir,
+        city_name=city_label if city_slug != "custom" else None,
+        koppen=args.koppen,
+        koppen_alpha=args.koppen_alpha,
+        routes=routes,
+        route_legend=args.route_legend,
+        tile_cache_dir=tile_cache_dir,
+        both_hemispheres=args.both_hemispheres,
+        ice=args.ice or args.ice_year is not None,
+        ice_year=args.ice_year,
+        crops=args.crop,
+        koppen_classes=args.koppen_class,
+        trewartha=args.trewartha,
+        trewartha_classes=args.trewartha_class,
+        elevation=args.elevation,
+        elevation_alpha=args.elevation_alpha,
+        soil=args.soil,
+        soil_classes=args.soil_class,
+        soil_alpha=args.soil_alpha,
+        soil_property=args.soil_property,
+        soil_depth=args.soil_depth,
+        land_cover=args.landcover,
+        land_cover_classes=args.landcover_class,
+        land_cover_year=args.landcover_year,
+        ndvi=args.ndvi,
+        vegetation_alpha=args.vegetation_alpha,
+        wind=args.wind,
+        temperature=args.temperature,
+        precipitation=args.precipitation,
+        humidity=args.humidity,
+        radius_km=args.radius,
+        up=up,
+    ))
+
+
+def run_cli(args: argparse.Namespace) -> None:
+    """Non-interactive CLI mode driven by argparse namespace."""
+    try:
+        plan = prepare_render(args)
+    except ValueError as e:
+        logger.error("%s", e)
+        sys.exit(1)
+
     logger.info(
         "Generating map for %s using '%s' at zoom level %d.",
-        city_label, args.provider, zoom,
+        plan.label, plan.kwargs["tile_provider"], plan.kwargs["zoom"],
     )
-    logger.info("Output file: %s", output_file)
+    logger.info("Output file: %s", plan.kwargs["output_filename"])
 
     try:
-        generate_orthographic_map(
-            lat=lat,
-            lon=lon,
-            output_filename=output_file,
-            tile_provider=args.provider,
-            zoom=zoom,
-            dpi=args.dpi,
-            output_dir=output_dir,
-            city_name=city_label if city_slug != "custom" else None,
-            koppen=args.koppen,
-            koppen_alpha=args.koppen_alpha,
-            routes=routes,
-            route_legend=args.route_legend,
-            tile_cache_dir=tile_cache_dir,
-            both_hemispheres=args.both_hemispheres,
-            ice=args.ice or args.ice_year is not None,
-            ice_year=args.ice_year,
-            crops=args.crop,
-            koppen_classes=args.koppen_class,
-            trewartha=args.trewartha,
-            trewartha_classes=args.trewartha_class,
-            elevation=args.elevation,
-            elevation_alpha=args.elevation_alpha,
-            soil=args.soil,
-            soil_classes=args.soil_class,
-            soil_alpha=args.soil_alpha,
-            soil_property=args.soil_property,
-            soil_depth=args.soil_depth,
-            land_cover=args.landcover,
-            land_cover_classes=args.landcover_class,
-            land_cover_year=args.landcover_year,
-            ndvi=args.ndvi,
-            vegetation_alpha=args.vegetation_alpha,
-            wind=args.wind,
-            temperature=args.temperature,
-            precipitation=args.precipitation,
-            humidity=args.humidity,
-            radius_km=args.radius,
-            up=up,
-        )
+        generate_orthographic_map(**plan.kwargs)
     except GoogleTilesError as e:
         logger.error("%s", e)
         sys.exit(1)

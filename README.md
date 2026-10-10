@@ -103,6 +103,7 @@ The main script is [ortho.py](ortho.py).
 - High-resolution PNG export with transparent background
 - Buffered tile fetching to reduce missing imagery near the edge of the globe
 - Non-interactive CLI mode with `argparse` for scripting and automation, its options grouped by topic in `--help`
+- A local web app (FastAPI): the same maps from a form in the browser, with the matching command line for each map
 - Recipe files (`--config`): a map's settings in a small TOML file, one per sample map in [recipes/](recipes/)
 - City marker and label overlay on the globe for named locations
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
@@ -197,6 +198,13 @@ Or install as an editable package (includes a console `ortho` command):
 
 ```powershell
 pip install -e ".[dev]"
+```
+
+For the web app (see "Web App"), add the `web` extra, which brings FastAPI and
+uvicorn and the `ortho-web` command:
+
+```powershell
+pip install -e ".[web,dev]"
 ```
 
 ## Usage
@@ -444,6 +452,50 @@ orthographic_map_paris_osm_z3.png
 A radius map adds `_r<km>km`, both hemispheres `_hemispheres` and a turned
 globe `_up<bearing>`, e.g. `orthographic_map_tokyo_osm_z8_r800km.png`.
 
+### Web App
+
+`webapp.py` serves the same maps from a form in the browser. It needs the `web`
+extra (`pip install -e ".[web]"`, or `pip install fastapi uvicorn`):
+
+```powershell
+python webapp.py          # or: ortho-web
+```
+
+Then open http://127.0.0.1:8000. Choose a place, the globe and the layers, and
+press **Render map**. The map appears when it is drawn, with a PNG download and
+the `ortho.py` command line that draws the same map. The page remembers your
+last settings in the browser.
+
+- **Same checks as the CLI.** A request is checked by the same code as a command
+  line (`ortho.prepare_render`), so a bad class name or period is refused with
+  the CLI's message before any tiles are fetched. The CLI is unchanged.
+- **One map at a time.** Maps are drawn one after another on a worker thread.
+  A request waits in a queue (10 at most) and the page shows its place in it.
+- **Limits.** Maps default to 150 dpi and may go up to 300. Route files are not
+  offered yet. Google tiles are offered only when an API key is set (see
+  "Google tiles").
+- **Files.** Maps are written to a folder in the system's temporary directory,
+  and the latest 50 are kept. The tile and data caches are the CLI's, so data
+  downloaded by either is reused by the other.
+- **API.** The page uses a small JSON API, also listed at `/docs`:
+  `POST /api/maps` takes the CLI's options by their argparse names
+  (`{"city": "Lisbon", "temperature": "july"}`) and returns a map id;
+  `GET /api/maps/{id}` gives its status; `GET /api/maps/{id}/image` gives the
+  PNG (`?download=1` to save it); `GET /api/options` lists the choices.
+- **Settings.** The server listens on `127.0.0.1` only (this computer), so no one
+  else can reach it. Change that with `--host` and `--port`, or with these
+  environment variables, which also suit a hosted server:
+
+| Variable | Meaning | Default |
+|----------|---------|---------|
+| `ORTHO_WEB_HOST` | Address to listen on | `127.0.0.1` |
+| `ORTHO_WEB_PORT` (or `PORT`) | Port to listen on | `8000` |
+| `ORTHO_WEB_OUTPUT_DIR` | Where the maps are written | `<temp>/ortho_web` |
+| `ORTHO_WEB_CACHE_DIR` | Tile cache | the CLI's, `~/.cache/ortho_tiles` |
+| `ORTHO_WEB_MAX_DPI` | Largest dpi a request may ask for | `300` |
+| `ORTHO_WEB_MAX_QUEUE` | Maps that may wait or render at once | `10` |
+| `ORTHO_WEB_KEEP` | Finished maps kept | `50` |
+
 ## Programmatic Use
 
 You can also import the generator directly:
@@ -481,7 +533,7 @@ generate_orthographic_map(
 
 ## Testing
 
-Run the test suite (requires the `[dev]` extra or `pip install pytest`):
+Run the test suite (requires the `[dev]` extra or `pip install pytest`; the web app's tests run when FastAPI is installed and are skipped otherwise):
 
 ```powershell
 python -m pytest
@@ -1256,9 +1308,11 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [routes.py](routes.py): GeoJSON route and area loading, drawing and the route key
 - [google_tiles.py](google_tiles.py): Google Map Tiles API client (API key, sessions, attribution)
 - [tile_fetch.py](tile_fetch.py): single-tile downloader shared by the tile sources
+- [webapp.py](webapp.py): the local web app (FastAPI): map requests, the render queue and the JSON API
+- [web/](web/): the web app's page, script and styles
 - [LICENSE](LICENSE): MIT licence
 - [routes/](routes/): bundled route files
 - [recipes/](recipes/): recipe files for the sample maps (`--config`)
 - [requirements.txt](requirements.txt): minimum dependency versions
-- [pyproject.toml](pyproject.toml): project metadata and `console_scripts` entry point
+- [pyproject.toml](pyproject.toml): project metadata and the `ortho` and `ortho-web` commands
 - [tests/](tests/): unit test suite

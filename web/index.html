@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orthographic Globe Maps</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="masthead">
+    <h1>Orthographic <span>globe maps</span></h1>
+    <p>The same renderer as <code>ortho.py</code>: choose a place and the layers, then render.</p>
+  </header>
+
+  <main class="layout">
+    <form id="map-form" class="controls" novalidate>
+      <fieldset>
+        <legend>Place</legend>
+        <div class="segmented" role="radiogroup" aria-label="Place">
+          <label><input type="radio" name="place" value="city" checked> City</label>
+          <label><input type="radio" name="place" value="coords"> Coordinates</label>
+        </div>
+        <label class="field" data-show="place:city">
+          <span>City</span>
+          <select id="city"></select>
+        </label>
+        <div class="row" data-show="place:coords" hidden>
+          <label class="field"><span>Latitude</span>
+            <input id="lat" type="number" step="any" min="-90" max="90" placeholder="−90 to 90"></label>
+          <label class="field"><span>Longitude</span>
+            <input id="lon" type="number" step="any" min="-180" max="180" placeholder="−180 to 180"></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Globe</legend>
+        <label class="field"><span>Base map</span>
+          <select id="provider"></select></label>
+        <div class="segmented" role="radiogroup" aria-label="View">
+          <label><input type="radio" name="view" value="globe" checked> Globe</label>
+          <label><input type="radio" name="view" value="hemispheres"> Both sides</label>
+          <label><input type="radio" name="view" value="radius"> Radius</label>
+        </div>
+        <label class="field" data-show="view:radius" hidden><span>Radius around the centre (km)</span>
+          <input id="radius" type="number" step="50"></label>
+        <label class="field"><span>Tile zoom</span>
+          <select id="zoom"></select></label>
+        <div class="segmented" role="radiogroup" aria-label="Top of the map">
+          <label><input type="radio" name="orient" value="bearing" checked> Bearing up</label>
+          <label><input type="radio" name="orient" value="toward"> Place up</label>
+        </div>
+        <label class="field" data-show="orient:bearing"><span>Compass bearing at the top (0 = north)</span>
+          <input id="up" type="number" step="any" value="0"></label>
+        <label class="field" data-show="orient:toward" hidden><span>Direction toward (a city or LAT,LON)</span>
+          <input id="up-toward" type="text" list="city-list" placeholder="London or 51.5,-0.13"></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Climate</legend>
+        <label class="field"><span>Layer</span>
+          <select id="climate">
+            <option value="">None</option>
+            <optgroup label="Classification">
+              <option value="koppen">Köppen-Geiger</option>
+              <option value="trewartha">Trewartha</option>
+            </optgroup>
+            <optgroup label="1981–2010 mean (CHELSA)">
+              <option value="temperature">Air temperature</option>
+              <option value="precipitation">Precipitation</option>
+              <option value="humidity">Relative humidity</option>
+            </optgroup>
+          </select></label>
+        <label class="field" data-show="climate:temperature,precipitation,humidity" hidden><span>Period</span>
+          <select id="period" class="periods"></select></label>
+        <label class="field" data-show="climate:koppen,trewartha" hidden><span>Only these classes (blank for all)</span>
+          <input id="climate-classes" type="text" placeholder="e.g. Cfb, Cs"></label>
+        <label class="field slider" data-show="climate:koppen,trewartha,temperature,precipitation,humidity" hidden>
+          <span>Opacity <output for="climate-alpha"></output></span>
+          <input id="climate-alpha" type="range" min="0" max="1" step="0.05"></label>
+      </fieldset>
+
+      <details>
+        <summary>Land: relief, vegetation, soil</summary>
+        <label class="check"><input id="elevation" type="checkbox"> Elevation and relief shading</label>
+        <label class="field slider" data-show="elevation" hidden><span>Opacity <output for="elevation-alpha"></output></span>
+          <input id="elevation-alpha" type="range" min="0" max="1" step="0.05"></label>
+
+        <label class="field"><span>Vegetation (MODIS)</span>
+          <select id="vegetation">
+            <option value="">None</option>
+            <option value="landcover">Land cover</option>
+            <option value="ndvi">Greenness (NDVI)</option>
+          </select></label>
+        <div class="row" data-show="vegetation:landcover" hidden>
+          <label class="field"><span>Year</span><select id="landcover-year"></select></label>
+          <label class="field"><span>Only these classes</span>
+            <input id="landcover-classes" type="text" placeholder="e.g. forest, cropland"></label>
+        </div>
+        <label class="field" data-show="vegetation:ndvi" hidden><span>Month</span>
+          <input id="ndvi" type="text" value="july" placeholder="july or 2024-07"></label>
+        <label class="field slider" data-show="vegetation:landcover,ndvi" hidden>
+          <span>Opacity <output for="vegetation-alpha"></output></span>
+          <input id="vegetation-alpha" type="range" min="0" max="1" step="0.05"></label>
+
+        <label class="field"><span>Soil (SoilGrids)</span>
+          <select id="soil">
+            <option value="">None</option>
+            <option value="groups">Soil groups (WRB, ~220 MB once)</option>
+            <option value="property">A soil property</option>
+          </select></label>
+        <label class="field" data-show="soil:groups" hidden><span>Only these groups</span>
+          <input id="soil-classes" type="text" placeholder="e.g. Chernozems, PZ"></label>
+        <div class="row" data-show="soil:property" hidden>
+          <label class="field"><span>Property</span><select id="soil-property"></select></label>
+          <label class="field"><span>Depth</span><select id="soil-depth"></select></label>
+        </div>
+        <label class="field slider" data-show="soil:groups,property" hidden>
+          <span>Opacity <output for="soil-alpha"></output></span>
+          <input id="soil-alpha" type="range" min="0" max="1" step="0.05"></label>
+      </details>
+
+      <details>
+        <summary>Overlays: winds, ice, crops</summary>
+        <label class="field"><span>Prevailing winds (1991–2020)</span>
+          <select id="wind" class="periods"><option value="">None</option></select></label>
+        <label class="check"><input id="ice" type="checkbox"> Polar ice</label>
+        <label class="field" data-show="ice" hidden><span>Sea ice year (blank for the latest)</span>
+          <input id="ice-year" type="number" step="1"></label>
+        <label class="field"><span>Crops (CROPGRIDS), separated by commas</span>
+          <input id="crops" type="text" placeholder="e.g. wheat, rice, maize"></label>
+      </details>
+
+      <fieldset>
+        <legend>Output</legend>
+        <label class="field"><span>Resolution (dpi)</span>
+          <input id="dpi" type="number" step="10"></label>
+      </fieldset>
+
+      <button id="render" type="submit" class="primary">Render map</button>
+      <p id="form-error" class="error" role="alert" hidden></p>
+    </form>
+
+    <section class="preview" aria-live="polite">
+      <div class="stage" id="stage">
+        <svg class="placeholder" id="placeholder" viewBox="-110 -110 220 220" aria-hidden="true">
+          <circle r="100"/>
+          <ellipse rx="35" ry="100"/><ellipse rx="70" ry="100"/>
+          <line x1="0" y1="-100" x2="0" y2="100"/>
+          <ellipse cy="-50" rx="86.6" ry="12"/><ellipse rx="100" ry="14"/><ellipse cy="50" rx="86.6" ry="12"/>
+        </svg>
+        <img id="map-image" alt="" hidden>
+      </div>
+      <div class="status">
+        <p id="status-text">No map yet. The first render of a layer downloads its data, which can take a while.</p>
+        <p id="activity" class="activity" hidden></p>
+      </div>
+      <div class="actions" id="actions" hidden>
+        <a id="download" class="button" href="#">Download PNG</a>
+        <a id="open" class="button" href="#" target="_blank" rel="noopener">Open full size</a>
+      </div>
+      <ul id="warnings" class="warnings" hidden></ul>
+      <div class="command" id="command" hidden>
+        <div class="command-head"><span>Same map from the command line</span>
+          <button type="button" id="copy" class="link">Copy</button></div>
+        <pre><code id="command-text"></code></pre>
+      </div>
+    </section>
+  </main>
+
+  <datalist id="city-list"></datalist>
+  <script src="/static/app.js"></script>
+</body>
+</html>
