@@ -177,6 +177,16 @@ class TestLandRaster:
         assert asked == ["10m", "10m", "50m", "50m"]         # land and lakes, once per scale
 
 
+    def test_land_across_the_date_line(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(elevation, "_land_polygons", {})
+        monkeypatch.setattr(elevation, "_lake_polygons", {})
+        # Land from 179°W to 172°W, on a mosaic from 170°E to 190°E (that is, 170°W)
+        natural_earth = _shapes(tmp_path, land=[_square(-179, -1, -172, 1)])
+        extent = (WORLD * 170 / 360, WORLD * 190 / 360, -WORLD / 360, WORLD / 360)
+        mask = elevation.land_raster((10, 20), extent, natural_earth=natural_earth)
+        assert mask[5, 11:18].all() and not mask[5, :10].any() and not mask[5, 19]
+
+
 class TestRelief:
     def test_colours_land_by_band_and_leaves_sea_and_gaps_clear(self, monkeypatch):
         heights = np.array([[-50, 150, 2500, 6000]], np.float32)

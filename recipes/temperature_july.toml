@@ -1,0 +1,6 @@
+# Mean air temperature in July (1981-2010): the Sahara, Arabia and the Indus plain over 30 °C, Tibet still cold.
+lat = 45
+lon = 70
+provider = "osm"
+temperature = "july"
+output = "orthographic_map_eurasia_osm_z3_temperature_july.png"

@@ -211,6 +211,20 @@ _land_polygons: dict[str, list[Any]] = {}
 _lake_polygons: dict[str, list[Any]] = {}
 
 
+def land_and_lakes(
+    scale: str = "50m", natural_earth: Callable[..., str] = shapereader.natural_earth,
+) -> tuple[list[Any], list[Any]]:
+    """Natural Earth's land and lake polygons at *scale*, read once."""
+    if scale not in _land_polygons:
+        land: list[Any] = []
+        lakes: list[Any] = []
+        for name, polygons in (("land", land), ("lakes", lakes)):
+            for geom in shapereader.Reader(natural_earth(scale, "physical", name)).geometries():
+                polygons.extend(shapely.get_parts(geom))
+        _land_polygons[scale], _lake_polygons[scale] = land, lakes
+    return _land_polygons[scale], _lake_polygons[scale]
+
+
 def land_raster(
     shape: tuple[int, int], extent: tuple[float, float, float, float],
     natural_earth: Callable[..., str] = shapereader.natural_earth, scale: str = "50m",
@@ -221,34 +235,33 @@ def land_raster(
     views), so land below sea level, like the Caspian Depression or the Dutch
     polders, still counts as land, while the lakes are left to the base map.
     """
-    if scale not in _land_polygons:
-        land: list[Any] = []
-        lakes: list[Any] = []
-        for name, polygons in (("land", land), ("lakes", lakes)):
-            for geom in shapereader.Reader(natural_earth(scale, "physical", name)).geometries():
-                polygons.extend(shapely.get_parts(geom))
-        _land_polygons[scale], _lake_polygons[scale] = land, lakes
+    land, lakes = land_and_lakes(scale, natural_earth)
     rows, cols = shape
     x0, x1, y0, y1 = extent
     image = Image.new("1", (cols, rows), 0)
     draw = ImageDraw.Draw(image)
 
-    def pixels(ring: Any) -> list[tuple[float, float]]:
+    def pixels(ring: Any, shift: float = 0.0) -> list[tuple[float, float]]:
         lon, lat = np.asarray(ring.coords).T[:2]
-        x, y = _mercator_xy(lon, lat)
+        x, y = _mercator_xy(lon + shift, lat)
         # Image rows run north to south; flipped below to match the mosaic
         return list(zip((x - x0) / (x1 - x0) * cols, (y1 - y) / (y1 - y0) * rows))
 
-    view = shapely.box(*(_lon_lat_box(extent)))
-    for polygon in _land_polygons[scale]:
-        if not polygon.intersects(view):
-            continue
-        draw.polygon(pixels(polygon.exterior), fill=1)
-        for hole in polygon.interiors:
-            draw.polygon(pixels(hole), fill=0)
-    for lake in _lake_polygons[scale]:
-        if lake.intersects(view):
-            draw.polygon(pixels(lake.exterior), fill=0)
+    # A mosaic across the date line runs past 180°; land beyond it is drawn shifted by 360°
+    west, south, east, north = _lon_lat_box(extent)
+    views = [(shift, shapely.box(west - shift, south, east - shift, north))
+             for shift in (-360.0, 0.0, 360.0) if west - shift < 180 and east - shift > -180]
+    for shift, view in views:
+        for polygon in land:
+            if not polygon.intersects(view):
+                continue
+            draw.polygon(pixels(polygon.exterior, shift), fill=1)
+            for hole in polygon.interiors:
+                draw.polygon(pixels(hole, shift), fill=0)
+    for shift, view in views:
+        for lake in lakes:
+            if lake.intersects(view):
+                draw.polygon(pixels(lake.exterior, shift), fill=0)
     return np.asarray(image, dtype=bool)[::-1]
 
 

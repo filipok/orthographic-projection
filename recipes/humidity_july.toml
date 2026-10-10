@@ -1,0 +1,6 @@
+# Relative humidity in July (1981-2010): the dry Sahara and Arabia beside the humid Gulf of Guinea and Europe.
+lat = 30
+lon = 20
+provider = "osm"
+humidity = "july"
+output = "orthographic_map_sahara_osm_z3_humidity_july.png"

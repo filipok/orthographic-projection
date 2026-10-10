@@ -1,0 +1,6 @@
+# Annual precipitation (1981-2010) over monsoon Asia: the wet Himalayan front, Burma coast, Borneo and New Guinea.
+lat = 5
+lon = 100
+provider = "osm"
+precipitation = "year"
+output = "orthographic_map_monsoon_asia_osm_z3_precipitation.png"

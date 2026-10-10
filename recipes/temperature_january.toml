@@ -1,0 +1,6 @@
+# Mean air temperature in January (1981-2010): the Siberian winter, below -40 °C around Yakutsk.
+lat = 45
+lon = 70
+provider = "osm"
+temperature = "january"
+output = "orthographic_map_eurasia_osm_z3_temperature_january.png"

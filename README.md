@@ -80,6 +80,20 @@ The main script is [ortho.py](ortho.py).
 
 *The prevailing winds in January and July, 1991–2020 means: the north-east winter monsoon off Asia, and the south-west summer monsoon onto India, with the Somali jet off East Africa (OSM, zoom 3, NCEP/NCAR Reanalysis).*
 
+<p align="center">
+  <img src="sample_temperature_seasons.png" alt="Two globes centred on Central Asia showing the mean air temperature: in January Siberia is below -40 °C around Yakutsk and most of Russia and Kazakhstan below -10 °C, while India and Africa stay warm; in July the Sahara, Arabia, Iran and the Indus plain pass 30 °C, Russia is mild and the Tibetan Plateau stays cool" width="97%">
+</p>
+
+*Mean air temperature in January and July, 1981–2010: the Siberian winter and the summer heat from the Sahara to the Indus, with Tibet cold in both (OSM, zoom 3, CHELSA v2.1).*
+
+<p align="center">
+  <img src="sample_precipitation_monsoon_asia.png" alt="Globe centred on Southeast Asia showing annual precipitation: over 3,000 mm along the Himalayan front, the Burmese and Malabar coasts, Borneo, Sumatra and New Guinea, and under 250 mm across the Taklamakan, the Gobi, Arabia and central Australia" width="48%">
+  <img src="sample_humidity_july.png" alt="Globe centred on the Sahara showing relative humidity in July: below 30 % over the central Sahara and Arabia, 50–70 % over Europe, and 70–90 % in the Congo Basin and along the Gulf of Guinea" width="48%">
+</p>
+
+*Left: Annual precipitation over monsoon Asia, 1981–2010: the wet Himalayan front, Borneo and New Guinea, and the dry interior of Asia and Australia (OSM, zoom 3, CHELSA v2.1).*<br>
+*Right: Relative humidity in July, 1981–2010: the dry Sahara and Arabia between humid Europe and the Gulf of Guinea (OSM, zoom 3, CHELSA v2.1).*
+
 ## Features
 
 - Interactive city selection from a built-in list of major metropolitan areas
@@ -101,6 +115,7 @@ The main script is [ortho.py](ortho.py).
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
 - Optional prevailing winds for the year, a season or a month: arrows of the 1991–2020 mean surface wind, coloured by how steady it is
+- Optional climate means for the year, a season or a month: air temperature, precipitation or relative humidity over 1981–2010 (CHELSA v2.1), in coloured bands with a key
 - Optional polar ice: sea ice at its latest winter maximum (NSIDC) and permanent polar land ice
 - Optional crop areas for any of 173 crops (CROPGRIDS), one or several at once, with a key
 - Any compass direction at the top of the globe (south up, or the direction toward a place), with text kept upright
@@ -202,7 +217,7 @@ You will be prompted to choose:
 4. A zoom level (for a radius map, the default suits the radius)
 5. Whether to also draw the opposite hemisphere (whole-globe maps only; see "Both Hemispheres")
 6. The compass bearing to put at the top (blank keeps north up; see "Turning the Globe")
-7. An optional climate overlay, Köppen-Geiger or Trewartha, its opacity/alpha (0–1) and the classes to show (blank for all)
+7. An optional climate overlay: Köppen-Geiger or Trewartha and the classes to show (blank for all), or the mean temperature, precipitation or humidity and its period (see "Climate Means"); then its opacity/alpha (0–1)
 8. Whether to colour the land by height, with relief shading (see "Elevation")
 9. An optional vegetation layer: MODIS land cover and the classes to show, or NDVI for a month (see "Vegetation")
 10. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
@@ -280,6 +295,12 @@ python ortho.py --lat 15 --lon -30 --wind
 python ortho.py --lat 15 --lon 75 --wind jja
 python ortho.py --lat 15 --lon 75 --wind january
 
+# Mean temperature, precipitation or humidity over the year, a season or a month (see "Climate Means")
+python ortho.py --lat 45 --lon 70 --temperature january
+python ortho.py --lat 5 --lon 100 --precipitation
+python ortho.py --lat 30 --lon 20 --humidity jja
+python ortho.py --lat 46 --lon 10 --radius --temperature july --elevation
+
 # South up, or the direction toward a place at the top (see "Turning the Globe")
 python ortho.py --city sydney --up 180
 python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi"
@@ -303,7 +324,10 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--koppen-class CLASS` | Show only this climate class (`Cfb`) or group (`C`, `Cs`); repeat for several; implies `--koppen` | all |
 | `--trewartha` | Enable the Trewartha climate classification overlay (not with `--koppen`) | off |
 | `--trewartha-class CLASS` | Show only this Trewartha class (`Do`) or group (`C`); repeat for several; implies `--trewartha` | all |
-| `--climate-alpha ALPHA` | Opacity of the climate overlay (0–1); `--koppen-alpha` is the same option | `0.45` |
+| `--temperature [PERIOD]` | Colour the land by its 1981–2010 mean air temperature for `year`, a season (`djf`, `mam`, `jja`, `son`) or a month (`july`, `7`) | off (`year` when given alone) |
+| `--precipitation [PERIOD]` | Colour the land by its 1981–2010 precipitation total over PERIOD, as for `--temperature` | off (`year` when given alone) |
+| `--humidity [PERIOD]` | Colour the land by its 1981–2010 mean relative humidity over PERIOD, as for `--temperature` | off (`year` when given alone) |
+| `--climate-alpha ALPHA` | Opacity of the climate layer (0–1); `--koppen-alpha` is the same option | `0.45` for a classification, `0.7` for a climate mean |
 | `--elevation` | Colour the land by height and shade its relief, with a key | off |
 | `--elevation-alpha ALPHA` | Opacity of the elevation layer (0–1) | `0.8` |
 | `--landcover` | Colour the land by its MODIS land cover class, with a key | off |
@@ -330,6 +354,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--config FILE` | Read settings from a TOML recipe file; the command line overrides it (see "Recipe Files") | — |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
+> One climate layer at a time: `--koppen`, `--trewartha`, `--temperature`, `--precipitation` and `--humidity` exclude each other.
 
 `python ortho.py --help` lists the options in the same groups: Location, Imagery
 and output, Globe layout, Climate, Polar ice, Crops, Routes and areas, Recipes.
@@ -394,6 +419,9 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `ndvi_january.toml`, `ndvi_july.toml` | Vegetation greenness in January and July 2026 (the two halves of the NDVI sample) |
 | `alps_radius.toml` | 2,500 km around the Alps, with elevation |
 | `wind_january.toml`, `wind_july.toml` | The prevailing winds over India and the Indian Ocean in January and July (the two halves of the monsoon sample) |
+| `temperature_january.toml`, `temperature_july.toml` | Mean air temperature in January and July, centred on Central Asia (the two halves of the temperature sample) |
+| `precipitation_monsoon_asia.toml` | Annual precipitation over monsoon Asia |
+| `humidity_july.toml` | Relative humidity in July, centred on the Sahara |
 
 The Google satellite recipes need a Google Maps key and are affected by Google's
 EEA restriction (see "Google tiles" below); add `--provider nasa` to render them
@@ -437,6 +465,7 @@ generate_orthographic_map(
     both_hemispheres=False,  # optional: add a globe centred on the antipode
     radius_km=None,        # optional: e.g. 2500 shows only that far from the centre (raise zoom to suit)
     wind=None,             # optional: prevailing winds for "year", "djf"…"son" or a month such as "july"
+    temperature=None,      # optional: mean temperature for a period as for wind; or precipitation=, humidity=
     ice=False,             # optional: polar ice at its winter maximum
     crops=None,            # optional: e.g. ["wheat", "rice:#18b5a4"]
     elevation=False,       # optional: land coloured by height, hill-shaded
@@ -705,6 +734,51 @@ python ortho.py --config recipes/wind_january.toml
 - The arrows sit above the climate, soil, crop and ice layers and below the
   routes and distance circles. The credit line is *Winds: NCEP/NCAR
   Reanalysis 1, 1991–2020 means, NOAA PSL*.
+
+## Climate Means
+
+`--temperature`, `--precipitation` and `--humidity` (the same keywords in the
+API, or the climate prompt) colour the land by its mean climate over 1981–2010,
+from CHELSA v2.1, for the whole year (the default), a season or a month:
+
+```powershell
+python ortho.py --lat 45 --lon 70 --temperature january
+python ortho.py --lat 5 --lon 100 --precipitation
+python ortho.py --lat 30 --lon 20 --humidity jja
+python ortho.py --config recipes/temperature_july.toml
+```
+
+- **Periods.** As for `--wind`: `year`, a season (`djf`, `mam`, `jja`, `son`)
+  or a month by name or number. Temperature and humidity average the months,
+  each weighted by its number of days; precipitation adds them up.
+- **Temperature.** The daily mean air temperature 2 m above the ground, in
+  17 bands of 5 °C from below −40 °C to 35 °C and above: purples and blues
+  below freezing, greens and yellows for the mild bands, oranges and reds for
+  the hot ones. It is the mean of day and night, so it runs well below the
+  daily highs of a forecast.
+- **Precipitation.** Rain and snow (as water) in mm, in ten bands from brown
+  (dry) through green to blue and purple (wet). The bands follow the period:
+  10–400 mm for a month, 25–1,200 mm for a season, 100–4,000 mm for the year.
+  CHELSA corrects its precipitation with GPCC's rain gauges.
+- **Humidity.** The daily mean relative humidity near the ground, in nine
+  bands of 10 % from below 20 % (brown) to 90 % and above (blue).
+- **Land only.** CHELSA maps the land, so the sea is left to the base map, cut
+  along Natural Earth's coast (the 1:10m coast from zoom 7) with its lakes left
+  out.
+- **Data.** The CHELSA files are 1 km Cloud-Optimised GeoTIFFs; as for the
+  Trewartha layer, only the ~15 km copy inside each is read, 2–5 MB per month
+  and variable, downloaded the first time a map needs it and cached in
+  `~/.cache/ortho_tiles/climate/`. A month's map needs one file, a season's
+  three and the year's twelve. The grid is resampled smoothly (bilinear) to
+  the map's pixels, up to 4 times finer, so zoomed-in maps (see "Radius Maps")
+  have no blocky cells, though they show no detail finer than ~15 km.
+- **Layers.** Only one climate layer is drawn at a time, a classification or a
+  mean; its opacity is `--climate-alpha` (default 0.7 for a mean). It sits
+  where the classifications do: above the elevation and vegetation layers,
+  so `--elevation` shows the relief through it, and below soils, crops, ice,
+  winds and routes. `--precipitation jja --wind jja` shows a monsoon's rain
+  and the wind that brings it. The credit line is *Climate means: CHELSA
+  v2.1, 1981–2010 (Karger et al. 2017), CC0*.
 
 ## Polar Ice
 
@@ -1082,13 +1156,13 @@ to the attribution block.
 | Data | Authors | License | Reference |
 |---|---|---|---|
 | Köppen-Geiger climate classification V1, present day (1980–2016), used at 0.083° (~10 km) | Beck, H. E. et al. (2018) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/sdata.2018.214](https://doi.org/10.1038/sdata.2018.214) |
-| CHELSA v2.1 monthly mean temperature and precipitation, 1981–2010, used at 0.133° (~15 km) for the Trewartha classes | Karger, D. N. et al. (2017) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2017.122](https://doi.org/10.1038/sdata.2017.122), [chelsa-climate.org](https://chelsa-climate.org/) |
+| CHELSA v2.1 monthly mean temperature, precipitation and relative humidity, 1981–2010, used at 0.133° (~15 km) for the climate means and the Trewartha classes | Karger, D. N. et al. (2017) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2017.122](https://doi.org/10.1038/sdata.2017.122), [chelsa-climate.org](https://chelsa-climate.org/) |
 | MODIS Land Cover Type (MCD12Q1 v6.1, IGBP), yearly 2001–2024, 500 m | Friedl, M. & Sulla-Menashe, D., NASA LP DAAC | NASA open data, no restrictions | [doi:10.5067/MODIS/MCD12Q1.061](https://doi.org/10.5067/MODIS/MCD12Q1.061), via [NASA GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api) |
 | MODIS Terra Vegetation Indices monthly (NDVI, MOD13A3 v6.1, 1 km) | Didan, K., NASA LP DAAC | NASA open data, no restrictions | [doi:10.5067/MODIS/MOD13A3.061](https://doi.org/10.5067/MODIS/MOD13A3.061), via NASA GIBS |
 | Mapzen Terrain Tiles (Terrarium), from GMTED2010 and SRTM (USGS) and ETOPO1 (NOAA), used at zoom 4–5 for the elevation layer and the Trewartha highlands | Mapzen / Tilezen, AWS Open Data | Free to use; the sources must be credited ([attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | [registry.opendata.aws/terrain-tiles](https://registry.opendata.aws/terrain-tiles/) |
 | SoilGrids 2.0: most probable WRB Reference Soil Group, 250 m, used at 0.067° (~7 km); soil properties, 5 km aggregates, used at 0.05° | Poggio, L. et al. (2021), ISRIC World Soil Information | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.5194/soil-7-217-2021](https://doi.org/10.5194/soil-7-217-2021), [isric.org/explore/soilgrids](https://www.isric.org/explore/soilgrids) |
 | NCEP/NCAR Reanalysis 1, long-term monthly means 1991–2020 of the 10 m wind (u, v) and wind speed, T62 Gaussian grid (~1.9°) | Kalnay, E. et al. (1996); NOAA PSL | Public domain (US government); acknowledgement requested: "NCEP-NCAR Reanalysis 1 data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/1520-0477(1996)077<0437:TNYRP>2.0.CO;2](https://doi.org/10.1175/1520-0477(1996)077%3C0437:TNYRP%3E2.0.CO;2), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.derived.html) |
-| Natural Earth (land / ocean fallback, Trewartha and elevation land masks, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
+| Natural Earth (land / ocean fallback, Trewartha, climate mean and elevation land masks, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
 | OpenStreetMap tiles | OpenStreetMap contributors | Data [ODbL](https://www.openstreetmap.org/copyright); attribution required by the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) | [openstreetmap.org](https://www.openstreetmap.org/) |
@@ -1105,6 +1179,7 @@ the globe:
 | `google`, `google_satellite` tiles | *Google Maps* plus the copyright string returned by the Map Tiles API |
 | `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |
 | `--trewartha` overlay | *Climate data: CHELSA v2.1 (Karger et al. 2017), CC0; Trewartha classes computed*, plus the elevation credit |
+| `--temperature`, `--precipitation`, `--humidity` layers | *Climate means: CHELSA v2.1, 1981–2010 (Karger et al. 2017), CC0* |
 | `--elevation` layer | *Elevation: Mapzen Terrain Tiles (AWS Open Data); GMTED2010 and SRTM courtesy of the USGS; ETOPO1, NOAA NCEI* |
 | `--landcover` layer | *Land cover: MODIS MCD12Q1 IGBP YYYY (NASA LP DAAC), via NASA GIBS* |
 | `--ndvi` layer | *NDVI: MODIS Terra monthly, Month YYYY (NASA), via NASA GIBS* |
@@ -1174,6 +1249,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)
 - [soil_properties.py](soil_properties.py): soil property overlay and key (SoilGrids 2.0, 5 km)
 - [wind.py](wind.py): prevailing-wind arrows and key (NCEP/NCAR Reanalysis 1991–2020 means)
+- [climate.py](climate.py): mean temperature, precipitation and humidity layers and key (CHELSA v2.1, 1981–2010)
 - [ice.py](ice.py): polar ice overlay (NSIDC sea ice extent, Natural Earth land ice)
 - [crops.py](crops.py): crop-area overlay and key (CROPGRIDS, read from the remote archive)
 - [rotation.py](rotation.py): orthographic globes with any compass direction at the top

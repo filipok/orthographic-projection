@@ -25,7 +25,8 @@ import matplotlib.path as mpath
 import matplotlib.patheffects as pe
 from cartopy.geodesic import Geodesic
 from cartopy.mpl.geoaxes import GeoAxes
-from shapely.geometry import Polygon
+import shapely.affinity
+from shapely.geometry import Polygon, box
 
 from google_tiles import (
     API_KEY_ENV,
@@ -60,6 +61,10 @@ from vegetation import (
     FIRST_LAND_COVER_YEAR, LATEST_LAND_COVER_YEAR, VEGETATION_ZOOM, add_land_cover_legend,
     add_ndvi_legend, land_cover_attribution, land_cover_rgba, land_cover_tiles, ndvi_attribution,
     ndvi_rgba, ndvi_tiles, resolve_land_cover_classes, resolve_ndvi_month,
+)
+from climate import (
+    CLIMATE_ATTRIBUTION, CLIMATE_VARIABLES, ClimateDataError, add_climate_legend, add_climate_overlay,
+    resolve_climate_period,
 )
 from wind import (
     WIND_ATTRIBUTION, WindDataError, add_wind_legend, add_wind_overlay, resolve_wind_period,
@@ -268,6 +273,11 @@ class BufferedTileSource:
     *postprocess*, if given, turns the merged RGBA mosaic into the image
     drawn: ``postprocess(mosaic, extent) -> RGBA`` (the elevation layer
     colours and shades raw height tiles this way, without seams).
+
+    A view across the date line needs tiles from both ends of the tile grid.
+    Those west of the gap are moved one world width east, so the mosaic is
+    one piece, and it is drawn in a Web Mercator centred on 180°: while it
+    is, :attr:`crs` is that projection (Cartopy reads it after each call).
     """
 
     def __init__(self, tile_source: Any, tile_buffer_factor: float = 0.5,
@@ -275,7 +285,8 @@ class BufferedTileSource:
         self.tile_source = tile_source
         self.tile_buffer_factor = tile_buffer_factor
         self.postprocess = postprocess
-        self.crs = tile_source.crs
+        self.tile_crs = tile_source.crs
+        self.crs = self.tile_crs
         self.total_tiles = 0
         self.failed_tiles: list[tuple[Any, BaseException]] = []
 
@@ -285,8 +296,13 @@ class BufferedTileSource:
         return getattr(self.tile_source, name)
 
     def image_for_domain(self, target_domain: Any, target_z: int) -> Any:
-        x0, x1 = self.crs.x_limits
-        tile_width = (x1 - x0) / (2 ** target_z)
+        x0, x1 = self.tile_crs.x_limits
+        world = x1 - x0
+        if self.crs is not self.tile_crs:
+            # The last mosaic crossed the date line, so Cartopy gave this domain in its frame
+            target_domain = _from_date_line_frame(target_domain, world)
+            self.crs = self.tile_crs
+        tile_width = world / (2 ** target_z)
         buffered_domain = target_domain.buffer(tile_width * self.tile_buffer_factor)
 
         source = self.tile_source
@@ -304,6 +320,7 @@ class BufferedTileSource:
         self.total_tiles += len(tiles)
 
         size = next((np.asarray(img).shape[:2] for img, _, _ in results.values()), (256, 256))
+        moved = _tiles_past_date_line(tiles, source, x0, x1)
         pieces = []
         for tile in tiles:
             if tile in results:
@@ -312,13 +329,53 @@ class BufferedTileSource:
             else:
                 img = np.zeros(size + (4,), dtype=np.uint8)  # transparent placeholder
                 extent, origin = source.tileextent(tile), "lower"
-            x = np.linspace(extent[0], extent[1], img.shape[1])
+            shift = world if tile in moved else 0.0
+            x = np.linspace(extent[0] + shift, extent[1] + shift, img.shape[1])
             y = np.linspace(extent[2], extent[3], img.shape[0])
             pieces.append([img, x, y, origin])
         img, extent, origin = cimgt._merge_tiles(pieces)
         if self.postprocess is not None:
             img = self.postprocess(img, extent)
+        if moved:
+            extent = [extent[0] - world / 2, extent[1] - world / 2, extent[2], extent[3]]
+            self.crs = _date_line_mercator(self.tile_crs)
         return img, extent, origin
+
+
+def _tiles_past_date_line(tiles: Sequence[Any], source: Any, x0: float, x1: float) -> set[Any]:
+    """The tiles west of the gap in a set that wraps from the tile grid's east edge to its west.
+
+    Empty when the tiles' columns run without a gap, or the gap is not one
+    the date line makes (the set must reach both edges of the grid).
+    """
+    if not tiles:
+        return set()
+    lefts = {tile: source.tileextent(tile)[0] for tile in tiles}
+    width = source.tileextent(tiles[0])[1] - lefts[tiles[0]]
+    columns = sorted(set(lefts.values()))
+    if columns[0] > x0 + width / 2 or columns[-1] + width < x1 - width / 2:
+        return set()
+    gaps = [(b - a, b) for a, b in zip(columns, columns[1:]) if b - a > 1.5 * width]
+    if not gaps:
+        return set()
+    _, gap_end = max(gaps)
+    return {tile for tile, left in lefts.items() if left < gap_end}
+
+
+@functools.cache
+def _date_line_mercator(crs: ccrs.Mercator) -> ccrs.Mercator:
+    """*crs*, a Web Mercator, centred on 180° instead of 0°."""
+    limit = float(np.degrees(np.arctan(np.sinh(crs.y_limits[1] / crs.globe.semimajor_axis))))
+    return ccrs.Mercator(central_longitude=180, min_latitude=-limit, max_latitude=limit, globe=crs.globe)
+
+
+def _from_date_line_frame(domain: Any, world: float) -> Any:
+    """*domain*, given in :func:`_date_line_mercator` coordinates, in the tile grid's own."""
+    half = world / 2
+    tall = 2 * world
+    west = shapely.affinity.translate(domain.intersection(box(-half, -tall, 0, tall)), xoff=half)
+    east = shapely.affinity.translate(domain.intersection(box(0, -tall, half, tall)), xoff=-half)
+    return west.union(east)
 
 
 def create_tile_source(
@@ -415,8 +472,28 @@ def max_zoom(radius_km: float | None = None, lat: float = 0.0, tile_provider: st
     return max(MAX_GLOBE_ZOOM, min(zoom, MAX_TILE_ZOOM.get(tile_provider.lower(), MAX_RADIUS_ZOOM)))
 
 
+# Default opacity of the climate layers: classes over the map, or a climate mean's colour bands
+CLASSIFICATION_ALPHA = 0.45
+CLIMATE_MEAN_ALPHA = 0.7
+
+
+def resolve_climate_mean(
+    temperature: str | None = None, precipitation: str | None = None, humidity: str | None = None,
+) -> tuple[Any, Any] | None:
+    """The climate variable and period asked for, or ``None``; at most one of the three."""
+    asked = [(name, spec) for name, spec in
+             (("temperature", temperature), ("precipitation", precipitation), ("humidity", humidity))
+             if spec is not None]
+    if len(asked) > 1:
+        raise ValueError("choose one climate mean: temperature, precipitation or humidity")
+    if not asked:
+        return None
+    name, spec = asked[0]
+    return CLIMATE_VARIABLES[name], resolve_climate_period(name, spec)
+
+
 def validate_render_options(
-    dpi: int, koppen_alpha: float, both_hemispheres: bool = False, ice_year: int | None = None,
+    dpi: int, koppen_alpha: float | None = None, both_hemispheres: bool = False, ice_year: int | None = None,
     elevation_alpha: float = 0.8, soil_alpha: float = 0.6, vegetation_alpha: float = 0.7,
     land_cover_year: int | None = None, zoom: int | None = None, radius_km: float | None = None,
     tile_provider: str = "osm", lat: float = 0.0,
@@ -441,7 +518,7 @@ def validate_render_options(
     if not MIN_DPI <= dpi <= max_dpi:
         layout = " with both hemispheres" if both_hemispheres else ""
         raise ValueError(f"dpi must be between {MIN_DPI} and {max_dpi}{layout}, got {dpi}")
-    if not 0.0 <= koppen_alpha <= 1.0:
+    if koppen_alpha is not None and not 0.0 <= koppen_alpha <= 1.0:
         raise ValueError(f"koppen_alpha must be between 0 and 1, got {koppen_alpha}")
     if not 0.0 <= elevation_alpha <= 1.0:
         raise ValueError(f"elevation_alpha must be between 0 and 1, got {elevation_alpha}")
@@ -468,7 +545,7 @@ def generate_orthographic_map(
     output_dir: str | None = None,
     city_name: str | None = None,
     koppen: bool = False,
-    koppen_alpha: float = 0.45,
+    koppen_alpha: float | None = None,
     routes: Sequence[Route] | None = None,
     route_legend: bool = False,
     tile_cache_dir: str | None = None,
@@ -494,6 +571,9 @@ def generate_orthographic_map(
     vegetation_alpha: float = 0.7,
     wind: str | None = None,
     radius_km: float | None = None,
+    temperature: str | None = None,
+    precipitation: str | None = None,
+    humidity: str | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -536,8 +616,9 @@ def generate_orthographic_map(
     trewartha_classes : sequence of str, optional
         Show only these Trewartha classes or groups (``"Do"``, ``"C"``, see
         :func:`trewartha.resolve_trewartha_classes`). Implies *trewartha*.
-    koppen_alpha : float
-        Opacity of the Köppen-Geiger overlay (0–1).
+    koppen_alpha : float, optional
+        Opacity of the climate layer (0–1); by default 0.45 for a
+        classification and 0.7 for a climate mean.
     routes : sequence of Route, optional
         Polylines to draw on the globe, e.g. from :func:`routes.load_routes`.
     route_legend : bool
@@ -609,6 +690,11 @@ def generate_orthographic_map(
         Draw the prevailing winds (NCEP/NCAR 1991–2020 mean 10 m wind, see
         :mod:`wind`) for ``"year"``, a season (``"djf"``, ``"mam"``,
         ``"jja"``, ``"son"``) or a month (``"july"``, ``"7"``), with a key.
+    temperature, precipitation, humidity : str, optional
+        Colour the land by the 1981–2010 mean air temperature, precipitation
+        total or relative humidity (CHELSA v2.1, see :mod:`climate`) over a
+        period given as for *wind*, with a key. One of the three at most, and
+        not with a climate classification; *koppen_alpha* sets its opacity.
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -647,6 +733,11 @@ def generate_orthographic_map(
     trewartha = trewartha or bool(trewartha_codes)
     if koppen and trewartha:
         raise ValueError("choose one climate classification: Köppen-Geiger or Trewartha")
+    climate_mean = resolve_climate_mean(temperature, precipitation, humidity)
+    if climate_mean and (koppen or trewartha):
+        raise ValueError("choose one climate layer: a classification or a climate mean")
+    if koppen_alpha is None:
+        koppen_alpha = CLIMATE_MEAN_ALPHA if climate_mean else CLASSIFICATION_ALPHA
     if not math.isfinite(up):
         raise ValueError(f"up must be a compass bearing in degrees, got {up}")
     up = normalise_bearing(up)
@@ -793,6 +884,19 @@ def generate_orthographic_map(
             add_trewartha_legend(near, x=key_x, classes=trewartha_codes or None)
             # Its highland group uses the terrain tiles' heights
             climate_credits = [TREWARTHA_ATTRIBUTION, ELEVATION_ATTRIBUTION]
+    climate_mean_drawn = False
+    if climate_mean is not None:
+        variable, period = climate_mean
+        logger.info("Applying %s for %s (alpha=%.2f) …", variable.title.lower(), period.label, koppen_alpha)
+        try:
+            for ax in axes:
+                add_climate_overlay(ax, variable, period, alpha=koppen_alpha, regrid_shape=regrid_shape,
+                                    zoom=zoom)
+        except (ClimateDataError, OSError) as e:
+            # Missing data should not throw away the rest of the map
+            logger.warning("Skipping %s: %s", variable.title.lower(), e)
+        else:
+            climate_mean_drawn = True
 
     # Step 5b2: Soil groups or a soil property (above the climate colours, below crops)
     soil_drawn = False
@@ -912,6 +1016,8 @@ def generate_orthographic_map(
     # Step 7d: Keys below the globe(s): the elevation, soil, crop and route
     # keys, under the climate key when that is drawn too
     keys = []
+    if climate_mean_drawn and climate_mean is not None:
+        keys.append(add_climate_legend(near, *climate_mean, x=key_x))
     if relief is not None:
         keys.append(add_elevation_legend(near, x=key_x))
     if land_cover:
@@ -935,6 +1041,8 @@ def generate_orthographic_map(
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
     if vegetation_credit:
         credits.append(vegetation_credit)
+    if climate_mean_drawn:
+        climate_credits.append(CLIMATE_ATTRIBUTION)
     for credit in climate_credits + ([ELEVATION_ATTRIBUTION] if relief is not None else []):
         if credit not in credits:
             credits.append(credit)
@@ -1472,8 +1580,22 @@ def build_cli_parser() -> argparse.ArgumentParser:
     )
 
     climate = parser.add_argument_group(
-        "Climate (Köppen-Geiger or Trewartha)", "One climate classification at a time.")
+        "Climate (Köppen-Geiger, Trewartha or CHELSA means)",
+        "One climate layer at a time: a classification, or the 1981-2010 mean temperature, "
+        "precipitation or humidity for a PERIOD: year (the default), a season (djf, mam, jja, son) "
+        "or a month (e.g. july or 7).")
     system = climate.add_mutually_exclusive_group()
+    for name, what in (("temperature", "mean air temperature"),
+                       ("precipitation", "precipitation total"),
+                       ("humidity", "mean relative humidity")):
+        system.add_argument(
+            f"--{name}",
+            nargs="?",
+            const="year",
+            default=None,
+            metavar="PERIOD",
+            help=f"Colour the land by its {what} over PERIOD (CHELSA v2.1, 2-5 MB per month, cached).",
+        )
     system.add_argument(
         "--koppen",
         action="store_true",
@@ -1490,9 +1612,10 @@ def build_cli_parser() -> argparse.ArgumentParser:
         "--climate-alpha", "--koppen-alpha",
         dest="koppen_alpha",
         type=float,
-        default=0.45,
+        default=None,
         metavar="ALPHA",
-        help="Opacity of the climate overlay (0-1, default: 0.45).",
+        help="Opacity of the climate layer (0-1, default: 0.45 for a classification, "
+             "0.7 for a temperature, precipitation or humidity mean).",
     )
     climate.add_argument(
         "--koppen-class",
@@ -1830,30 +1953,47 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
     )
     print(f"Output file: {output_file}\n")
 
-    # Climate overlay prompt: Köppen-Geiger, Trewartha or none
+    # Climate overlay prompt: Köppen-Geiger, Trewartha, a climate mean or none
     climate_input = input(
-        "Climate overlay: [k]öppen-Geiger, [t]rewartha, or blank for none: "
+        "Climate overlay: [k]öppen-Geiger, [t]rewartha, mean te[m]perature, [p]recipitation, "
+        "[h]umidity, or blank for none: "
     ).strip().lower()
     enable_koppen = climate_input in ("k", "koppen", "köppen", "y", "yes")
     enable_trewartha = climate_input in ("t", "trewartha")
+    mean_name = {"m": "temperature", "temperature": "temperature", "p": "precipitation",
+                 "precipitation": "precipitation", "h": "humidity", "humidity": "humidity"}.get(climate_input)
+    climate_means: dict[str, str] = {}
+    if mean_name:
+        while True:
+            period = input(
+                f"{mean_name.capitalize()} period: year, a season (djf, mam, jja, son) or a month "
+                "[default: year]: "
+            ).strip() or "year"
+            try:
+                resolve_climate_period(mean_name, period)
+                break
+            except ValueError as e:
+                print(f"{e}\n")
+        climate_means[mean_name] = period
 
-    koppen_alpha = 0.45
+    default_alpha = CLIMATE_MEAN_ALPHA if mean_name else CLASSIFICATION_ALPHA
+    koppen_alpha = default_alpha
     koppen_classes: list[str] = []
     trewartha_classes: list[str] = []
-    if enable_koppen or enable_trewartha:
-        raw_alpha = input("Climate overlay opacity (0-1) [default: 0.45]: ").strip()
+    if enable_koppen or enable_trewartha or mean_name:
+        raw_alpha = input(f"Climate overlay opacity (0-1) [default: {default_alpha}]: ").strip()
         if raw_alpha:
             try:
                 val = float(raw_alpha)
                 if 0.0 <= val <= 1.0:
                     koppen_alpha = val
                 else:
-                    print("Out of range. Using default 0.45.")
+                    print(f"Out of range. Using default {default_alpha}.")
             except ValueError:
-                print("Invalid number. Using default 0.45.")
+                print(f"Invalid number. Using default {default_alpha}.")
         if enable_koppen:
             koppen_classes = prompt_for_koppen_classes()
-        else:
+        elif enable_trewartha:
             trewartha_classes = prompt_for_climate_classes(
                 resolve_trewartha_classes, "e.g. Do, C")
 
@@ -1944,6 +2084,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             ndvi=ndvi_month,
             wind=wind_period,
             radius_km=radius_km,
+            **climate_means,
             up=up,
         )
     except GoogleTilesError as e:
@@ -2005,6 +2146,7 @@ def run_cli(args: argparse.Namespace) -> None:
             resolve_ndvi_month(args.ndvi)
         if args.wind is not None:
             resolve_wind_period(args.wind)
+        resolve_climate_mean(args.temperature, args.precipitation, args.humidity)
         if args.soil_property:
             resolve_soil_property(args.soil_property, args.soil_depth)
         elif args.soil_depth:
@@ -2020,6 +2162,10 @@ def run_cli(args: argparse.Namespace) -> None:
         sys.exit(1)
     if (args.koppen or args.koppen_class) and (args.trewartha or args.trewartha_class):
         logger.error("Choose one climate classification: Köppen-Geiger or Trewartha.")
+        sys.exit(1)
+    if (args.koppen_class or args.trewartha_class) and any(
+            v is not None for v in (args.temperature, args.precipitation, args.humidity)):
+        logger.error("Choose one climate layer: a classification or a climate mean.")
         sys.exit(1)
 
     # Orientation: a bearing, or the direction toward a place
@@ -2113,6 +2259,9 @@ def run_cli(args: argparse.Namespace) -> None:
             ndvi=args.ndvi,
             vegetation_alpha=args.vegetation_alpha,
             wind=args.wind,
+            temperature=args.temperature,
+            precipitation=args.precipitation,
+            humidity=args.humidity,
             radius_km=args.radius,
             up=up,
         )

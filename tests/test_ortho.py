@@ -143,6 +143,82 @@ class TestBufferedTileSource:
         assert len(seen) == 1 and seen[0][1] == extent      # once, for the whole mosaic
         assert (img == 0).all()
 
+    # --- views across the date line ------------------------------------
+
+    @staticmethod
+    def _date_line_domain():
+        """From 165°E to 165°W: half of the last column of zoom-3 tiles and half of the first."""
+        from shapely.geometry import box
+
+        half = ortho.CachedOSM().crs.x_limits[1]
+        tile = 2 * half / 8
+        domain = box(half - 0.5 * tile, -1e6, half, 1e6).union(box(-half, -1e6, -half + 0.5 * tile, 1e6))
+        return domain, half, tile
+
+    def _date_line_render(self, domain, z=3, postprocess=None):
+        """Fetch tiles for *domain*, each filled with its own column number."""
+        source = ortho.CachedOSM()
+
+        def get_image(tile):
+            tile_img = np.full((256, 256, 4), 255, np.uint8)
+            tile_img[..., 0] = tile[0]
+            return tile_img, source.tileextent(tile), "lower"
+
+        buffered = ortho.BufferedTileSource(source, tile_buffer_factor=0, postprocess=postprocess)
+        with mock.patch.object(source, "get_image", side_effect=get_image):
+            img, extent, _origin = buffered.image_for_domain(domain, z)
+        return buffered, img, extent
+
+    def test_tiles_across_the_date_line_are_one_mosaic(self):
+        from shapely.geometry import box
+
+        domain, half, tile = self._date_line_domain()
+        buffered, img, extent = self._date_line_render(domain)
+        assert buffered.crs is not buffered.tile_crs
+        assert buffered.crs.proj4_params["lon_0"] == 180
+        # Centred on the date line: column 7 (west of it) on the left, column 0 on the right
+        assert extent[0] == pytest.approx(-tile) and extent[1] == pytest.approx(tile)
+        assert img[0, 10, 0] == 7 and img[0, -10, 0] == 0
+
+        # Cartopy gives the next domain in that frame; it is put back in the tiles' own first
+        source = buffered.tile_source
+        with mock.patch.object(source, "get_image", side_effect=lambda t: (
+                np.zeros((256, 256, 4), np.uint8), source.tileextent(t), "lower")):
+            # Just east of 0° in the tiles' frame: the first tile of zoom 3's fifth column
+            _, extent, _ = buffered.image_for_domain(box(-half + 0.1 * tile, -1e6, -half + 0.4 * tile, 1e6), 3)
+        assert buffered.crs is buffered.tile_crs
+        assert extent[0] == pytest.approx(0) and extent[1] == pytest.approx(tile)
+
+    def test_from_date_line_frame(self):
+        from shapely.geometry import box
+
+        _, half, tile = self._date_line_domain()
+        back = ortho._from_date_line_frame(box(-0.5 * tile, -1e6, 0.25 * tile, 1e6), 2 * half)
+        assert back.geom_type == "MultiPolygon"
+        assert sorted(round(g.bounds[0] / tile, 3) for g in back.geoms) == [-4.0, 3.5]
+        assert sorted(round(g.bounds[2] / tile, 3) for g in back.geoms) == [-3.75, 4.0]
+
+    def test_postprocess_sees_the_unshifted_extent(self):
+        domain, half, tile = self._date_line_domain()
+        seen = []
+        self._date_line_render(domain, postprocess=lambda img, extent: seen.append(extent) or img)
+        assert seen[0][0] == pytest.approx(half - tile) and seen[0][1] == pytest.approx(half + tile)
+
+    def test_a_whole_row_of_tiles_is_not_moved(self):
+        buffered, _img, extent = self._date_line_render(self._world(ortho.CachedOSM()), z=1)
+        assert buffered.crs is buffered.tile_crs
+        assert extent[0] == pytest.approx(ortho.CachedOSM().crs.x_limits[0])
+
+    def test_tiles_past_date_line(self):
+        source = ortho.CachedOSM()
+        x0, x1 = source.crs.x_limits
+        wrapped = [(c, 3, 5) for c in (0, 1, 25, 26, 31)]
+        assert ortho._tiles_past_date_line(wrapped, source, x0, x1) == {(0, 3, 5), (1, 3, 5)}
+        assert ortho._tiles_past_date_line([(c, 3, 5) for c in range(10, 20)], source, x0, x1) == set()
+        # A gap that does not reach both edges of the grid is left alone
+        assert ortho._tiles_past_date_line([(c, 3, 5) for c in (2, 3, 7, 8)], source, x0, x1) == set()
+        assert ortho._tiles_past_date_line([], source, x0, x1) == set()
+
 
 # ===================================================================
 # create_tile_source
@@ -608,6 +684,19 @@ class TestCLIParser:
         assert self._parse(["--city", "paris", "--radius", "800"]).radius == 800
         assert self._parse(["--city", "paris", "--zoom", "7"]).zoom == 7
 
+    def test_climate_mean_flags(self):
+        args = self._parse(["--city", "paris", "--temperature"])
+        assert args.temperature == "year" and args.precipitation is None and args.humidity is None
+        assert self._parse(["--city", "paris", "--precipitation", "jja"]).precipitation == "jja"
+        assert self._parse(["--city", "paris", "--humidity", "7"]).humidity == "7"
+        assert self._parse(["--city", "paris"]).koppen_alpha is None
+
+    @pytest.mark.parametrize("flags", [["--temperature", "--humidity"], ["--koppen", "--precipitation"]])
+    def test_one_climate_layer(self, flags, capsys):
+        with pytest.raises(SystemExit):
+            self._parse(["--city", "paris", *flags])
+        assert "not allowed with argument" in capsys.readouterr().err
+
     def test_wind_flag(self):
         assert self._parse(["--city", "paris", "--wind"]).wind == "year"
         assert self._parse(["--city", "paris", "--wind", "jja"]).wind == "jja"
@@ -656,7 +745,7 @@ RECIPE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file
 class TestGroupedHelp:
     def test_options_are_grouped_by_topic(self):
         help_text = ortho.build_cli_parser().format_help()
-        for title in ("Location:", "Imagery and output:", "Globe layout:", "Climate (Köppen-Geiger or Trewartha):",
+        for title in ("Location:", "Imagery and output:", "Globe layout:", "Climate (Köppen-Geiger, Trewartha or CHELSA means):",
                       "Polar ice:", "Crops (CROPGRIDS):", "Routes and areas:", "Recipes:"):
             assert title in help_text
         city_entry = help_text.index("\n  --city ")             # its entry, not the usage line
@@ -800,13 +889,13 @@ class TestRunCLIValidation:
             city=None, lat=None, lon=None,
             provider="osm", zoom=3, dpi=300,
             output=None, output_dir=None, cache_dir=None,
-            koppen=False, koppen_alpha=0.45, route=None, route_legend=False,
+            koppen=False, koppen_alpha=None, route=None, route_legend=False,
             both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
             koppen_class=None, up=0.0, up_toward=None, trewartha=False, trewartha_class=None,
             elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
-            wind=None, radius=None,
+            wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -989,6 +1078,27 @@ class TestRunCLIValidation:
         (dict(wind="monsoon"), "Unknown wind period"),
     ])
     def test_bad_radius_zoom_or_wind_exits_before_render(self, caplog, overrides, message):
+        args = self._make_args(city="paris", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                pytest.raises(SystemExit):
+            ortho.run_cli(args)
+        render.assert_not_called()
+        assert message in caplog.text
+
+    def test_climate_means_passed_to_renderer(self):
+        args = self._make_args(city="paris", precipitation="djf")
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert (kwargs["temperature"], kwargs["precipitation"], kwargs["humidity"]) == (None, "djf", None)
+        assert kwargs["koppen_alpha"] is None
+
+    @pytest.mark.parametrize("overrides, message", [
+        (dict(humidity="monsoon"), "Unknown humidity period"),
+        (dict(temperature="year", koppen_class=["Cfb"]), "Choose one climate layer"),
+    ])
+    def test_bad_climate_means_exit_before_render(self, caplog, overrides, message):
         args = self._make_args(city="paris", **overrides)
         with mock.patch.object(ortho, "generate_orthographic_map") as render, \
                 pytest.raises(SystemExit):
@@ -1833,6 +1943,49 @@ class TestVisibleRuns:
         assert ortho._visible_runs(self._ring([True, False, False, False])) == []
 
 
+class TestInteractiveClimate:
+    """The climate prompt of interactive mode, answered by prompt text."""
+
+    def _run(self, monkeypatch, climate, periods=(), opacity=""):
+        choices = iter(["2", "1"])                           # the first city, OSM
+        period_answers = iter(periods)
+        calls = []
+
+        def answer(prompt):
+            calls.append(prompt)
+            assert len(calls) < 60, "interactive mode kept asking"
+            if "number of your choice" in prompt:
+                return next(choices)
+            if prompt.startswith("Climate overlay:"):
+                return climate
+            if " period:" in prompt:
+                return next(period_answers)
+            if "opacity" in prompt:
+                return opacity
+            return ""
+
+        monkeypatch.setattr("builtins.input", answer)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render:
+            ortho.run_interactive()
+        return render.call_args.kwargs, calls
+
+    def test_a_climate_mean_and_its_period(self, monkeypatch, capsys):
+        kwargs, calls = self._run(monkeypatch, "p", periods=["monsoon", "jja"])
+        assert kwargs["precipitation"] == "jja" and "temperature" not in kwargs
+        assert kwargs["koppen_alpha"] == 0.7 and not kwargs["koppen"] and not kwargs["trewartha"]
+        assert "Unknown precipitation period 'monsoon'" in capsys.readouterr().out
+        assert any("[default: 0.7]" in c for c in calls)
+
+    def test_a_blank_period_is_the_year_and_opacity_can_be_set(self, monkeypatch):
+        kwargs, _ = self._run(monkeypatch, "m", periods=[""], opacity="0.5")
+        assert kwargs["temperature"] == "year" and kwargs["koppen_alpha"] == 0.5
+
+    def test_no_climate_layer(self, monkeypatch):
+        kwargs, calls = self._run(monkeypatch, "")
+        assert kwargs["koppen_alpha"] == 0.45 and not any("opacity" in c for c in calls)
+        assert not {"temperature", "precipitation", "humidity"} & kwargs.keys()
+
+
 class TestRadiusAndWindRendering:
     """Offline renders of a zoomed-in map and of the wind layer."""
 
@@ -1900,6 +2053,40 @@ class TestRadiusAndWindRendering:
             _, _, credits = self._render(tmp_path, wind="year")
         key.assert_not_called()
         assert credits == [ortho.TILE_ATTRIBUTIONS["osm"]] and "Skipping prevailing winds" in caplog.text
+
+    def test_climate_mean_layer_key_and_credit(self, tmp_path):
+        with mock.patch.object(ortho, "add_climate_overlay") as overlay, \
+                mock.patch.object(ortho, "add_climate_legend") as key:
+            _, _, credits = self._render(tmp_path, humidity="jja", radius_km=1_000, zoom=8)
+        variable, period = overlay.call_args.args[1:3]
+        assert variable.key == "humidity" and period.months == (6, 7, 8)
+        assert overlay.call_args.kwargs["alpha"] == ortho.CLIMATE_MEAN_ALPHA == 0.7
+        assert overlay.call_args.kwargs["zoom"] == 8
+        assert key.call_args.args[1:] == (variable, period)
+        assert credits == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.CLIMATE_ATTRIBUTION]
+
+    def test_climate_mean_opacity_can_be_set(self, tmp_path):
+        with mock.patch.object(ortho, "add_climate_overlay") as overlay, \
+                mock.patch.object(ortho, "add_climate_legend"):
+            self._render(tmp_path, temperature="year", koppen_alpha=0.3)
+        assert overlay.call_args.kwargs["alpha"] == 0.3
+
+    def test_climate_mean_failure_still_saves_map(self, tmp_path, caplog):
+        with mock.patch.object(ortho, "add_climate_overlay", side_effect=ortho.ClimateDataError("offline")), \
+                mock.patch.object(ortho, "add_climate_legend") as key:
+            _, _, credits = self._render(tmp_path, precipitation="year")
+        key.assert_not_called()
+        assert credits == [ortho.TILE_ATTRIBUTIONS["osm"]] and "Skipping precipitation" in caplog.text
+
+    @pytest.mark.parametrize("kwargs, match", [
+        (dict(temperature="year", humidity="year"), "choose one climate mean"),
+        (dict(precipitation="year", trewartha=True), "choose one climate layer"),
+        (dict(temperature="monsoon"), "Unknown temperature period"),
+    ])
+    def test_bad_climate_means_fail_before_any_work(self, tmp_path, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", output_dir=str(tmp_path),
+                                            **kwargs)
 
     def test_bad_wind_period_fails_before_any_work(self, tmp_path):
         with pytest.raises(ValueError, match="Unknown wind period"):

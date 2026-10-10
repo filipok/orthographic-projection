@@ -159,31 +159,39 @@ def _fetch_range(url: str, start: int, end: int, timeout: float = 120) -> bytes:
 
 
 def _read_ifds(head: bytes) -> list[dict[int, tuple]]:
-    """Every image directory of a little-endian classic TIFF whose directories fit in *head*."""
-    if head[:4] != b"II*\x00":
+    """Every image directory of a little-endian TIFF or BigTIFF whose directories fit in *head*."""
+    if head[:4] == b"II*\x00":
+        offset, count_fmt, entry_size, value_size = struct.unpack("<I", head[4:8])[0], "<H", 12, 4
+    elif head[:4] == b"II+\x00":
+        offset, count_fmt, entry_size, value_size = struct.unpack("<Q", head[8:16])[0], "<Q", 20, 8
+    else:
         raise TrewarthaDataError("not a little-endian TIFF")
+    offset_fmt = "<I" if value_size == 4 else "<Q"
+    count_size = struct.calcsize(count_fmt)
     ifds = []
-    offset = struct.unpack("<I", head[4:8])[0]
     while offset:
-        if offset + 2 > len(head):
+        if offset + count_size > len(head):
             raise TrewarthaDataError("TIFF directories do not fit in the header read")
-        count = struct.unpack("<H", head[offset:offset + 2])[0]
+        count = struct.unpack(count_fmt, head[offset:offset + count_size])[0]
+        start_of_entries = offset + count_size
         tags: dict[int, tuple] = {}
         for i in range(count):
-            entry = head[offset + 2 + 12 * i: offset + 14 + 12 * i]
-            tag, typ, n = struct.unpack("<HHI", entry[:8])
+            entry = head[start_of_entries + entry_size * i: start_of_entries + entry_size * (i + 1)]
+            tag, typ = struct.unpack("<HH", entry[:4])
+            n = struct.unpack(offset_fmt, entry[4:4 + value_size])[0]
             fmt, size = _TIFF_TYPES.get(typ, ("B", 1))
             total = size * n
-            if total <= 4:
-                raw = entry[8:8 + total]
+            if total <= value_size:
+                raw = entry[4 + value_size:4 + value_size + total]
             else:
-                start = struct.unpack("<I", entry[8:12])[0]
+                start = struct.unpack(offset_fmt, entry[4 + value_size:])[0]
                 raw = head[start:start + total]
             if len(raw) != total:
                 continue  # a large tag beyond the header read; not needed here
             tags[tag] = (raw.decode(errors="replace").rstrip("\x00"),) if typ == 2 else struct.unpack("<" + fmt * n, raw)
         ifds.append(tags)
-        offset = struct.unpack("<I", head[offset + 2 + 12 * count: offset + 6 + 12 * count])[0]
+        next_at = start_of_entries + entry_size * count
+        offset = struct.unpack(offset_fmt, head[next_at:next_at + value_size])[0]
     return ifds
 
 

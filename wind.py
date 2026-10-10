@@ -98,13 +98,13 @@ class WindDataError(RuntimeError):
     """The reanalysis wind means could not be downloaded or read."""
 
 
-def resolve_wind_period(spec: str | None) -> WindPeriod:
+def resolve_wind_period(spec: str | None, kind: str = "wind") -> WindPeriod:
     """The months to average for *spec*.
 
     ``None``, ``""``, ``"year"`` or ``"annual"`` mean the whole year;
     ``"djf"``, ``"mam"``, ``"jja"`` and ``"son"`` the meteorological seasons;
     a month by name (at least its first three letters) or number one month.
-    Raises ``ValueError`` for anything else.
+    Raises ``ValueError`` for anything else, naming the layer as *kind*.
     """
     text = (spec or "").strip().lower()
     if text in ("", "year", "annual", "all"):
@@ -119,7 +119,7 @@ def resolve_wind_period(spec: str | None) -> WindPeriod:
         matches = [i + 1 for i, name in enumerate(names) if len(text) >= 3 and name.startswith(text)]
         if len(matches) != 1:
             raise ValueError(
-                f"Unknown wind period {spec!r}. Use year, a season (djf, mam, jja, son), "
+                f"Unknown {kind} period {spec!r}. Use year, a season (djf, mam, jja, son), "
                 "or a month by name or number.")
         month = matches[0]
     return WindPeriod(names[month - 1], calendar.month_name[month], (month,))
