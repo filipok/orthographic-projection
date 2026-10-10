@@ -75,6 +75,7 @@ The main script is [ortho.py](ortho.py).
 - Optional Trewartha climate classification overlay, computed from CHELSA v2.1 monthly climate and terrain heights (with a highland group), for all classes or only chosen ones
 - Optional elevation layer: land coloured by height and hill-shaded, from open terrain tiles, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
+- Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
 - Optional polar ice: sea ice at its latest winter maximum (NSIDC) and permanent polar land ice
 - Optional crop areas for any of 173 crops (CROPGRIDS), one or several at once, with a key
 - Any compass direction at the top of the globe (south up, or the direction toward a place), with text kept upright
@@ -177,7 +178,7 @@ You will be prompted to choose:
 5. The compass bearing to put at the top (blank keeps north up; see "Turning the Globe")
 6. An optional climate overlay, Köppen-Geiger or Trewartha, its opacity/alpha (0–1) and the classes to show (blank for all)
 7. Whether to colour the land by height, with relief shading (see "Elevation")
-8. Whether to colour the land by soil group, and which groups (blank for all; see "Soil Groups")
+8. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 9. Whether to add polar ice at its winter maximum (see "Polar Ice")
 10. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 11. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -232,6 +233,10 @@ python ortho.py --lat -15 --lon -65 --elevation
 python ortho.py --lat 35 --lon 40 --soil
 python ortho.py --lat 50 --lon 60 --soil-class Chernozems --soil-class Kastanozems
 
+# A soil property at a depth: topsoil pH, or organic carbon at 15-30 cm (see "Soil Properties")
+python ortho.py --lat 25 --lon 20 --soil-property ph
+python ortho.py --lat 60 --lon -100 --soil-property organic-carbon --soil-depth 15-30cm
+
 # South up, or the direction toward a place at the top (see "Turning the Globe")
 python ortho.py --city sydney --up 180
 python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi"
@@ -260,7 +265,9 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--elevation-alpha ALPHA` | Opacity of the elevation layer (0–1) | `0.8` |
 | `--soil` | Colour the land by its most probable soil group, with a key | off |
 | `--soil-class GROUP` | Show only this soil group, by name (`Chernozems`) or WRB code (`CH`); repeat for several; implies `--soil` | all |
-| `--soil-alpha ALPHA` | Opacity of the soil overlay (0–1) | `0.6` |
+| `--soil-alpha ALPHA` | Opacity of the soil overlay, groups or property (0–1) | `0.6` |
+| `--soil-property PROPERTY` | Draw a soil property instead of the groups: `ph`, `organic-carbon`, `clay`, `sand`, `silt`, `nitrogen`, `cec`, `bulk-density`, `coarse-fragments`, `carbon-stock` | — |
+| `--soil-depth DEPTH` | Depth of `--soil-property`: `0-5cm`, `5-15cm`, `15-30cm`, `30-60cm`, `60-100cm`, `100-200cm` (`carbon-stock`: `0-30cm`) | `0-5cm` |
 | `--ice` | Draw sea ice at its winter maximum and polar land ice | off |
 | `--ice-year YEAR` | Year of the sea ice maxima, 1979 on; implies `--ice` | latest published |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
@@ -373,6 +380,7 @@ generate_orthographic_map(
     crops=None,            # optional: e.g. ["wheat", "rice:#18b5a4"]
     elevation=False,       # optional: land coloured by height, hill-shaded
     soil_classes=None,     # optional: e.g. ["Chernozems", "PZ"]; implies soil=True
+    soil_property=None,    # optional: e.g. "ph" with soil_depth="0-5cm" (not with soil)
     koppen_classes=None,   # optional: e.g. ["Cfb"] or ["Cs"]; implies koppen=True
     trewartha_classes=None,  # optional: e.g. ["Do"] or ["C"]; implies trewartha=True (not with koppen)
     up=0,                  # optional: compass bearing at the top (180 = south up)
@@ -663,6 +671,38 @@ Umbrisols (UM), Vertisols (VR).
   ice and routes; `--soil-alpha` sets their opacity (default 0.6). Their key
   sits below the climate and elevation keys.
 
+## Soil Properties
+
+Pass `--soil-property` (CLI) or `soil_property=` (API) to map one measured soil
+property at a chosen depth, in bands with a key, instead of the soil groups:
+
+```powershell
+python ortho.py --lat 25 --lon 20 --soil-property ph
+python ortho.py --lat 60 --lon -100 --soil-property organic-carbon --soil-depth 15-30cm
+```
+
+| Property | What it is | Bands |
+|---|---|---|
+| `ph` | Acidity, pH in water | The USDA reaction classes, from < 4.5 (very strongly acid) to ≥ 8.5 (strongly alkaline) |
+| `organic-carbon` | Organic carbon, g/kg | < 5 to ≥ 80; peat is far above |
+| `clay`, `sand`, `silt` | The fine earth's texture, % | Bands of 10 or 20 points |
+| `nitrogen` | Total nitrogen, g/kg | < 0.5 to ≥ 8 |
+| `cec` | Cation exchange capacity at pH 7, cmol(c)/kg: how many nutrients the soil can hold | < 5 to ≥ 40 |
+| `bulk-density` | Bulk density of the fine earth, g/cm³ | < 1.0 to ≥ 1.6 |
+| `coarse-fragments` | Stones and gravel, % by volume | The FAO classes, few (< 5) to dominant (≥ 60) |
+| `carbon-stock` | Organic carbon stored in the top 30 cm, kg/m² | < 2 to ≥ 15 |
+
+- **Depths.** `--soil-depth` picks one of SoilGrids' six layers: `0-5cm` (the
+  default), `5-15cm`, `15-30cm`, `30-60cm`, `60-100cm` or `100-200cm`.
+  `carbon-stock` is mapped for `0-30cm` only.
+- **Data.** ISRIC's 5 km versions of the SoilGrids 2.0 predictions (CC BY 4.0):
+  one ~4 MB file per property and depth, downloaded the first time it is used,
+  moved from its interrupted Goode Homolosine projection to a 0.05° grid, and
+  cached in `~/.cache/ortho_tiles/soil/properties/`. Averaging to 5 km suits
+  measurements, unlike the soil groups.
+- **One soil layer at a time.** `--soil-property` can't be combined with
+  `--soil` or `--soil-class`; `--soil-alpha` sets the opacity of either.
+
 ## Crop Areas
 
 `--crop NAME` (`crops=[...]` in the API, or the interactive prompt) shades where
@@ -853,7 +893,7 @@ to the attribution block.
 | Köppen-Geiger climate classification V1, present day (1980–2016), used at 0.083° (~10 km) | Beck, H. E. et al. (2018) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/sdata.2018.214](https://doi.org/10.1038/sdata.2018.214) |
 | CHELSA v2.1 monthly mean temperature and precipitation, 1981–2010, used at 0.133° (~15 km) for the Trewartha classes | Karger, D. N. et al. (2017) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2017.122](https://doi.org/10.1038/sdata.2017.122), [chelsa-climate.org](https://chelsa-climate.org/) |
 | Mapzen Terrain Tiles (Terrarium), from GMTED2010 and SRTM (USGS) and ETOPO1 (NOAA), used at zoom 4–5 for the elevation layer and the Trewartha highlands | Mapzen / Tilezen, AWS Open Data | Free to use; the sources must be credited ([attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | [registry.opendata.aws/terrain-tiles](https://registry.opendata.aws/terrain-tiles/) |
-| SoilGrids 2.0, most probable WRB Reference Soil Group, 250 m, used at 0.067° (~7 km) | Poggio, L. et al. (2021), ISRIC World Soil Information | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.5194/soil-7-217-2021](https://doi.org/10.5194/soil-7-217-2021), [isric.org/explore/soilgrids](https://www.isric.org/explore/soilgrids) |
+| SoilGrids 2.0: most probable WRB Reference Soil Group, 250 m, used at 0.067° (~7 km); soil properties, 5 km aggregates, used at 0.05° | Poggio, L. et al. (2021), ISRIC World Soil Information | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.5194/soil-7-217-2021](https://doi.org/10.5194/soil-7-217-2021), [isric.org/explore/soilgrids](https://www.isric.org/explore/soilgrids) |
 | Natural Earth (land / ocean fallback, Trewartha and elevation land masks, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
@@ -873,6 +913,7 @@ the globe:
 | `--trewartha` overlay | *Climate data: CHELSA v2.1 (Karger et al. 2017), CC0; Trewartha classes computed*, plus the elevation credit |
 | `--elevation` layer | *Elevation: Mapzen Terrain Tiles (AWS Open Data); GMTED2010 and SRTM courtesy of the USGS; ETOPO1, NOAA NCEI* |
 | `--soil` overlay | *Soil groups: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
+| `--soil-property` overlay | *Soil properties: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
 | `--ice` overlay | *Sea ice: NSIDC Sea Ice Index v4, extent March YYYY (Arctic) and September YYYY (Antarctic)* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
@@ -933,6 +974,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [trewartha.py](trewartha.py): Trewartha climate classes computed from CHELSA v2.1, overlay and legend
 - [elevation.py](elevation.py): elevation layer and heights from the Mapzen terrain tiles
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)
+- [soil_properties.py](soil_properties.py): soil property overlay and key (SoilGrids 2.0, 5 km)
 - [ice.py](ice.py): polar ice overlay (NSIDC sea ice extent, Natural Earth land ice)
 - [crops.py](crops.py): crop-area overlay and key (CROPGRIDS, read from the remote archive)
 - [rotation.py](rotation.py): orthographic globes with any compass direction at the top

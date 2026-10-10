@@ -49,6 +49,10 @@ from elevation import (
 from soil import (
     SOIL_ATTRIBUTION, SoilDataError, add_soil_legend, add_soil_overlay, resolve_soil_classes,
 )
+from soil_properties import (
+    DEPTHS as SOIL_DEPTHS, SOIL_PROPERTIES, SOIL_PROPERTY_ATTRIBUTION, SoilPropertyError,
+    add_soil_property_legend, add_soil_property_overlay, resolve_soil_property,
+)
 from trewartha import (
     TREWARTHA_ATTRIBUTION, TrewarthaDataError, add_trewartha_legend, add_trewartha_overlay,
     resolve_trewartha_classes,
@@ -407,6 +411,8 @@ def generate_orthographic_map(
     soil: bool = False,
     soil_classes: Sequence[str] | None = None,
     soil_alpha: float = 0.6,
+    soil_property: str | None = None,
+    soil_depth: str | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -495,7 +501,14 @@ def generate_orthographic_map(
         Show only these soil groups, by name or WRB code (``"Chernozems"``,
         ``"CH"``, see :func:`soil.resolve_soil_classes`). Implies *soil*.
     soil_alpha : float
-        Opacity of the soil overlay (0–1).
+        Opacity of the soil overlay (0–1), groups or property.
+    soil_property : str, optional
+        Draw a soil property instead of the groups: one of
+        :data:`soil_properties.SOIL_PROPERTIES` (``"ph"``, ``"organic-carbon"``,
+        ``"clay"`` …), in classed bands with a key.
+    soil_depth : str, optional
+        Depth of *soil_property*, one of :data:`soil_properties.DEPTHS`
+        (default ``"0-5cm"``; carbon stock is mapped for ``"0-30cm"`` only).
 
     Returns
     -------
@@ -509,6 +522,11 @@ def generate_orthographic_map(
     )
     soil_codes = resolve_soil_classes(soil_classes or [])
     soil = soil or bool(soil_codes)
+    prop, prop_depth = resolve_soil_property(soil_property, soil_depth) if soil_property else (None, None)
+    if soil_depth and not soil_property:
+        raise ValueError("soil_depth needs a soil_property")
+    if soil and prop:
+        raise ValueError("choose one soil layer: soil groups or a soil property")
     resolve_crops(crops or [])  # unknown names and bad colours fail before any download
     koppen_codes = resolve_koppen_classes(koppen_classes or [])
     koppen = koppen or bool(koppen_codes)
@@ -626,8 +644,18 @@ def generate_orthographic_map(
             # Its highland group uses the terrain tiles' heights
             climate_credits = [TREWARTHA_ATTRIBUTION, ELEVATION_ATTRIBUTION]
 
-    # Step 5b2: Soil groups (above the climate colours, below crops)
+    # Step 5b2: Soil groups or a soil property (above the climate colours, below crops)
     soil_drawn = False
+    property_drawn = False
+    if prop is not None and prop_depth is not None:
+        logger.info("Applying soil %s overlay at %s (alpha=%.2f) …", prop.code, prop_depth, soil_alpha)
+        try:
+            for ax in axes:
+                add_soil_property_overlay(ax, prop, prop_depth, alpha=soil_alpha, regrid_shape=regrid_shape)
+        except (SoilPropertyError, OSError) as e:
+            logger.warning("Skipping soil property overlay: %s", e)
+        else:
+            property_drawn = True
     if soil:
         logger.info("Applying soil overlay (alpha=%.2f) …", soil_alpha)
         try:
@@ -722,6 +750,8 @@ def generate_orthographic_map(
         keys.append(add_elevation_legend(near, x=key_x))
     if soil_drawn:
         keys.append(add_soil_legend(near, x=key_x, classes=soil_codes or None))
+    if property_drawn and prop is not None and prop_depth is not None:
+        keys.append(add_soil_property_legend(near, prop, prop_depth, x=key_x))
     if crop_layer is not None:
         keys.append(add_crop_legend(near, crop_layer, x=key_x))
     if routes and route_legend:
@@ -735,6 +765,8 @@ def generate_orthographic_map(
             credits.append(credit)
     if soil_drawn:
         credits.append(SOIL_ATTRIBUTION)
+    if property_drawn:
+        credits.append(SOIL_PROPERTY_ATTRIBUTION)
     if crop_layer is not None:
         credits.append(CROP_ATTRIBUTION)
     if ice_attribution:
@@ -1278,6 +1310,20 @@ def build_cli_parser() -> argparse.ArgumentParser:
         metavar="ALPHA",
         help="Opacity of the soil overlay (0-1, default: 0.6).",
     )
+    soils.add_argument(
+        "--soil-property",
+        choices=list(SOIL_PROPERTIES),
+        metavar="PROPERTY",
+        help="Draw a soil property instead of the groups (SoilGrids, 5 km; ~4 MB each): "
+             + ", ".join(SOIL_PROPERTIES) + ".",
+    )
+    soils.add_argument(
+        "--soil-depth",
+        choices=list(SOIL_DEPTHS) + ["0-30cm"],
+        metavar="DEPTH",
+        help="Depth of --soil-property: " + ", ".join(SOIL_DEPTHS)
+             + " (default: 0-5cm; carbon-stock is 0-30cm only).",
+    )
 
     ice = parser.add_argument_group("Polar ice")
     ice.add_argument(
@@ -1524,12 +1570,16 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
     ).strip().lower() in ("y", "yes")
 
     soil_classes: list[str] = []
-    enable_soil = input(
-        "Colour the land by soil group (SoilGrids)? [y/N]: "
-    ).strip().lower() in ("y", "yes")
+    soil_property = None
+    soil_input = input(
+        "Soil overlay (SoilGrids): [g]roups, [p]roperty such as pH, or blank for none: "
+    ).strip().lower()
+    enable_soil = soil_input in ("g", "groups", "y", "yes")
     if enable_soil:
         soil_classes = prompt_for_climate_classes(
             resolve_soil_classes, "e.g. Chernozems, PZ", what="Soil groups")
+    elif soil_input in ("p", "property"):
+        soil_property = prompt_for_selection("Soil property", list(SOIL_PROPERTIES))
 
     enable_ice = input(
         "Add polar ice at its winter maximum? [y/N]: "
@@ -1566,6 +1616,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             elevation=enable_elevation,
             soil=enable_soil,
             soil_classes=soil_classes,
+            soil_property=soil_property,
             up=up,
         )
     except GoogleTilesError as e:
@@ -1622,8 +1673,15 @@ def run_cli(args: argparse.Namespace) -> None:
         resolve_koppen_classes(args.koppen_class or [])
         resolve_trewartha_classes(args.trewartha_class or [])
         resolve_soil_classes(args.soil_class or [])
+        if args.soil_property:
+            resolve_soil_property(args.soil_property, args.soil_depth)
+        elif args.soil_depth:
+            raise ValueError("--soil-depth needs --soil-property.")
     except ValueError as e:
         logger.error("%s", e)
+        sys.exit(1)
+    if (args.soil or args.soil_class) and args.soil_property:
+        logger.error("Choose one soil layer: --soil/--soil-class or --soil-property.")
         sys.exit(1)
     if (args.koppen or args.koppen_class) and (args.trewartha or args.trewartha_class):
         logger.error("Choose one climate classification: Köppen-Geiger or Trewartha.")
@@ -1706,6 +1764,8 @@ def run_cli(args: argparse.Namespace) -> None:
             soil=args.soil,
             soil_classes=args.soil_class,
             soil_alpha=args.soil_alpha,
+            soil_property=args.soil_property,
+            soil_depth=args.soil_depth,
             up=up,
         )
     except GoogleTilesError as e:
