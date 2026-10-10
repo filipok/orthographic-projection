@@ -222,27 +222,66 @@ class TestLandMask:
 
 
 class TestEnsureData:
-    def test_computes_once_then_uses_the_cache(self, tmp_path, monkeypatch):
-        reads = []
-        geo = (-180.0, 90.0, 90.0)                          # a 2 x 4 grid
-
+    def _mock_sources(self, monkeypatch, reads, geo, heights):
         def read_month(var, month):
             reads.append((var, month))
-            temp_k = 273.15 + 27                            # tropical everywhere
+            temp_k = 273.15 + 5                             # 5 °C all year: tundra (Ft)
             grid = np.full((2, 4), round(temp_k * 10) if var == "tas" else 2500, np.uint16)
             return var, month, grid, geo
 
         monkeypatch.setattr(trewartha, "_read_month", read_month)
         monkeypatch.setattr(trewartha, "land_mask",
                             lambda shape, *a, **k: np.array([[True, False, True, False]] * 2))
+        monkeypatch.setattr(trewartha, "elevation_grid", heights)
+
+    def test_computes_once_then_uses_the_cache(self, tmp_path, monkeypatch):
+        reads = []
+        geo = (-180.0, 90.0, 90.0)                          # a 2 x 4 grid
+        # 3,000 m: lowered to 1,500 m it would be 9.75 °C warmer, subtropical, so H
+        heights = lambda shape, *a, **k: np.array([[3000.0, 0, 1000, 0]] * 2, np.float32)
+        self._mock_sources(monkeypatch, reads, geo, heights)
         path = trewartha.ensure_trewartha_data(cache_dir=str(tmp_path))
         assert len(reads) == 24
         codes, loaded_geo = trewartha.load_trewartha(cache_dir=str(tmp_path))
         assert loaded_geo == geo
-        np.testing.assert_array_equal(codes, [[1, 0, 1, 0]] * 2)    # Ar on land, ocean cleared
+        np.testing.assert_array_equal(codes, [[15, 0, 13, 0]] * 2)  # H, ocean, Ft (only 1,000 m), ocean
         trewartha.ensure_trewartha_data(cache_dir=str(tmp_path))
         assert len(reads) == 24                                       # served from the cache
         assert os.path.basename(path).startswith("trewartha_chelsa21_1981-2010_level4")
+
+    def test_missing_heights_are_a_data_error(self, tmp_path, monkeypatch):
+        def heights(*a, **k):
+            raise trewartha.ElevationDataError("offline")
+        self._mock_sources(monkeypatch, [], (-180.0, 90.0, 90.0), heights)
+        with pytest.raises(trewartha.TrewarthaDataError, match="offline"):
+            trewartha.ensure_trewartha_data(cache_dir=str(tmp_path))
+        assert not os.listdir(tmp_path)
+
+
+class TestHighlands:
+    def test_offset_counts_only_the_height_above_1500_m(self):
+        offset = trewartha.highland_offset(np.array([np.nan, 0, 1500, 2500], np.float32))
+        np.testing.assert_allclose(offset, [0, 0, 0, 6.5])
+
+    def test_accumulator_offset_warms_every_month(self):
+        temps, precips = CLIMATES["Do"]
+        acc = trewartha.TrewarthaAccumulator((1, 1), offset=np.full((1, 1), 10, np.float32))
+        for month in range(12):
+            acc.add_month(np.full((1, 1), temps[month], np.float32),
+                          np.full((1, 1), precips[month], np.float32), np.full((1, 1), NH_WINTER[month]))
+        assert trewartha.TREWARTHA_CLASSES[int(acc.classify()[0, 0])][0] == "Cf"
+
+    def test_only_high_ground_whose_group_changes(self):
+        c = trewartha._CODES
+        codes = np.array([c["Ft"], c["Dc"], c["Dc"], c["BS"], 0], np.uint8)
+        lowered = np.array([c["Cf"], c["Do"], c["Cf"], c["BS"], 0], np.uint8)
+        height = np.array([4000, 3000, 1400, 3000, 3000], np.float32)
+        # a new group, the same group (D), too low, the same class, ocean
+        np.testing.assert_array_equal(trewartha.highlands(codes, lowered, height),
+                                      [True, False, False, False, False])
+
+    def test_h_is_a_class_name(self):
+        assert trewartha.resolve_trewartha_classes(["h"]) == (15,)
 
 
 class TestDrawing:
@@ -264,4 +303,4 @@ class TestDrawing:
         assert legend.get_title().get_text() == "Trewartha Climate Classification"
         labels = [t.get_text() for t in legend.get_texts()]
         assert labels[0] == first_label
-        assert len(labels) == (len(classes) if classes else 14)
+        assert len(labels) == (len(classes) if classes else 15)

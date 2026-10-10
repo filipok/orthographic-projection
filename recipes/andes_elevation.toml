@@ -1,0 +1,6 @@
+# Elevation: layer tints and hill shading, centred on South America and the Andes.
+lat = -15
+lon = -65
+provider = "osm"
+elevation = true
+output = "orthographic_map_south_america_osm_z3_elevation.png"

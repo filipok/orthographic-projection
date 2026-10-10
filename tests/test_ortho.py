@@ -126,6 +126,22 @@ class TestBufferedTileSource:
         _buffered, img = self._render_domain(rgb=True)
         assert img.shape[2] == 4 and (img[..., 3] == 255).all()
 
+    def test_postprocess_receives_the_merged_mosaic(self):
+        source = ortho.CachedOSM()
+        seen = []
+
+        def postprocess(mosaic, extent):
+            seen.append((mosaic.shape, extent))
+            return np.zeros(mosaic.shape[:2] + (4,), np.uint8)
+
+        buffered = ortho.BufferedTileSource(source, tile_buffer_factor=0.5, postprocess=postprocess)
+        tile = (np.full((256, 256, 4), 200, np.uint8), None, "lower")
+        with mock.patch.object(source, "get_image",
+                               side_effect=lambda t: (tile[0], source.tileextent(t), "lower")):
+            img, extent, _ = buffered.image_for_domain(self._world(source), 1)
+        assert len(seen) == 1 and seen[0][1] == extent      # once, for the whole mosaic
+        assert (img == 0).all()
+
 
 # ===================================================================
 # create_tile_source
@@ -263,6 +279,11 @@ class TestValidateRenderOptions:
         with pytest.raises(ValueError, match="with both hemispheres"):
             ortho.validate_render_options(dpi=ortho.MAX_DPI // 2 + 1, koppen_alpha=0.5, both_hemispheres=True)
         ortho.validate_render_options(dpi=ortho.MAX_DPI, koppen_alpha=0.5)
+
+    @pytest.mark.parametrize("alpha", [-0.1, 1.5])
+    def test_elevation_alpha_range(self, alpha):
+        with pytest.raises(ValueError, match="elevation_alpha"):
+            ortho.validate_render_options(dpi=100, koppen_alpha=0.5, elevation_alpha=alpha)
 
 
 # ===================================================================
@@ -498,6 +519,12 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc", "--trewartha", "--trewartha-class", "Do", "--trewartha-class", "C"])
         assert args.trewartha is True and args.trewartha_class == ["Do", "C"]
 
+    def test_elevation_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert args.elevation is False and args.elevation_alpha == 0.8
+        args = self._parse(["--city", "nyc", "--elevation", "--elevation-alpha", "0.6"])
+        assert args.elevation is True and args.elevation_alpha == 0.6
+
     def test_one_climate_classification_at_a_time(self):
         with pytest.raises(SystemExit):
             self._parse(["--city", "nyc", "--koppen", "--trewartha"])
@@ -683,6 +710,7 @@ class TestRunCLIValidation:
             koppen=False, koppen_alpha=0.45, route=None, route_legend=False,
             both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
             koppen_class=None, up=0.0, up_toward=None, trewartha=False, trewartha_class=None,
+            elevation=False, elevation_alpha=0.8,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -889,6 +917,20 @@ class TestRunCLIValidation:
         assert render.call_args.kwargs["trewartha"] is True
         assert render.call_args.kwargs["trewartha_classes"] == ["Do"]
 
+    def test_elevation_passed_to_renderer(self):
+        args = self._make_args(city="paris", elevation=True, elevation_alpha=0.6)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["elevation"] is True
+        assert render.call_args.kwargs["elevation_alpha"] == 0.6
+
+    def test_bad_elevation_alpha_exits_before_render(self):
+        args = self._make_args(city="paris", elevation=True, elevation_alpha=3.0)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render:
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+
     @pytest.mark.parametrize("kwargs, message", [
         ({"trewartha_class": ["Xx"]}, "Unknown Trewartha class"),
         ({"koppen_class": ["Cfb"], "trewartha": True}, "Choose one climate classification"),
@@ -1033,8 +1075,28 @@ class TestGenerateOrthographicMapIntegration:
         with mock.patch.object(ortho, "add_trewartha_overlay"), \
                 mock.patch.object(ortho, "add_trewartha_legend"):
             credits = self._render_credits(tmp_path, trewartha=True)
-        assert credits == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.TREWARTHA_ATTRIBUTION]
+        # The highland group uses the terrain tiles, so their sources are credited too
+        assert credits == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.TREWARTHA_ATTRIBUTION,
+                           ortho.ELEVATION_ATTRIBUTION]
         assert "CHELSA" in ortho.TREWARTHA_ATTRIBUTION
+
+    def test_elevation_layer_key_and_credit(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None) as add_image,                 mock.patch.object(ortho, "add_elevation_legend") as key,                 mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), elevation=True, elevation_alpha=0.6,
+            )
+        relief = [c for c in add_image.call_args_list if isinstance(c.args[0].tile_source, ortho.TerrariumTiles)]
+        assert len(relief) == 1
+        assert relief[0].args[1] == ortho.RELIEF_ZOOM and relief[0].kwargs["zorder"] == 1
+        assert relief[0].args[0].postprocess.keywords["alpha"] == 0.6
+        key.assert_called_once()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.ELEVATION_ATTRIBUTION]
+
+    def test_elevation_with_trewartha_credits_the_heights_once(self, tmp_path):
+        with mock.patch.object(ortho, "add_trewartha_overlay"),                 mock.patch.object(ortho, "add_trewartha_legend"),                 mock.patch.object(ortho, "add_elevation_legend"):
+            credits = self._render_credits(tmp_path, trewartha=True, elevation=True)
+        assert credits.count(ortho.ELEVATION_ATTRIBUTION) == 1
 
     def test_trewartha_failure_still_saves_map_without_credit(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \

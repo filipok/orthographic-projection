@@ -35,7 +35,19 @@ dry-climate threshold. Dry climates are tested first:
 - **F** (polar): no month >= 10 °C; **Ft** warmest month > 0 °C, else **Fi**.
 
 Winter is October-March in the northern hemisphere and April-September in
-the southern. The highland group H is not used: it needs elevation data.
+the southern.
+
+Highlands
+---------
+Trewartha's highland group **H** marks places whose climate group is set by
+their altitude, but he gave no numerical test. Here a cell is H when its
+ground is at least 1,500 m high and taking away the height above 1,500 m,
+warming every month by 6.5 °C per km (the standard atmosphere's lapse
+rate), would put it in another group. Tibet, the high Andes and the
+Ethiopian Highlands become H; Denver, Johannesburg and the Iranian plateau,
+high but with the climate of the lowlands around them, keep their class.
+Heights come from the Mapzen terrain tiles (see :mod:`elevation`), sampled
+at each cell's centre at zoom 4 (~10 km).
 """
 
 from __future__ import annotations
@@ -58,15 +70,22 @@ import cartopy.crs as ccrs
 import cartopy.io.shapereader as shapereader
 from cartopy.mpl.geoaxes import GeoAxes
 
+from elevation import ElevationDataError, elevation_grid
+
 logger = logging.getLogger(__name__)
 
 CHELSA_URL = ("https://os.unil.cloud.switch.ch/chelsa02/chelsa/global/climatologies/{var}/1981-2010/"
               "CHELSA_{var}_{month:02d}_1981-2010_V.2.1.tif")
 # Reduced copy inside each file: 4 = 1/16 of 1 km, 2700 x 1305 cells of 0.133° (~15 km)
 OVERVIEW_LEVEL = 4
-DATA_VERSION = 1  # bump when the rules change, so old caches are rebuilt
+DATA_VERSION = 2  # bump when the rules change, so old caches are rebuilt
 
 TREWARTHA_ATTRIBUTION = "Climate data: CHELSA v2.1 (Karger et al. 2017), CC0; Trewartha classes computed"
+# The highland group uses elevation.py's heights, so maps also carry ELEVATION_ATTRIBUTION
+
+# Highlands: ground at least this high whose group the height above it changes
+HIGHLAND_MIN_M = 1500.0
+LAPSE_RATE_C_PER_KM = 6.5
 
 # Grid code -> (symbol, description, (R, G, B)); 0 is ocean / no data
 TREWARTHA_CLASSES: dict[int, tuple[str, str, tuple[int, int, int]]] = {
@@ -84,6 +103,7 @@ TREWARTHA_CLASSES: dict[int, tuple[str, str, tuple[int, int, int]]] = {
     12: ("Ec", "Boreal continental",          (110,  70, 160)),
     13: ("Ft", "Tundra",                      (175, 175, 175)),
     14: ("Fi", "Ice cap",                     (235, 240, 245)),
+    15: ("H",  "Highland",                    (140,  90,  60)),
 }
 _CODES = {symbol: code for code, (symbol, _, _) in TREWARTHA_CLASSES.items()}
 
@@ -227,11 +247,14 @@ class TrewarthaAccumulator:
     """Monthly temperature and precipitation reduced to what the rules need.
 
     Months can be added in any order; *winter* is a boolean grid per month
-    marking the cells where that month is in the winter half-year.
+    marking the cells where that month is in the winter half-year. *offset*
+    (°C, per cell) is added to every month's temperature, to classify the
+    climate a cell would have at another height.
     """
 
-    def __init__(self, shape: tuple[int, int]) -> None:
+    def __init__(self, shape: tuple[int, int], offset: np.ndarray | None = None) -> None:
         f32 = np.float32
+        self.offset = offset
         self.months = 0
         self.temp_sum = np.zeros(shape, f32)
         self.temp_min = np.full(shape, np.inf, f32)
@@ -247,6 +270,8 @@ class TrewarthaAccumulator:
         self.max_summer = np.zeros(shape, f32)
 
     def add_month(self, temp_c: np.ndarray, precip_mm: np.ndarray, winter: np.ndarray) -> None:
+        if self.offset is not None:
+            temp_c = temp_c + self.offset
         self.months += 1
         self.temp_sum += temp_c
         np.minimum(self.temp_min, temp_c, out=self.temp_min)
@@ -299,6 +324,28 @@ class TrewarthaAccumulator:
         return codes
 
 
+# Group letter of each code: A=1, B=2 … F=6, H=7; 0 for ocean
+_GROUP = np.zeros(256, np.uint8)
+for _code, (_symbol, _, _) in TREWARTHA_CLASSES.items():
+    _GROUP[_code] = "ABCDEFH".index(_symbol[0]) + 1
+
+
+def highland_offset(height: np.ndarray) -> np.ndarray:
+    """Warming (°C) from taking away each cell's height above :data:`HIGHLAND_MIN_M`."""
+    above = np.nan_to_num(height - HIGHLAND_MIN_M, nan=0.0)
+    return (np.maximum(above, 0) * LAPSE_RATE_C_PER_KM / 1000).astype(np.float32)
+
+
+def highlands(codes: np.ndarray, lowered: np.ndarray, height: np.ndarray) -> np.ndarray:
+    """True where the ground is high enough and its height changes the climate group.
+
+    *lowered* holds the classes of the same cells with :func:`highland_offset`
+    applied to their temperatures.
+    """
+    high = np.nan_to_num(height, nan=0.0) >= HIGHLAND_MIN_M
+    return high & (codes > 0) & (_GROUP[codes] != _GROUP[lowered])
+
+
 def winter_months(lat: np.ndarray) -> dict[int, np.ndarray]:
     """For each month 1-12, which rows (by latitude) are in their winter half-year."""
     north = lat >= 0
@@ -332,7 +379,9 @@ def _read_month(var: str, month: int) -> tuple[str, int, np.ndarray, tuple[float
 def ensure_trewartha_data(cache_dir: str | None = None) -> str:
     """Path to the cached Trewartha class grid, computing it from CHELSA if needed.
 
-    The first run downloads about 52 MB (a ~15 km copy of 24 monthly files).
+    The first run downloads about 75 MB: a ~15 km copy of 24 monthly files
+    (52 MB) and the terrain tiles for the highlands (25 MB, shared with the
+    elevation layer's cache).
     Raises :class:`TrewarthaDataError` if the data cannot be obtained.
     """
     cache_dir = cache_dir or _default_cache_dir()
@@ -342,7 +391,7 @@ def ensure_trewartha_data(cache_dir: str | None = None) -> str:
         logger.info("Using cached Trewartha classes: %s", path)
         return path
 
-    logger.info("Computing Trewartha classes from CHELSA v2.1 (one-time download, ~52 MB) …")
+    logger.info("Computing Trewartha classes from CHELSA v2.1 (one-time download, ~75 MB) …")
     months: dict[tuple[str, int], np.ndarray] = {}
     geo = None
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
@@ -356,16 +405,24 @@ def ensure_trewartha_data(cache_dir: str | None = None) -> str:
     west, north, cell = geo
 
     shape = months[("tas", 1)].shape
+    try:
+        height = elevation_grid(shape, west, north, cell, zoom=4)
+    except ElevationDataError as exc:
+        raise TrewarthaDataError(str(exc)) from exc
     lat = north - (np.arange(shape[0]) + 0.5) * cell
     winter = winter_months(lat)
     acc = TrewarthaAccumulator(shape)
+    lowered = TrewarthaAccumulator(shape, offset=highland_offset(height))
     for month in range(1, 13):
         temp_raw, precip_raw = months.pop(("tas", month)), months.pop(("pr", month))
         temp_c = temp_raw.astype(np.float32) / 10 - 273.15
         precip_mm = precip_raw.astype(np.float32) / 10
-        acc.add_month(temp_c, precip_mm, np.broadcast_to(winter[month][:, None], shape))
+        month_winter = np.broadcast_to(winter[month][:, None], shape)
+        acc.add_month(temp_c, precip_mm, month_winter)
+        lowered.add_month(temp_c, precip_mm, month_winter)
     codes = acc.classify()
     codes[~land_mask(shape, west, north, cell)] = 0
+    codes[highlands(codes, lowered.classify(), height)] = _CODES["H"]
 
     part = path + ".part.npz"
     np.savez_compressed(part, codes=codes, geo=np.array([west, north, cell]))
@@ -431,7 +488,7 @@ def add_trewartha_legend(ax: GeoAxes, x: float = 0.5, classes: Sequence[int] | N
         labels,
         loc="lower center",
         bbox_to_anchor=(x, -0.06),
-        ncol=min(len(handles), 4) if named else 14,
+        ncol=min(len(handles), 4) if named else len(handles),
         fontsize=8 if named else 6.5,
         frameon=True,
         fancybox=True,

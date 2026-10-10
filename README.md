@@ -45,10 +45,12 @@ The main script is [ortho.py](ortho.py).
 *Right: Only Cwa, humid subtropical with dry winters, which covers 71% of Zambia, centred on Lusaka (OSM, zoom 3).*
 
 <p align="center">
-  <img src="sample_himalaya_trewartha.png" alt="Globe centred over the Himalaya with the Trewartha climate classification: tropical wet Indonesia, tropical India, deserts from the Sahara to the Gobi, subtropical south China, temperate and boreal Russia, and the Tibetan Plateau shaded as tundra" width="48%">
+  <img src="sample_himalaya_trewartha.png" alt="Globe centred over the Himalaya with the Trewartha climate classification: tropical wet Indonesia, tropical India, deserts from the Sahara to the Gobi, subtropical south China, temperate and boreal Russia, and the Tibetan Plateau in the brown highland class" width="48%">
+  <img src="sample_andes_elevation.png" alt="Globe centred on South America with land coloured by height from green lowlands to brown and white peaks, hill-shaded, showing the Andes, the Brazilian Highlands and the Mexican Plateau" width="48%">
 </p>
 
-*The Trewartha climate classification across Asia, centred over the Himalaya (OSM, zoom 3). Without a highland group, the Tibetan Plateau shows as tundra (Ft); see "Trewartha Climate Overlay".*
+*Left: The Trewartha climate classification across Asia, centred over the Himalaya (OSM, zoom 3), with the Tibetan Plateau in the highland group (H).*<br>
+*Right: Elevation, coloured by height and hill-shaded, centred on South America (OSM, zoom 3).*
 
 ## Features
 
@@ -64,7 +66,8 @@ The main script is [ortho.py](ortho.py).
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
 - Optional second globe centred on the antipode, so one image shows the whole Earth
 - Optional Köppen-Geiger climate classification overlay with compact legend, for all classes or only chosen ones
-- Optional Trewartha climate classification overlay, computed from CHELSA v2.1 monthly climate, for all classes or only chosen ones
+- Optional Trewartha climate classification overlay, computed from CHELSA v2.1 monthly climate and terrain heights (with a highland group), for all classes or only chosen ones
+- Optional elevation layer: land coloured by height and hill-shaded, from open terrain tiles, with a key
 - Optional polar ice: sea ice at its latest winter maximum (NSIDC) and permanent polar land ice
 - Optional crop areas for any of 173 crops (CROPGRIDS), one or several at once, with a key
 - Any compass direction at the top of the globe (south up, or the direction toward a place), with text kept upright
@@ -118,7 +121,7 @@ Like Google satellite, it has no place names baked in, so it suits turned globes
 ## Requirements
 
 - Python 3.12 or newer (developed on 3.14)
-- Internet access for downloading map tiles (and, once each, the Köppen, Trewartha, sea ice and crop data)
+- Internet access for downloading map tiles (and, once each, the Köppen, Trewartha, elevation, sea ice and crop data)
 
 `requirements.txt` lists minimum versions, not pins. The versions this was developed and tested with:
 
@@ -166,10 +169,11 @@ You will be prompted to choose:
 4. Whether to also draw the opposite hemisphere (see "Both Hemispheres")
 5. The compass bearing to put at the top (blank keeps north up; see "Turning the Globe")
 6. An optional climate overlay, Köppen-Geiger or Trewartha, its opacity/alpha (0–1) and the classes to show (blank for all)
-7. Whether to add polar ice at its winter maximum (see "Polar Ice")
-8. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
-9. An optional GeoJSON route file to overlay (leave blank to skip)
-10. Whether to add a key naming each route (asked only when a route file is loaded)
+7. Whether to colour the land by height, with relief shading (see "Elevation")
+8. Whether to add polar ice at its winter maximum (see "Polar Ice")
+9. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
+10. An optional GeoJSON route file to overlay (leave blank to skip)
+11. Whether to add a key naming each route (asked only when a route file is loaded)
 
 ### CLI Mode
 
@@ -213,6 +217,9 @@ python ortho.py --lat 30 --lon 0 --koppen-class Cs --both-hemispheres
 python ortho.py --city london --trewartha
 python ortho.py --city lusaka --trewartha-class C --climate-alpha 0.7
 
+# Land coloured by height, with hill shading (see "Elevation")
+python ortho.py --lat -15 --lon -65 --elevation
+
 # South up, or the direction toward a place at the top (see "Turning the Globe")
 python ortho.py --city sydney --up 180
 python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi"
@@ -237,6 +244,8 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--trewartha` | Enable the Trewartha climate classification overlay (not with `--koppen`) | off |
 | `--trewartha-class CLASS` | Show only this Trewartha class (`Do`) or group (`C`); repeat for several; implies `--trewartha` | all |
 | `--climate-alpha ALPHA` | Opacity of the climate overlay (0–1); `--koppen-alpha` is the same option | `0.45` |
+| `--elevation` | Colour the land by height and shade its relief, with a key | off |
+| `--elevation-alpha ALPHA` | Opacity of the elevation layer (0–1) | `0.8` |
 | `--ice` | Draw sea ice at its winter maximum and polar land ice | off |
 | `--ice-year YEAR` | Year of the sea ice maxima, 1979 on; implies `--ice` | latest published |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
@@ -305,6 +314,7 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `nyc_toward_london.toml` | New York turned toward London, NASA imagery |
 | `lusaka_cwa.toml` | Zambia's dominant climate, Cwa |
 | `himalaya_trewartha.toml` | The Trewartha climate classification across Asia |
+| `andes_elevation.toml` | Elevation, centred on South America |
 
 The Google satellite recipes need a Google Maps key and are affected by Google's
 EEA restriction (see "Google tiles" below); add `--provider nasa` to render them
@@ -345,6 +355,7 @@ generate_orthographic_map(
     both_hemispheres=False,  # optional: add a globe centred on the antipode
     ice=False,             # optional: polar ice at its winter maximum
     crops=None,            # optional: e.g. ["wheat", "rice:#18b5a4"]
+    elevation=False,       # optional: land coloured by height, hill-shaded
     koppen_classes=None,   # optional: e.g. ["Cfb"] or ["Cs"]; implies koppen=True
     trewartha_classes=None,  # optional: e.g. ["Do"] or ["C"]; implies trewartha=True (not with koppen)
     up=0,                  # optional: compass bearing at the top (180 = south up)
@@ -557,6 +568,37 @@ and are cached in `~/.cache/ortho_tiles/sea_ice/`; offline, the newest cached
 year is used. If no data can be had, the map is saved without the ice and a
 warning says why.
 
+## Elevation
+
+Pass `--elevation` (CLI) or `elevation=True` (API) to colour the land by
+height in classic atlas bands (green lowlands, through tan and brown, to
+grey and white above 4,000 m), with hill shading lit from the north-west and
+a key below the globe.
+
+```powershell
+python ortho.py --lat -15 --lon -65 --elevation
+python ortho.py --config recipes/andes_elevation.toml
+```
+
+- **Data.** The open [Mapzen terrain tiles](https://registry.opendata.aws/terrain-tiles/)
+  on AWS: web-map tiles whose colours encode height, from GMTED2010 and SRTM
+  (USGS) on land and ETOPO1 (NOAA) at sea. The layer uses zoom 5, about 5 km
+  a pixel at the equator: some 500 tiles (~50 MB) for a hemisphere the first
+  time, cached in `~/.cache/ortho_tiles/terrarium/` for good, since they
+  never change.
+- **Layering.** The layer sits on the map tiles (at 80% opacity, set with
+  `--elevation-alpha`) and under the climate, crop, ice and route layers.
+  The sea and lakes are left to the base map; land is told from sea with
+  the Natural Earth outline, so land below sea level, like the Caspian
+  Depression or the Dead Sea shore, is still coloured.
+- **Ice sheets.** From zoom 5 the tiles give the rock under the Greenland and
+  Antarctic ice (central Greenland reads −50 m); near the poles the ice
+  surface from zoom 4 is used instead (about 3,200 m at Greenland's summit).
+  Ice shelves are not land in Natural Earth, so they show the base map.
+- **Limits.** Like the other web-map tiles, the terrain tiles stop at 85°N
+  and 85°S. A tile that fails to download leaves the base map showing there,
+  with a warning.
+
 ## Crop Areas
 
 `--crop NAME` (`crops=[...]` in the API, or the interactive prompt) shades where
@@ -666,9 +708,10 @@ The Asia sample above is `python ortho.py --config recipes/himalaya_trewartha.to
 monthly mean temperature and precipitation for 1981–2010 (public domain, CC0).
 The CHELSA files are 1 km Cloud-Optimised GeoTIFFs with smaller copies inside,
 so the first run reads only the ~15 km copy (0.133°) of each of the 24 monthly
-files, about 52 MB, with HTTP range requests. That takes half a minute or so;
-the classified grid is then cached in `~/.cache/ortho_tiles/trewartha/`
-(about 100 KB) and later runs reuse it. CHELSA covers the oceans too, so they
+files, about 52 MB, with HTTP range requests. The highland group also needs
+heights: 256 terrain tiles at zoom 4 (~10 km, about 25 MB; see "Elevation").
+That takes a minute or so; the classified grid is then cached in
+`~/.cache/ortho_tiles/trewartha/` (about 100 KB) and later runs reuse it. CHELSA covers the oceans too, so they
 are cleared with the Natural Earth land outline. If the data can't be obtained,
 the map is still rendered without the overlay and a warning explains why.
 
@@ -683,41 +726,61 @@ October–March in the north and April–September in the south.
 | D, temperate | 4–7 months ≥ 10 °C | Do oceanic (coldest month above 0 °C), Dc continental |
 | E, boreal | 1–3 months ≥ 10 °C | Eo oceanic (coldest month above −10 °C), Ec continental |
 | F, polar | No month ≥ 10 °C | Ft tundra (warmest month above 0 °C), Fi ice cap |
+| H, highland | Ground at least 1,500 m high whose group would change without its height above 1,500 m (see below) | H, in place of the class above |
 
 **Only some classes.** `--trewartha-class` (`trewartha_classes=` in the API,
 or the interactive prompt) works like `--koppen-class`: give a class (`Do`) or
 a group (`C`), repeat it for several, and it turns `--trewartha` on by itself.
 `--climate-alpha` sets the opacity of either overlay.
 
-**Caveats.**
-- **No highland group (H).** Trewartha puts high mountains and plateaus, where
-  the climate changes with height over short distances, in a group of their
-  own. That needs elevation data, which this overlay doesn't use, so highland
-  cells take the class their own temperature and rain give them. Areas most
-  likely to look off:
-  - **Tibetan Plateau, Pamir and Himalaya:** mostly tundra (Ft), with ice cap
-    (Fi) on the highest ranges, so the plateau reads like the Arctic. Lhasa
-    comes out Dc, Kabul Dc.
-  - **Andes:** the Altiplano and the Peruvian and Bolivian highlands are Ft or
-    Eo (La Paz, Cusco: Ft), while the equatorial valleys come out subtropical,
-    Cf (Quito, Bogotá), though they are cool all year.
-  - **East African highlands:** the Ethiopian Highlands and Addis Ababa are Cf,
-    Nairobi Cw; Kilimanjaro's summit is Ft.
-  - **Mexican Plateau:** Mexico City is Cw.
-  - **Rockies, Alps and other high ranges:** their upper slopes fall to boreal
-    or tundra classes (Leadville, Colorado: Ec; the high Alps: Eo).
+**Highlands (H).** Trewartha puts high mountains and plateaus, whose climate
+is set by their altitude rather than their latitude, in a group of their own,
+but never gave it a numerical test, and the published Trewartha maps this
+overlay follows (Belda et al. 2014, Huang et al. 2023) leave it out. Here a
+cell is H when its ground is at least 1,500 m high **and** taking away its
+height above 1,500 m would put it in another group. Taking away height warms
+every month by 6.5 °C per km, the standard atmosphere's lapse rate. Heights
+come from the terrain tiles at ~10 km.
 
-  The classes are what the climate data gives, so they are right as climate
-  types; what's missing is the "this is a mountain climate" label that
-  Trewartha maps add.
+The test lowers each cell to 1,500 m, not to sea level: 1,500 m alone is
+worth almost 10 °C, so lowering everything to the sea would make nearly all
+high ground H, including cities with the climate of the lowlands around them.
+Some places, with the class they would otherwise get:
+
+| Place | Height | Without H | With H | Group at 1,500 m |
+|---|---|---|---|---|
+| Tibetan Plateau (33°N 88°E) | 5,175 m | Ft | **H** | BW |
+| Lhasa | 3,767 m | Dc | **H** | BS |
+| La Paz | 4,205 m | Ft | **H** | Aw |
+| Quito | 2,505 m | Cf | **H** | Ar |
+| Bogotá | 2,809 m | Cf | **H** | As |
+| Addis Ababa | 2,202 m | Cf | **H** | Aw |
+| Mexico City | 2,246 m | Cw | **H** | BS |
+| High Alps (Jungfrau) | 2,473 m | Eo | **H** | Dc |
+| Denver | 1,582 m | Dc | Dc | Dc |
+| Johannesburg | 1,662 m | Cw | Cw | Cw |
+| Nairobi | 1,620 m | Cw | Cw | Cw |
+| Isfahan | 1,714 m | BS | BS | BS |
+| Greenland ice sheet | 3,207 m | Fi | Fi | Fi |
+
+Heights are the ~10 km cell's, so they differ from the cities' own. Lowered
+to sea level instead, Denver, Johannesburg, Nairobi and Kunming would all be
+H too. Ice caps stay F: lowered to 1,500 m, Greenland's summit would still be
+an ice cap (Fi).
+
+**Caveats.**
+- Where H starts is a choice, not a law: a cell just above 1,500 m whose class
+  sits near a boundary can flip to H, while a high cell whose group survives
+  the lowering keeps its own class (Isfahan, Sanaa).
 - At ~15 km a cell averages its terrain, and some places sit right on a
   boundary: Denver comes out Dc, 434 mm of rain against a dry threshold of
   419 mm, while the plains to its east are BS.
 - Published Trewartha maps differ in details (the C dry-season rules, the dry
   threshold), so borders can shift a little against other maps.
 
-The credit (*Climate data: CHELSA v2.1 (Karger et al. 2017), CC0; Trewartha
-classes computed*) is added to the attribution block.
+The credits (*Climate data: CHELSA v2.1 (Karger et al. 2017), CC0; Trewartha
+classes computed*, and the elevation credit for the heights behind H) are added
+to the attribution block.
 
 ## Data Sources & Licensing
 
@@ -725,7 +788,8 @@ classes computed*) is added to the attribution block.
 |---|---|---|---|
 | Köppen-Geiger climate classification V1, present day (1980–2016), used at 0.083° (~10 km) | Beck, H. E. et al. (2018) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/sdata.2018.214](https://doi.org/10.1038/sdata.2018.214) |
 | CHELSA v2.1 monthly mean temperature and precipitation, 1981–2010, used at 0.133° (~15 km) for the Trewartha classes | Karger, D. N. et al. (2017) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2017.122](https://doi.org/10.1038/sdata.2017.122), [chelsa-climate.org](https://chelsa-climate.org/) |
-| Natural Earth (land / ocean fallback, Trewartha land mask, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
+| Mapzen Terrain Tiles (Terrarium), from GMTED2010 and SRTM (USGS) and ETOPO1 (NOAA), used at zoom 4–5 for the elevation layer and the Trewartha highlands | Mapzen / Tilezen, AWS Open Data | Free to use; the sources must be credited ([attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | [registry.opendata.aws/terrain-tiles](https://registry.opendata.aws/terrain-tiles/) |
+| Natural Earth (land / ocean fallback, Trewartha and elevation land masks, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
 | OpenStreetMap tiles | OpenStreetMap contributors | Data [ODbL](https://www.openstreetmap.org/copyright); attribution required by the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) | [openstreetmap.org](https://www.openstreetmap.org/) |
@@ -741,7 +805,8 @@ the globe:
 | `nasa` tiles | *Imagery: NASA Blue Marble, via NASA GIBS (ESDIS)* |
 | `google`, `google_satellite` tiles | *Google Maps* plus the copyright string returned by the Map Tiles API |
 | `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |
-| `--trewartha` overlay | *Climate data: CHELSA v2.1 (Karger et al. 2017), CC0; Trewartha classes computed* |
+| `--trewartha` overlay | *Climate data: CHELSA v2.1 (Karger et al. 2017), CC0; Trewartha classes computed*, plus the elevation credit |
+| `--elevation` layer | *Elevation: Mapzen Terrain Tiles (AWS Open Data); GMTED2010 and SRTM courtesy of the USGS; ETOPO1, NOAA NCEI* |
 | `--ice` overlay | *Sea ice: NSIDC Sea Ice Index v4, extent March YYYY (Arctic) and September YYYY (Antarctic)* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
@@ -800,6 +865,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [ortho.py](ortho.py): main script and reusable map-generation functions
 - [koppen.py](koppen.py): Köppen-Geiger climate overlay and legend
 - [trewartha.py](trewartha.py): Trewartha climate classes computed from CHELSA v2.1, overlay and legend
+- [elevation.py](elevation.py): elevation layer and heights from the Mapzen terrain tiles
 - [ice.py](ice.py): polar ice overlay (NSIDC sea ice extent, Natural Earth land ice)
 - [crops.py](crops.py): crop-area overlay and key (CROPGRIDS, read from the remote archive)
 - [rotation.py](rotation.py): orthographic globes with any compass direction at the top

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import difflib
+import functools
 import getpass
 import logging
 import math
@@ -10,7 +11,7 @@ import os
 import sys
 import time
 import tomllib
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,9 @@ from koppen import (
     resolve_koppen_classes,
 )
 from rotation import far_side_up, globe_projection, initial_bearing, normalise_bearing
+from elevation import (
+    ELEVATION_ATTRIBUTION, RELIEF_ZOOM, TerrariumTiles, add_elevation_legend, relief_rgba,
+)
 from trewartha import (
     TREWARTHA_ATTRIBUTION, TrewarthaDataError, add_trewartha_legend, add_trewartha_overlay,
     resolve_trewartha_classes,
@@ -242,11 +246,17 @@ class BufferedTileSource:
     itself and makes each failed tile fully transparent, so the land/ocean
     fallback drawn underneath shows through. Failures are recorded in
     :attr:`failed_tiles` (``(tile, error)`` pairs) for reporting.
+
+    *postprocess*, if given, turns the merged RGBA mosaic into the image
+    drawn: ``postprocess(mosaic, extent) -> RGBA`` (the elevation layer
+    colours and shades raw height tiles this way, without seams).
     """
 
-    def __init__(self, tile_source: Any, tile_buffer_factor: float = 0.5) -> None:
+    def __init__(self, tile_source: Any, tile_buffer_factor: float = 0.5,
+                 postprocess: Callable[[np.ndarray, Any], np.ndarray] | None = None) -> None:
         self.tile_source = tile_source
         self.tile_buffer_factor = tile_buffer_factor
+        self.postprocess = postprocess
         self.crs = tile_source.crs
         self.total_tiles = 0
         self.failed_tiles: list[tuple[Any, BaseException]] = []
@@ -287,7 +297,10 @@ class BufferedTileSource:
             x = np.linspace(extent[0], extent[1], img.shape[1])
             y = np.linspace(extent[2], extent[3], img.shape[0])
             pieces.append([img, x, y, origin])
-        return cimgt._merge_tiles(pieces)
+        img, extent, origin = cimgt._merge_tiles(pieces)
+        if self.postprocess is not None:
+            img = self.postprocess(img, extent)
+        return img, extent, origin
 
 
 def create_tile_source(
@@ -340,6 +353,7 @@ MAX_DPI = 1200
 
 def validate_render_options(
     dpi: int, koppen_alpha: float, both_hemispheres: bool = False, ice_year: int | None = None,
+    elevation_alpha: float = 0.8,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if ice_year is not None and not FIRST_ICE_YEAR <= ice_year <= time.localtime().tm_year:
@@ -353,6 +367,8 @@ def validate_render_options(
         raise ValueError(f"dpi must be between {MIN_DPI} and {max_dpi}{layout}, got {dpi}")
     if not 0.0 <= koppen_alpha <= 1.0:
         raise ValueError(f"koppen_alpha must be between 0 and 1, got {koppen_alpha}")
+    if not 0.0 <= elevation_alpha <= 1.0:
+        raise ValueError(f"elevation_alpha must be between 0 and 1, got {elevation_alpha}")
 
 
 def generate_orthographic_map(
@@ -381,6 +397,8 @@ def generate_orthographic_map(
     up: float = 0.0,
     trewartha: bool = False,
     trewartha_classes: Sequence[str] | None = None,
+    elevation: bool = False,
+    elevation_alpha: float = 0.8,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -456,6 +474,12 @@ def generate_orthographic_map(
         Compass bearing (degrees clockwise from north) to put at the top of
         the globe; 0 keeps north up, 180 puts south up. Text stays upright.
         With *both_hemispheres*, the far globe turns to match.
+    elevation : bool
+        When True, colour the land by height and shade its relief (Mapzen
+        terrain tiles, see :mod:`elevation`), above the map tiles and below
+        every other layer, with a key below the globe.
+    elevation_alpha : float
+        Opacity of the elevation layer (0–1).
 
     Returns
     -------
@@ -465,6 +489,7 @@ def generate_orthographic_map(
 
     validate_render_options(
         dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
+        elevation_alpha=elevation_alpha,
     )
     resolve_crops(crops or [])  # unknown names and bad colours fail before any download
     koppen_codes = resolve_koppen_classes(koppen_classes or [])
@@ -542,9 +567,22 @@ def generate_orthographic_map(
             interpolation="nearest",
         )
 
+    # Step 5a: Elevation, coloured and shaded (above the tiles, below everything else).
+    # Its tiles are fetched in savefig too; failed ones leave the map tiles showing.
+    relief = None
+    if elevation:
+        logger.info("Adding elevation (alpha=%.2f) …", elevation_alpha)
+        relief = BufferedTileSource(
+            TerrariumTiles(cache_dir=tile_cache_dir),
+            tile_buffer_factor=tile_buffer_factor,
+            postprocess=functools.partial(relief_rgba, alpha=elevation_alpha, cache_dir=tile_cache_dir),
+        )
+        for ax in axes:
+            ax.add_image(relief, RELIEF_ZOOM, regrid_shape=regrid_shape, interpolation="bilinear", zorder=1)
+
     # Step 5b: Climate overlay, Köppen-Geiger or Trewartha (above tiles, below
-    # gridlines), with one key; its credit line is kept for step 7e
-    climate_credit = None
+    # gridlines), with one key; its credit lines are kept for step 7e
+    climate_credits: list[str] = []
     if koppen:
         logger.info("Applying Köppen-Geiger climate overlay (alpha=%.2f) …", koppen_alpha)
         try:
@@ -556,7 +594,7 @@ def generate_orthographic_map(
             logger.warning("Skipping Köppen-Geiger overlay: %s", e)
         else:
             add_koppen_legend(near, x=key_x, classes=koppen_codes or None)
-            climate_credit = KOPPEN_ATTRIBUTION
+            climate_credits = [KOPPEN_ATTRIBUTION]
     elif trewartha:
         logger.info("Applying Trewartha climate overlay (alpha=%.2f) …", koppen_alpha)
         try:
@@ -567,7 +605,8 @@ def generate_orthographic_map(
             logger.warning("Skipping Trewartha overlay: %s", e)
         else:
             add_trewartha_legend(near, x=key_x, classes=trewartha_codes or None)
-            climate_credit = TREWARTHA_ATTRIBUTION
+            # Its highland group uses the terrain tiles' heights
+            climate_credits = [TREWARTHA_ATTRIBUTION, ELEVATION_ATTRIBUTION]
 
     # Step 5c: Crop areas (above climate colours, below ice)
     crop_layer = None
@@ -644,19 +683,22 @@ def generate_orthographic_map(
         for ax in axes:
             draw_routes(ax, routes)
 
-    # Step 7d: Keys below the globe(s): the crop key, then the route key,
-    # under the climate key when that is drawn too
+    # Step 7d: Keys below the globe(s): the elevation key, the crop key, then
+    # the route key, under the climate key when that is drawn too
     keys = []
+    if relief is not None:
+        keys.append(add_elevation_legend(near, x=key_x))
     if crop_layer is not None:
         keys.append(add_crop_legend(near, crop_layer, x=key_x))
     if routes and route_legend:
         keys.append(add_route_legend(near, routes, x=key_x))
-    _stack_keys(near, [k for k in keys if k is not None], top=-0.07 if climate_credit else -0.01, x=key_x)
+    _stack_keys(near, [k for k in keys if k is not None], top=-0.07 if climate_credits else -0.01, x=key_x)
 
     # Step 7e: Data credits required by the tile and dataset licences
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
-    if climate_credit:
-        credits.append(climate_credit)
+    for credit in climate_credits + ([ELEVATION_ATTRIBUTION] if relief is not None else []):
+        if credit not in credits:
+            credits.append(credit)
     if crop_layer is not None:
         credits.append(CROP_ATTRIBUTION)
     if ice_attribution:
@@ -668,6 +710,10 @@ def generate_orthographic_map(
                 tile_provider, zoom, output_filename, dpi)
     fig.savefig(output_filename, dpi=dpi, bbox_inches="tight", transparent=True)
     _report_tile_failures(tiles)
+    if relief is not None and relief.failed_tiles:
+        logger.warning("%d of %d terrain tiles could not be downloaded (first error: %s); "
+                       "those areas have no elevation colours.", len(relief.failed_tiles),
+                       relief.total_tiles, relief.failed_tiles[0][1])
 
     output_path = os.path.abspath(output_filename)
     logger.info("Map successfully created: %s", output_path)
@@ -1160,6 +1206,20 @@ def build_cli_parser() -> argparse.ArgumentParser:
              "repeat for several. Implies --trewartha.",
     )
 
+    relief = parser.add_argument_group("Elevation")
+    relief.add_argument(
+        "--elevation",
+        action="store_true",
+        help="Colour the land by height and shade its relief (Mapzen terrain tiles), with a key.",
+    )
+    relief.add_argument(
+        "--elevation-alpha",
+        type=float,
+        default=0.8,
+        metavar="ALPHA",
+        help="Opacity of the elevation layer (0-1, default: 0.8).",
+    )
+
     ice = parser.add_argument_group("Polar ice")
     ice.add_argument(
         "--ice",
@@ -1400,6 +1460,10 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             trewartha_classes = prompt_for_climate_classes(
                 resolve_trewartha_classes, "e.g. Do, C")
 
+    enable_elevation = input(
+        "Colour the land by height, with relief shading? [y/N]: "
+    ).strip().lower() in ("y", "yes")
+
     enable_ice = input(
         "Add polar ice at its winter maximum? [y/N]: "
     ).strip().lower() in ("y", "yes")
@@ -1432,6 +1496,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             koppen_classes=koppen_classes,
             trewartha=enable_trewartha,
             trewartha_classes=trewartha_classes,
+            elevation=enable_elevation,
             up=up,
         )
     except GoogleTilesError as e:
@@ -1511,7 +1576,7 @@ def run_cli(args: argparse.Namespace) -> None:
     try:
         validate_render_options(
             dpi=args.dpi, koppen_alpha=args.koppen_alpha, both_hemispheres=args.both_hemispheres,
-            ice_year=args.ice_year,
+            ice_year=args.ice_year, elevation_alpha=args.elevation_alpha,
         )
     except ValueError as e:
         logger.error("Invalid option: %s.", e)
@@ -1566,6 +1631,8 @@ def run_cli(args: argparse.Namespace) -> None:
             koppen_classes=args.koppen_class,
             trewartha=args.trewartha,
             trewartha_classes=args.trewartha_class,
+            elevation=args.elevation,
+            elevation_alpha=args.elevation_alpha,
             up=up,
         )
     except GoogleTilesError as e:
