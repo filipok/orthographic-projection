@@ -54,9 +54,17 @@ The main script is [ortho.py](ortho.py).
 
 <p align="center">
   <img src="sample_steppe_soils.png" alt="Globe centred on Kazakhstan showing only the steppe soils: black Chernozems from Romania through Ukraine and southern Russia into Siberia, chestnut Kastanozems to the south across Kazakhstan and Mongolia, and Phaeozems along the northern edge" width="48%">
+  <img src="sample_topsoil_ph.png" alt="Globe centred on the Sahara showing topsoil pH: acid soils in Scandinavia, Britain and the Congo Basin, alkaline soils across the deserts from the Sahara to Central Asia, and strongly alkaline soils in the Kalahari" width="48%">
 </p>
 
-*The steppe's dark grassland soils, Chernozems, Kastanozems and Phaeozems, centred on Kazakhstan (OSM, zoom 3, SoilGrids 2.0).*
+*Left: The steppe's dark grassland soils, Chernozems, Kastanozems and Phaeozems, centred on Kazakhstan (OSM, zoom 3, SoilGrids 2.0).*<br>
+*Right: Topsoil pH (0–5 cm): acid under the northern and tropical forests, alkaline under the deserts (OSM, zoom 3, SoilGrids 2.0).*
+
+<p align="center">
+  <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
+</p>
+
+*Vegetation greenness (MODIS NDVI) in January and July 2026: the northern winter and summer, and the southern summer and winter (OSM, zoom 3).*
 
 ## Features
 
@@ -74,6 +82,7 @@ The main script is [ortho.py](ortho.py).
 - Optional Köppen-Geiger climate classification overlay with compact legend, for all classes or only chosen ones
 - Optional Trewartha climate classification overlay, computed from CHELSA v2.1 monthly climate and terrain heights (with a highland group), for all classes or only chosen ones
 - Optional elevation layer: land coloured by height and hill-shaded, from open terrain tiles, with a key
+- Optional vegetation layer: MODIS land cover (17 IGBP classes, any year 2001–2024, all or chosen classes) or monthly NDVI greenness
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
 - Optional polar ice: sea ice at its latest winter maximum (NSIDC) and permanent polar land ice
@@ -129,7 +138,7 @@ Like Google satellite, it has no place names baked in, so it suits turned globes
 ## Requirements
 
 - Python 3.12 or newer (developed on 3.14)
-- Internet access for downloading map tiles (and, once each, the Köppen, Trewartha, elevation, soil, sea ice and crop data)
+- Internet access for downloading map tiles (and, once each, the Köppen, Trewartha, elevation, vegetation, soil, sea ice and crop data)
 
 `requirements.txt` lists minimum versions, not pins. The versions this was developed and tested with:
 
@@ -178,11 +187,12 @@ You will be prompted to choose:
 5. The compass bearing to put at the top (blank keeps north up; see "Turning the Globe")
 6. An optional climate overlay, Köppen-Geiger or Trewartha, its opacity/alpha (0–1) and the classes to show (blank for all)
 7. Whether to colour the land by height, with relief shading (see "Elevation")
-8. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
-9. Whether to add polar ice at its winter maximum (see "Polar Ice")
-10. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
-11. An optional GeoJSON route file to overlay (leave blank to skip)
-12. Whether to add a key naming each route (asked only when a route file is loaded)
+8. An optional vegetation layer: MODIS land cover and the classes to show, or NDVI for a month (see "Vegetation")
+9. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
+10. Whether to add polar ice at its winter maximum (see "Polar Ice")
+11. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
+12. An optional GeoJSON route file to overlay (leave blank to skip)
+13. Whether to add a key naming each route (asked only when a route file is loaded)
 
 ### CLI Mode
 
@@ -229,6 +239,12 @@ python ortho.py --city lusaka --trewartha-class C --climate-alpha 0.7
 # Land coloured by height, with hill shading (see "Elevation")
 python ortho.py --lat -15 --lon -65 --elevation
 
+# Land cover, all classes or some, and vegetation greenness in winter and summer (see "Vegetation")
+python ortho.py --lat 10 --lon 20 --landcover
+python ortho.py --lat 50 --lon -95 --landcover-class forest --landcover-class cropland
+python ortho.py --lat 35 --lon 30 --ndvi january
+python ortho.py --lat 35 --lon 30 --ndvi 2026-07
+
 # Soil groups, all or some: the steppe's black earths (see "Soil Groups")
 python ortho.py --lat 35 --lon 40 --soil
 python ortho.py --lat 50 --lon 60 --soil-class Chernozems --soil-class Kastanozems
@@ -263,6 +279,11 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--climate-alpha ALPHA` | Opacity of the climate overlay (0–1); `--koppen-alpha` is the same option | `0.45` |
 | `--elevation` | Colour the land by height and shade its relief, with a key | off |
 | `--elevation-alpha ALPHA` | Opacity of the elevation layer (0–1) | `0.8` |
+| `--landcover` | Colour the land by its MODIS land cover class, with a key | off |
+| `--landcover-class CLASS` | Show only this class or group (`forest`, `shrubland`, `savanna`, `grassland`, `wetland`, `cropland`, `urban`, `ice`, `barren`, or the start of a class name such as `evergreen`); repeat for several; implies `--landcover` | all |
+| `--landcover-year YEAR` | Year of the land cover, 2001–2024; implies `--landcover` | `2024` |
+| `--ndvi MONTH` | Vegetation greenness for a month: `YYYY-MM`, or a month name or number for its latest year (not with `--landcover`) | — |
+| `--vegetation-alpha ALPHA` | Opacity of the land cover or NDVI layer (0–1) | `0.7` |
 | `--soil` | Colour the land by its most probable soil group, with a key | off |
 | `--soil-class GROUP` | Show only this soil group, by name (`Chernozems`) or WRB code (`CH`); repeat for several; implies `--soil` | all |
 | `--soil-alpha ALPHA` | Opacity of the soil overlay, groups or property (0–1) | `0.6` |
@@ -307,7 +328,8 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 
 - **The command line wins.** Options typed after `--config` override the recipe:
   `--config recipes/viking_routes.toml --provider nasa --dpi 600`. Repeatable
-  options (`--route`, `--crop`, `--koppen-class`, `--trewartha-class`, `--soil-class`) add to the recipe's list.
+  options (`--route`, `--crop`, `--koppen-class`, `--trewartha-class`, `--soil-class`,
+  `--landcover-class`) add to the recipe's list.
   Giving `--city` or `--lat`/`--lon` replaces the recipe's location, and `--up`
   or `--up-toward` replaces its orientation, so a recipe works anywhere:
   `--config recipes/london_wheat.toml --city lusaka -o lusaka_wheat.png`. (The
@@ -338,6 +360,8 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `himalaya_trewartha.toml` | The Trewartha climate classification across Asia |
 | `andes_elevation.toml` | Elevation, centred on South America |
 | `steppe_soils.toml` | The steppe soils, centred on Kazakhstan |
+| `topsoil_ph.toml` | Topsoil pH across Africa, Europe and western Asia |
+| `ndvi_january.toml`, `ndvi_july.toml` | Vegetation greenness in January and July 2026 (the two halves of the NDVI sample) |
 
 The Google satellite recipes need a Google Maps key and are affected by Google's
 EEA restriction (see "Google tiles" below); add `--provider nasa` to render them
@@ -379,6 +403,8 @@ generate_orthographic_map(
     ice=False,             # optional: polar ice at its winter maximum
     crops=None,            # optional: e.g. ["wheat", "rice:#18b5a4"]
     elevation=False,       # optional: land coloured by height, hill-shaded
+    land_cover_classes=None,  # optional: e.g. ["forest"]; implies land_cover=True
+    ndvi=None,             # optional: e.g. "2026-07" or "january" (not with land cover)
     soil_classes=None,     # optional: e.g. ["Chernozems", "PZ"]; implies soil=True
     soil_property=None,    # optional: e.g. "ph" with soil_depth="0-5cm" (not with soil)
     koppen_classes=None,   # optional: e.g. ["Cfb"] or ["Cs"]; implies koppen=True
@@ -624,6 +650,56 @@ python ortho.py --config recipes/andes_elevation.toml
   and 85°S. A tile that fails to download leaves the base map showing there,
   with a warning.
 
+## Vegetation
+
+Two MODIS vegetation layers from NASA, one at a time, drawn above the
+elevation layer and below the climate and soil colours:
+
+```powershell
+python ortho.py --lat 10 --lon 20 --landcover
+python ortho.py --lat 50 --lon -95 --landcover-class forest --landcover-class cropland --landcover-year 2010
+python ortho.py --lat 35 --lon 30 --ndvi january
+python ortho.py --lat 35 --lon 30 --ndvi july
+```
+
+**Land cover** (`--landcover`, `land_cover=True`) colours the land by its MODIS
+land cover class (MCD12Q1, the 17 IGBP classes, 500 m) for any year from 2001 to
+2024 (`--landcover-year`, default the latest), with a key. `--landcover-class`
+shows only some, by group or by the start of a class name; it turns the layer on
+by itself:
+
+| Group | Classes |
+|---|---|
+| `forest` | Evergreen needleleaf, evergreen broadleaf, deciduous needleleaf, deciduous broadleaf and mixed forests |
+| `shrubland` | Closed and open shrublands |
+| `savanna` | Woody savannas and savannas |
+| `grassland`, `wetland`, `urban`, `ice`, `barren` | Grasslands, permanent wetlands, urban and built-up lands, permanent snow and ice, barren |
+| `cropland` | Croplands and cropland/natural vegetation mosaics |
+
+Water is left to the base map. MODIS counts tree cover of 10–60% as "woody
+savanna", so much of the boreal forest of Canada and Siberia is woody savanna
+rather than forest; add `--landcover-class savanna` to see it.
+
+**NDVI** (`--ndvi MONTH`, `ndvi=`) shows how green the vegetation was in one
+month, from 0 (bare ground) to 1 (dense, growing vegetation): the MODIS Terra
+monthly Normalized Difference Vegetation Index, from March 2000 to about two
+months ago. Give `YYYY-MM`, or a month name or number for its latest year
+(`--ndvi january`, `--ndvi 7`). Comparing a January and a July map shows the
+seasons: northern Europe and Russia go from bare and snow-covered to deep green,
+the Sahel greens with the summer rains, and southern Africa is greenest in
+January, its summer. Snow-covered and polar-night land has no NDVI and shows the
+base map. The sample above is the two recipes `ndvi_january.toml` and
+`ndvi_july.toml` (`--lat 35 --lon 30 --ndvi 2026-01`, then `2026-07`), side by side.
+
+- **Data.** Both come from NASA's Global Imagery Browse Services (GIBS) as map
+  tiles at zoom 5 (~5 km), about 500 tiles of 10–40 KB for a hemisphere,
+  cached in `~/.cache/ortho_tiles/gibs/`.
+- **GIBS quirks.** For some tiles GIBS sends a true-colour satellite image
+  instead of the layer (seen for NDVI where a month has no data) or a server
+  error; those are retried twice, then left clear and not cached. Its tiles at
+  the eastern edge (168.75°E–180°) are missing at zoom 5 and stay clear too.
+- `--vegetation-alpha` sets the layer's opacity (default 0.7).
+
 ## Soil Groups
 
 Pass `--soil` (CLI) or `soil=True` (API) to colour the land by its most probable
@@ -700,6 +776,8 @@ python ortho.py --lat 60 --lon -100 --soil-property organic-carbon --soil-depth 
   moved from its interrupted Goode Homolosine projection to a 0.05° grid, and
   cached in `~/.cache/ortho_tiles/soil/properties/`. Averaging to 5 km suits
   measurements, unlike the soil groups.
+- The pH sample above is `python ortho.py --config recipes/topsoil_ph.toml`
+  (`--lat 25 --lon 20 --soil-property ph`).
 - **One soil layer at a time.** `--soil-property` can't be combined with
   `--soil` or `--soil-class`; `--soil-alpha` sets the opacity of either.
 
@@ -892,6 +970,8 @@ to the attribution block.
 |---|---|---|---|
 | Köppen-Geiger climate classification V1, present day (1980–2016), used at 0.083° (~10 km) | Beck, H. E. et al. (2018) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/sdata.2018.214](https://doi.org/10.1038/sdata.2018.214) |
 | CHELSA v2.1 monthly mean temperature and precipitation, 1981–2010, used at 0.133° (~15 km) for the Trewartha classes | Karger, D. N. et al. (2017) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2017.122](https://doi.org/10.1038/sdata.2017.122), [chelsa-climate.org](https://chelsa-climate.org/) |
+| MODIS Land Cover Type (MCD12Q1 v6.1, IGBP), yearly 2001–2024, 500 m | Friedl, M. & Sulla-Menashe, D., NASA LP DAAC | NASA open data, no restrictions | [doi:10.5067/MODIS/MCD12Q1.061](https://doi.org/10.5067/MODIS/MCD12Q1.061), via [NASA GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api) |
+| MODIS Terra Vegetation Indices monthly (NDVI, MOD13A3 v6.1, 1 km) | Didan, K., NASA LP DAAC | NASA open data, no restrictions | [doi:10.5067/MODIS/MOD13A3.061](https://doi.org/10.5067/MODIS/MOD13A3.061), via NASA GIBS |
 | Mapzen Terrain Tiles (Terrarium), from GMTED2010 and SRTM (USGS) and ETOPO1 (NOAA), used at zoom 4–5 for the elevation layer and the Trewartha highlands | Mapzen / Tilezen, AWS Open Data | Free to use; the sources must be credited ([attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | [registry.opendata.aws/terrain-tiles](https://registry.opendata.aws/terrain-tiles/) |
 | SoilGrids 2.0: most probable WRB Reference Soil Group, 250 m, used at 0.067° (~7 km); soil properties, 5 km aggregates, used at 0.05° | Poggio, L. et al. (2021), ISRIC World Soil Information | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.5194/soil-7-217-2021](https://doi.org/10.5194/soil-7-217-2021), [isric.org/explore/soilgrids](https://www.isric.org/explore/soilgrids) |
 | Natural Earth (land / ocean fallback, Trewartha and elevation land masks, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
@@ -912,6 +992,8 @@ the globe:
 | `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |
 | `--trewartha` overlay | *Climate data: CHELSA v2.1 (Karger et al. 2017), CC0; Trewartha classes computed*, plus the elevation credit |
 | `--elevation` layer | *Elevation: Mapzen Terrain Tiles (AWS Open Data); GMTED2010 and SRTM courtesy of the USGS; ETOPO1, NOAA NCEI* |
+| `--landcover` layer | *Land cover: MODIS MCD12Q1 IGBP YYYY (NASA LP DAAC), via NASA GIBS* |
+| `--ndvi` layer | *NDVI: MODIS Terra monthly, Month YYYY (NASA), via NASA GIBS* |
 | `--soil` overlay | *Soil groups: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
 | `--soil-property` overlay | *Soil properties: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
 | `--ice` overlay | *Sea ice: NSIDC Sea Ice Index v4, extent March YYYY (Arctic) and September YYYY (Antarctic)* |
@@ -973,6 +1055,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [koppen.py](koppen.py): Köppen-Geiger climate overlay and legend
 - [trewartha.py](trewartha.py): Trewartha climate classes computed from CHELSA v2.1, overlay and legend
 - [elevation.py](elevation.py): elevation layer and heights from the Mapzen terrain tiles
+- [vegetation.py](vegetation.py): MODIS land cover and NDVI layers and keys (NASA GIBS tiles)
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)
 - [soil_properties.py](soil_properties.py): soil property overlay and key (SoilGrids 2.0, 5 km)
 - [ice.py](ice.py): polar ice overlay (NSIDC sea ice extent, Natural Earth land ice)

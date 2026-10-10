@@ -15,6 +15,7 @@ import pytest
 # ---------------------------------------------------------------------------
 import ortho
 from ice import IceLayers
+from vegetation import GibsTiles
 
 
 # ===================================================================
@@ -534,6 +535,15 @@ class TestCLIParser:
         with pytest.raises(SystemExit):
             self._parse(["--city", "nyc", "--soil-property", "acidity"])
 
+    def test_vegetation_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert not args.landcover and args.landcover_class is None and args.ndvi is None
+        assert args.vegetation_alpha == 0.7
+        args = self._parse(["--city", "nyc", "--landcover-class", "forest", "--landcover-class", "cropland",
+                            "--landcover-year", "2010", "--vegetation-alpha", "0.5"])
+        assert args.landcover_class == ["forest", "cropland"] and args.landcover_year == 2010
+        assert self._parse(["--city", "nyc", "--ndvi", "july"]).ndvi == "july"
+
     def test_elevation_flags(self):
         args = self._parse(["--city", "nyc"])
         assert args.elevation is False and args.elevation_alpha == 0.8
@@ -727,6 +737,7 @@ class TestRunCLIValidation:
             koppen_class=None, up=0.0, up_toward=None, trewartha=False, trewartha_class=None,
             elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
+            landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -968,6 +979,31 @@ class TestRunCLIValidation:
         render.assert_not_called()
         assert message in caplog.text
 
+    def test_vegetation_passed_to_renderer(self):
+        args = self._make_args(city="paris", landcover_class=["forest"], landcover_year=2010,
+                               vegetation_alpha=0.5)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert kwargs["land_cover_classes"] == ["forest"] and kwargs["land_cover_year"] == 2010
+        assert kwargs["vegetation_alpha"] == 0.5 and kwargs["ndvi"] is None
+
+    @pytest.mark.parametrize("overrides, message", [
+        ({"landcover": True, "ndvi": "2020-07"}, "Choose one vegetation layer"),
+        ({"landcover_class": ["jungle"]}, "Unknown land cover class"),
+        ({"ndvi": "summer"}, "Unknown NDVI month"),
+        ({"landcover_year": 1999}, "land_cover_year must be between"),
+        ({"ndvi": "2020-07", "vegetation_alpha": 1.5}, "vegetation_alpha"),
+    ])
+    def test_bad_vegetation_options_exit_before_render(self, caplog, overrides, message):
+        args = self._make_args(city="paris", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render:
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+        assert message in caplog.text
+
     def test_elevation_passed_to_renderer(self):
         args = self._make_args(city="paris", elevation=True, elevation_alpha=0.6)
         with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
@@ -1179,6 +1215,45 @@ class TestGenerateOrthographicMapIntegration:
         ({"soil_property": "acidity"}, "Unknown soil property"),
     ])
     def test_bad_soil_property_fails_before_any_work(self, tmp_path, kwargs, message):
+        with mock.patch.object(ortho, "create_tile_source") as create:
+            with pytest.raises(ValueError, match=message):
+                ortho.generate_orthographic_map(lat=0, lon=0, output_filename=str(tmp_path / "m.png"), **kwargs)
+        create.assert_not_called()
+
+    def _vegetation_render(self, tmp_path, **kwargs):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None) as add_image, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path), **kwargs,
+            )
+        layers = [c for c in add_image.call_args_list if isinstance(c.args[0].tile_source, GibsTiles)]
+        return layers, attribution.call_args.args[1]
+
+    def test_land_cover_layer_key_and_credit(self, tmp_path):
+        with mock.patch.object(ortho, "add_land_cover_legend") as key:
+            layers, credits = self._vegetation_render(
+                tmp_path, land_cover_classes=["cropland"], land_cover_year=2010, vegetation_alpha=0.5)
+        assert len(layers) == 1
+        layer = layers[0]
+        assert layer.args[1] == ortho.VEGETATION_ZOOM and layer.kwargs["zorder"] == 2
+        assert layer.args[0].tile_source.time == "2010-01-01"
+        assert layer.args[0].postprocess.keywords == {"alpha": 0.5, "classes": (12, 14)}
+        assert key.call_args.args[1] == 2010 and key.call_args.kwargs["classes"] == (12, 14)
+        assert credits[-1] == ortho.land_cover_attribution(2010)
+
+    def test_ndvi_layer_key_and_credit(self, tmp_path):
+        with mock.patch.object(ortho, "add_ndvi_legend") as key:
+            layers, credits = self._vegetation_render(tmp_path, ndvi="2020-07")
+        assert layers[0].args[0].tile_source.time == "2020-07-01"
+        assert key.call_args.args[1:] == (2020, 7)
+        assert credits[-1] == ortho.ndvi_attribution(2020, 7)
+
+    @pytest.mark.parametrize("kwargs, message", [
+        ({"land_cover": True, "ndvi": "2020-07"}, "choose one vegetation layer"),
+        ({"ndvi": "1999-07"}, "NDVI runs from"),
+        ({"land_cover_year": 2000}, "land_cover_year"),
+    ])
+    def test_bad_vegetation_fails_before_any_work(self, tmp_path, kwargs, message):
         with mock.patch.object(ortho, "create_tile_source") as create:
             with pytest.raises(ValueError, match=message):
                 ortho.generate_orthographic_map(lat=0, lon=0, output_filename=str(tmp_path / "m.png"), **kwargs)

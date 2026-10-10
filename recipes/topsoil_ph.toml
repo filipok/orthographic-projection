@@ -1,0 +1,6 @@
+# Topsoil pH (0-5 cm, SoilGrids 2.0) across Africa, Europe and western Asia.
+lat = 25
+lon = 20
+provider = "osm"
+soil-property = "ph"
+output = "orthographic_map_africa_osm_z3_soil_ph.png"

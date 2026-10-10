@@ -1,0 +1,6 @@
+# Vegetation greenness (MODIS NDVI) in July 2026: northern summer, southern winter.
+lat = 35
+lon = 30
+provider = "osm"
+ndvi = "2026-07"
+output = "orthographic_map_ndvi_osm_z3_2026-07.png"

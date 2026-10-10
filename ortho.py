@@ -53,6 +53,11 @@ from soil_properties import (
     DEPTHS as SOIL_DEPTHS, SOIL_PROPERTIES, SOIL_PROPERTY_ATTRIBUTION, SoilPropertyError,
     add_soil_property_legend, add_soil_property_overlay, resolve_soil_property,
 )
+from vegetation import (
+    FIRST_LAND_COVER_YEAR, LATEST_LAND_COVER_YEAR, VEGETATION_ZOOM, add_land_cover_legend,
+    add_ndvi_legend, land_cover_attribution, land_cover_rgba, land_cover_tiles, ndvi_attribution,
+    ndvi_rgba, ndvi_tiles, resolve_land_cover_classes, resolve_ndvi_month,
+)
 from trewartha import (
     TREWARTHA_ATTRIBUTION, TrewarthaDataError, add_trewartha_legend, add_trewartha_overlay,
     resolve_trewartha_classes,
@@ -360,7 +365,8 @@ MAX_DPI = 1200
 
 def validate_render_options(
     dpi: int, koppen_alpha: float, both_hemispheres: bool = False, ice_year: int | None = None,
-    elevation_alpha: float = 0.8, soil_alpha: float = 0.6,
+    elevation_alpha: float = 0.8, soil_alpha: float = 0.6, vegetation_alpha: float = 0.7,
+    land_cover_year: int | None = None,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if ice_year is not None and not FIRST_ICE_YEAR <= ice_year <= time.localtime().tm_year:
@@ -378,6 +384,11 @@ def validate_render_options(
         raise ValueError(f"elevation_alpha must be between 0 and 1, got {elevation_alpha}")
     if not 0.0 <= soil_alpha <= 1.0:
         raise ValueError(f"soil_alpha must be between 0 and 1, got {soil_alpha}")
+    if not 0.0 <= vegetation_alpha <= 1.0:
+        raise ValueError(f"vegetation_alpha must be between 0 and 1, got {vegetation_alpha}")
+    if land_cover_year is not None and not FIRST_LAND_COVER_YEAR <= land_cover_year <= LATEST_LAND_COVER_YEAR:
+        raise ValueError(f"land_cover_year must be between {FIRST_LAND_COVER_YEAR} and "
+                         f"{LATEST_LAND_COVER_YEAR}, got {land_cover_year}")
 
 
 def generate_orthographic_map(
@@ -413,6 +424,11 @@ def generate_orthographic_map(
     soil_alpha: float = 0.6,
     soil_property: str | None = None,
     soil_depth: str | None = None,
+    land_cover: bool = False,
+    land_cover_classes: Sequence[str] | None = None,
+    land_cover_year: int | None = None,
+    ndvi: str | None = None,
+    vegetation_alpha: float = 0.7,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -509,6 +525,21 @@ def generate_orthographic_map(
     soil_depth : str, optional
         Depth of *soil_property*, one of :data:`soil_properties.DEPTHS`
         (default ``"0-5cm"``; carbon stock is mapped for ``"0-30cm"`` only).
+    land_cover : bool
+        When True, colour the land by its MODIS land cover class (IGBP, see
+        :mod:`vegetation`), above the elevation layer and below the climate
+        colours, with a key.
+    land_cover_classes : sequence of str, optional
+        Show only these classes or groups (``"forest"``, ``"cropland"``,
+        ``"evergreen"``, see :func:`vegetation.resolve_land_cover_classes`).
+        Implies *land_cover*.
+    land_cover_year : int, optional
+        Year of the land cover map (default the latest). Implies *land_cover*.
+    ndvi : str, optional
+        Draw monthly NDVI greenness instead of land cover, for this month:
+        ``"2026-07"``, or a month name or number for its latest year.
+    vegetation_alpha : float
+        Opacity of the land cover or NDVI layer (0–1).
 
     Returns
     -------
@@ -518,8 +549,14 @@ def generate_orthographic_map(
 
     validate_render_options(
         dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
-        elevation_alpha=elevation_alpha, soil_alpha=soil_alpha,
+        elevation_alpha=elevation_alpha, soil_alpha=soil_alpha, vegetation_alpha=vegetation_alpha,
+        land_cover_year=land_cover_year,
     )
+    land_cover_codes = resolve_land_cover_classes(land_cover_classes or [])
+    land_cover = land_cover or bool(land_cover_codes) or land_cover_year is not None
+    ndvi_month = resolve_ndvi_month(ndvi) if ndvi else None
+    if land_cover and ndvi_month:
+        raise ValueError("choose one vegetation layer: land cover or NDVI")
     soil_codes = resolve_soil_classes(soil_classes or [])
     soil = soil or bool(soil_codes)
     prop, prop_depth = resolve_soil_property(soil_property, soil_depth) if soil_property else (None, None)
@@ -615,6 +652,31 @@ def generate_orthographic_map(
         )
         for ax in axes:
             ax.add_image(relief, RELIEF_ZOOM, regrid_shape=regrid_shape, interpolation="bilinear", zorder=1)
+
+    # Step 5a2: Vegetation, land cover or NDVI (above the elevation, below the climate
+    # colours); NASA GIBS tiles, fetched in savefig like the map tiles
+    vegetation = None
+    vegetation_credit = None
+    if land_cover:
+        year = land_cover_year or LATEST_LAND_COVER_YEAR
+        logger.info("Adding MODIS land cover %d (alpha=%.2f) …", year, vegetation_alpha)
+        vegetation = BufferedTileSource(
+            land_cover_tiles(year, tile_cache_dir), tile_buffer_factor=tile_buffer_factor,
+            postprocess=functools.partial(land_cover_rgba, alpha=vegetation_alpha,
+                                          classes=land_cover_codes or None),
+        )
+        vegetation_credit = land_cover_attribution(year)
+    elif ndvi_month:
+        logger.info("Adding MODIS NDVI for %d-%02d (alpha=%.2f) …", *ndvi_month, vegetation_alpha)
+        vegetation = BufferedTileSource(
+            ndvi_tiles(*ndvi_month, tile_cache_dir), tile_buffer_factor=tile_buffer_factor,
+            postprocess=functools.partial(ndvi_rgba, alpha=vegetation_alpha),
+        )
+        vegetation_credit = ndvi_attribution(*ndvi_month)
+    if vegetation is not None:
+        for ax in axes:
+            ax.add_image(vegetation, VEGETATION_ZOOM, regrid_shape=regrid_shape,
+                         interpolation="nearest", zorder=2)
 
     # Step 5b: Climate overlay, Köppen-Geiger or Trewartha (above tiles, below
     # gridlines), with one key; its credit lines are kept for step 7e
@@ -748,6 +810,11 @@ def generate_orthographic_map(
     keys = []
     if relief is not None:
         keys.append(add_elevation_legend(near, x=key_x))
+    if land_cover:
+        keys.append(add_land_cover_legend(near, land_cover_year or LATEST_LAND_COVER_YEAR,
+                                          classes=land_cover_codes or None, x=key_x))
+    elif ndvi_month:
+        keys.append(add_ndvi_legend(near, *ndvi_month, x=key_x))
     if soil_drawn:
         keys.append(add_soil_legend(near, x=key_x, classes=soil_codes or None))
     if property_drawn and prop is not None and prop_depth is not None:
@@ -760,6 +827,8 @@ def generate_orthographic_map(
 
     # Step 7e: Data credits required by the tile and dataset licences
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
+    if vegetation_credit:
+        credits.append(vegetation_credit)
     for credit in climate_credits + ([ELEVATION_ATTRIBUTION] if relief is not None else []):
         if credit not in credits:
             credits.append(credit)
@@ -778,6 +847,9 @@ def generate_orthographic_map(
                 tile_provider, zoom, output_filename, dpi)
     fig.savefig(output_filename, dpi=dpi, bbox_inches="tight", transparent=True)
     _report_tile_failures(tiles)
+    if vegetation is not None and vegetation.failed_tiles:
+        logger.warning("%d of %d vegetation tiles could not be downloaded (first error: %s).",
+                       len(vegetation.failed_tiles), vegetation.total_tiles, vegetation.failed_tiles[0][1])
     if relief is not None and relief.failed_tiles:
         logger.warning("%d of %d terrain tiles could not be downloaded (first error: %s); "
                        "those areas have no elevation colours.", len(relief.failed_tiles),
@@ -1288,6 +1360,44 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Opacity of the elevation layer (0-1, default: 0.8).",
     )
 
+    veg = parser.add_argument_group("Vegetation (MODIS, via NASA GIBS)", "Land cover or NDVI, one at a time.")
+    veg.add_argument(
+        "--landcover",
+        action="store_true",
+        help=f"Colour the land by its MODIS land cover class (17 IGBP classes, {FIRST_LAND_COVER_YEAR}-"
+             f"{LATEST_LAND_COVER_YEAR}), with a key.",
+    )
+    veg.add_argument(
+        "--landcover-class",
+        action="append",
+        default=None,
+        metavar="CLASS",
+        help="Show only this class or group: forest, shrubland, savanna, grassland, wetland, cropland, "
+             "urban, ice, barren, or the start of a class name (e.g. evergreen); repeat for several. "
+             "Implies --landcover.",
+    )
+    veg.add_argument(
+        "--landcover-year",
+        type=int,
+        default=None,
+        metavar="YEAR",
+        help=f"Year of the land cover ({FIRST_LAND_COVER_YEAR}-{LATEST_LAND_COVER_YEAR}; "
+             f"default: {LATEST_LAND_COVER_YEAR}). Implies --landcover.",
+    )
+    veg.add_argument(
+        "--ndvi",
+        metavar="MONTH",
+        help="Draw MODIS vegetation greenness (NDVI) for a month: YYYY-MM, or a month name or "
+             "number for its latest year (e.g. january, 7).",
+    )
+    veg.add_argument(
+        "--vegetation-alpha",
+        type=float,
+        default=0.7,
+        metavar="ALPHA",
+        help="Opacity of the land cover or NDVI layer (0-1, default: 0.7).",
+    )
+
     soils = parser.add_argument_group("Soil (SoilGrids)")
     soils.add_argument(
         "--soil",
@@ -1569,6 +1679,24 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
         "Colour the land by height, with relief shading? [y/N]: "
     ).strip().lower() in ("y", "yes")
 
+    land_cover_classes: list[str] = []
+    ndvi_month = None
+    veg_input = input(
+        "Vegetation (MODIS): [l]and cover, [n]DVI greenness, or blank for none: "
+    ).strip().lower()
+    enable_land_cover = veg_input in ("l", "landcover", "land cover")
+    if enable_land_cover:
+        land_cover_classes = prompt_for_climate_classes(
+            resolve_land_cover_classes, "e.g. forest, cropland", what="Land cover classes")
+    elif veg_input in ("n", "ndvi"):
+        while True:
+            ndvi_month = input("NDVI month (YYYY-MM, or a month name for its latest year): ").strip()
+            try:
+                resolve_ndvi_month(ndvi_month)
+                break
+            except ValueError as e:
+                print(f"{e}\n")
+
     soil_classes: list[str] = []
     soil_property = None
     soil_input = input(
@@ -1617,6 +1745,9 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             soil=enable_soil,
             soil_classes=soil_classes,
             soil_property=soil_property,
+            land_cover=enable_land_cover,
+            land_cover_classes=land_cover_classes,
+            ndvi=ndvi_month,
             up=up,
         )
     except GoogleTilesError as e:
@@ -1673,12 +1804,18 @@ def run_cli(args: argparse.Namespace) -> None:
         resolve_koppen_classes(args.koppen_class or [])
         resolve_trewartha_classes(args.trewartha_class or [])
         resolve_soil_classes(args.soil_class or [])
+        resolve_land_cover_classes(args.landcover_class or [])
+        if args.ndvi:
+            resolve_ndvi_month(args.ndvi)
         if args.soil_property:
             resolve_soil_property(args.soil_property, args.soil_depth)
         elif args.soil_depth:
             raise ValueError("--soil-depth needs --soil-property.")
     except ValueError as e:
         logger.error("%s", e)
+        sys.exit(1)
+    if (args.landcover or args.landcover_class or args.landcover_year is not None) and args.ndvi:
+        logger.error("Choose one vegetation layer: --landcover or --ndvi.")
         sys.exit(1)
     if (args.soil or args.soil_class) and args.soil_property:
         logger.error("Choose one soil layer: --soil/--soil-class or --soil-property.")
@@ -1705,6 +1842,7 @@ def run_cli(args: argparse.Namespace) -> None:
         validate_render_options(
             dpi=args.dpi, koppen_alpha=args.koppen_alpha, both_hemispheres=args.both_hemispheres,
             ice_year=args.ice_year, elevation_alpha=args.elevation_alpha, soil_alpha=args.soil_alpha,
+            vegetation_alpha=args.vegetation_alpha, land_cover_year=args.landcover_year,
         )
     except ValueError as e:
         logger.error("Invalid option: %s.", e)
@@ -1766,6 +1904,11 @@ def run_cli(args: argparse.Namespace) -> None:
             soil_alpha=args.soil_alpha,
             soil_property=args.soil_property,
             soil_depth=args.soil_depth,
+            land_cover=args.landcover,
+            land_cover_classes=args.landcover_class,
+            land_cover_year=args.landcover_year,
+            ndvi=args.ndvi,
+            vegetation_alpha=args.vegetation_alpha,
             up=up,
         )
     except GoogleTilesError as e:
