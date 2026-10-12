@@ -105,6 +105,11 @@ class TestMaps:
         for key in ("lat", "lon", "radius_km", "zoom", "koppen_classes", "elevation", "wind", "dpi"):
             assert renders[0][key] == cli[key], key
 
+    def test_circles_from_another_place(self, client, renders):
+        _, status = _render(client, city="Paris", circles_from="London")
+        assert renders[0]["circles_from"] == (51.5074, -0.1278)
+        assert "--circles-from London" in status["command"]
+
     def test_coordinates(self, client, renders):
         _, status = _render(client, lat=-33.9, lon=18.4, up_toward="London")
         assert status["label"] == "(-33.9, 18.4)" and renders[0]["city_name"] is None

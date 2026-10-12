@@ -586,6 +586,11 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc"])
         assert args.city == "nyc"
 
+    def test_circles_from_flag(self):
+        assert self._parse(["--city", "nyc"]).circles_from is None
+        assert self._parse(["--city", "nyc", "--circles-from", "London"]).circles_from == "London"
+        assert self._parse(["--city", "nyc", "--circles-from=-33.9,151.2"]).circles_from == "-33.9,151.2"
+
     def test_lat_lon_flags(self):
         args = self._parse(["--lat", "35.0", "--lon", "139.0"])
         assert args.lat == 35.0
@@ -891,7 +896,7 @@ class TestRunCLIValidation:
             output=None, output_dir=None, cache_dir=None,
             koppen=False, koppen_alpha=None, route=None, route_legend=False,
             both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
-            koppen_class=None, up=0.0, up_toward=None, trewartha=False, trewartha_class=None,
+            koppen_class=None, up=0.0, up_toward=None, circles_from=None, trewartha=False, trewartha_class=None,
             elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
@@ -1127,6 +1132,26 @@ class TestRunCLIValidation:
                 mock.patch.object(ortho, "configure_tile_cache"):
             ortho.run_cli(args)
         assert render.call_args.kwargs["up"] == pytest.approx(119, abs=1)
+
+    @pytest.mark.parametrize("place, expected", [("London", (51.5074, -0.1278)), ("32.06,118.78", (32.06, 118.78))])
+    def test_circles_from_a_place(self, place, expected):
+        args = self._make_args(city="paris", circles_from=place)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["circles_from"] == expected
+
+    def test_circles_from_the_centre_by_default(self):
+        with mock.patch.object(ortho, "configure_tile_cache"):
+            assert ortho.prepare_render(self._make_args(city="paris")).kwargs["circles_from"] is None
+
+    def test_bad_circles_from_exits_before_render(self, caplog):
+        args = self._make_args(city="paris", circles_from="Atlantis")
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                pytest.raises(SystemExit):
+            ortho.run_cli(args)
+        render.assert_not_called()
+        assert "--circles-from: 'Atlantis' is not a known city" in caplog.text
 
     @pytest.mark.parametrize("target", ["Atlantis", "london"])   # unknown, and the centre itself
     def test_bad_up_toward_exits_before_render(self, target):
@@ -1892,6 +1917,22 @@ class TestDrawDistanceCircles:
         finally:
             plt.close(fig)
 
+    def test_rings_outside_a_radius_disc(self):
+        """On a radius map, a ring wholly outside the disc is left out and labels stay inside it."""
+        import cartopy.crs as ccrs
+        import matplotlib.pyplot as plt
+
+        proj = ccrs.Orthographic(0, 0)
+        disc = proj.x_limits[1] * np.sin(1_000_000 / ortho.EARTH_RADIUS_M)   # a 1,000 km map
+        fig, ax = plt.subplots(subplot_kw={"projection": proj})
+        try:
+            # From 1,500 km east of the centre: 1,000 km crosses the disc, 3,000 km misses it
+            ortho._draw_distance_circles(ax, 13.5, 0, radii_km=(1_000, 3_000), within=disc)
+            assert len(ax.texts) == 1 and ax.texts[0].get_text().strip() == "1,000 km"
+            assert np.hypot(*ax.texts[0].get_position()) <= disc
+        finally:
+            plt.close(fig)
+
     def test_circle_crossing_the_horizon_has_no_chord(self):
         """A ring that straddles the horizon must not get a straight line across its hidden part.
 
@@ -2008,6 +2049,16 @@ class TestRadiusAndWindRendering:
         boundary = ax.patch.get_path().vertices
         assert np.hypot(boundary[:, 0] - 0.5, boundary[:, 1] - 0.5) == pytest.approx(0.5)
         assert circles.call_args.kwargs["radii_km"] == (500, 1_000, 1_500, 2_000)
+
+    def test_circles_from_another_place(self, tmp_path):
+        ax, circles, _ = self._render(tmp_path, radius_km=2_500, zoom=6, circles_from=(52.52, 13.405))   # Berlin
+        args, kwargs = circles.call_args
+        assert args[1:] == (13.405, 52.52)
+        # The map reaches ~3,250 km from Berlin, so the rings step by 1,000 km
+        assert kwargs["radii_km"] == (1_000, 2_000, 3_000)
+        assert kwargs["within"] == pytest.approx(ax.projection.x_limits[1] * np.sin(2_500_000 / ortho.EARTH_RADIUS_M))
+        rings = [line for line in ax.lines if line.get_marker() == "o" and line.get_markerfacecolor() == "none"]
+        assert len(rings) == 1 and tuple(np.ravel(rings[0].get_data())) == (13.405, 52.52)
 
     def test_rotated_radius_map(self, tmp_path):
         ax, _, _ = self._render(tmp_path, radius_km=1_000, zoom=8, up=45)

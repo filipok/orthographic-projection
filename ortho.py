@@ -574,6 +574,7 @@ def generate_orthographic_map(
     temperature: str | None = None,
     precipitation: str | None = None,
     humidity: str | None = None,
+    circles_from: tuple[float, float] | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -650,6 +651,10 @@ def generate_orthographic_map(
         Compass bearing (degrees clockwise from north) to put at the top of
         the globe; 0 keeps north up, 180 puts south up. Text stays upright.
         With *both_hemispheres*, the far globe turns to match.
+    circles_from : (float, float), optional
+        (lat, lon) to measure the distance circles from, marked with a hollow
+        ring, instead of the centre. On a radius map the rings are spaced to
+        cover the map as seen from there.
     elevation : bool
         When True, colour the land by height and shade its relief (Mapzen
         terrain tiles, see :mod:`elevation`), above the map tiles and below
@@ -1000,13 +1005,24 @@ def generate_orthographic_map(
         )
 
     # Step 7b: Concentric distance circles, all measured from the requested
-    # point: 2 500 and 5 000 km on its globe, 17 500 and 15 000 km on the far one
+    # point or from *circles_from*: 2 500 and 5 000 km on its globe, or round
+    # steps across a radius map; 17 500 and 15 000 km on the far globe
+    ring_lat, ring_lon = circles_from if circles_from is not None else (lat, lon)
     if radius_km is not None:
-        _draw_distance_circles(near, lon, lat, radii_km=ring_radii(radius_km))
+        # The map reaches this far from the circles' centre at most
+        offset_km = Geodesic().inverse((lon, lat), (ring_lon, ring_lat))[0, 0] / 1_000
+        disc = near.projection.x_limits[1] * math.sin(radius_km * 1_000 / EARTH_RADIUS_M)
+        _draw_distance_circles(near, ring_lon, ring_lat, radii_km=ring_radii(min(radius_km + offset_km, 19_000)),
+                               within=disc)
     else:
-        _draw_distance_circles(near, lon, lat)
+        _draw_distance_circles(near, ring_lon, ring_lat)
     if far is not None:
-        _draw_distance_circles(far, lon, lat, radii_km=FAR_SIDE_RADII_KM)
+        _draw_distance_circles(far, ring_lon, ring_lat, radii_km=FAR_SIDE_RADII_KM)
+    if circles_from is not None:
+        for ax in axes:  # a hollow ring where the circles are measured from
+            ax.plot(ring_lon, ring_lat, marker="o", markersize=8, markeredgewidth=2,
+                    markerfacecolor="none", markeredgecolor="white",
+                    transform=ccrs.PlateCarree(), zorder=10)
 
     # Step 7c: Route overlays
     if routes:
@@ -1241,6 +1257,7 @@ def _draw_distance_circles(
     lon: float,
     lat: float,
     radii_km: tuple[float, ...] = (2_500, 5_000),
+    within: float | None = None,
 ) -> None:
     """Draw concentric geodesic circles on *ax* at the given radii.
 
@@ -1248,6 +1265,9 @@ def _draw_distance_circles(
     and drawn as a closed line there. Going through lon/lat polygons breaks
     whenever a circle encloses a pole: the ring then spans all 360° of
     longitude and has to cross the CRS seam, producing a spurious edge.
+
+    *within* is the radius, in projection units, of a radius map's disc: a ring
+    wholly outside it is left out, and labels go on the part inside it.
     """
     proj = ax.projection
     colors = ["#ffffff", "#ffffff"]
@@ -1272,8 +1292,12 @@ def _draw_distance_circles(
                 alpha=alphas[idx % len(alphas)],
                 zorder=9,
             )
-        # Place a small label at the top of the circle as drawn on the map
         visible = np.vstack(runs)
+        if within is not None:
+            visible = visible[np.hypot(visible[:, 0], visible[:, 1]) <= 0.98 * within]
+            if not len(visible):
+                continue
+        # Place a small label at the top of the circle as drawn on the map
         label_x, label_y = visible[int(np.argmax(visible[:, 1]))]
         ax.text(
             label_x, label_y, f" {radius_km:,g} km",
@@ -1577,6 +1601,11 @@ def build_cli_parser() -> argparse.ArgumentParser:
         "--up-toward",
         metavar="PLACE",
         help="Put the direction toward PLACE at the top: a city name or LAT,LON.",
+    )
+    layout.add_argument(
+        "--circles-from",
+        metavar="PLACE",
+        help="Centre the distance circles on PLACE, a city name or LAT,LON, instead of the map's centre.",
     )
 
     climate = parser.add_argument_group(
@@ -2178,6 +2207,14 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
     if not math.isfinite(up):
         raise ValueError("--up must be a number of degrees.")
 
+    # Distance circles: from the centre, or from another place
+    circles_from = None
+    if args.circles_from:
+        try:
+            circles_from = resolve_place(args.circles_from)
+        except ValueError as e:
+            raise ValueError(f"--circles-from: {e}") from e
+
     # Zoom: as given, or the default for the whole globe or the radius
     zoom = args.zoom
     if zoom is None:
@@ -2251,6 +2288,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         humidity=args.humidity,
         radius_km=args.radius,
         up=up,
+        circles_from=circles_from,
     ))
 
 

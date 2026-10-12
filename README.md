@@ -106,7 +106,7 @@ The main script is [ortho.py](ortho.py).
 - A local web app (FastAPI): the same maps from a form in the browser, with the matching command line for each map
 - Recipe files (`--config`): a map's settings in a small TOML file, one per sample map in [recipes/](recipes/)
 - City marker and label overlay on the globe for named locations
-- Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii
+- Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii, or around another place (`--circles-from`)
 - Optional zoomed-in map: only the area within a chosen distance of the centre (2,500 km by default), as a disc, with finer tiles
 - Optional second globe centred on the antipode, so one image shows the whole Earth
 - Optional Köppen-Geiger climate classification overlay with compact legend, for all classes or only chosen ones
@@ -359,6 +359,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--both-hemispheres` | Draw a second globe centred on the antipode, showing the whole Earth; `--dpi` up to 600 | off |
 | `--up BEARING` | Compass bearing to put at the top, in degrees clockwise from north | `0` |
 | `--up-toward PLACE` | Put the direction toward a city or `LAT,LON` at the top (instead of `--up`) | — |
+| `--circles-from PLACE` | Measure the distance circles from a city or `LAT,LON` instead of the map's centre, marked with a hollow ring | the centre |
 | `--config FILE` | Read settings from a TOML recipe file; the command line overrides it (see "Recipe Files") | — |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
@@ -528,6 +529,7 @@ generate_orthographic_map(
     koppen_classes=None,   # optional: e.g. ["Cfb"] or ["Cs"]; implies koppen=True
     trewartha_classes=None,  # optional: e.g. ["Do"] or ["C"]; implies trewartha=True (not with koppen)
     up=0,                  # optional: compass bearing at the top (180 = south up)
+    circles_from=None,     # optional: (lat, lon) to measure the distance circles from instead
 )
 ```
 
@@ -740,6 +742,10 @@ python ortho.py --config recipes/alps_radius.toml
   coastline from zoom 7. The land cover and NDVI tiles go up to zoom 8 and 7.
 - **Distance circles** fall at round steps inside the edge: every 500 km for
   2,500 km, every 250 km for 800 km.
+- **Circles from another place.** `--circles-from PLACE` (a city or `LAT,LON`)
+  measures the circles from there instead, marked with a hollow ring, and spaces
+  them to cover the map as seen from it. It works on whole-globe maps too, with
+  the usual 2,500 and 5,000 km rings.
 - The climate, soil, crop, ice, wind and route layers are drawn as usual; the
   climate and soil grids (7–15 km) look blocky on small radii.
 - It works with `--up` and `--up-toward`, but not with `--both-hemispheres`.

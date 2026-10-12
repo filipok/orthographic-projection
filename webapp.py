@@ -104,6 +104,7 @@ class MapRequest(BaseModel):
     both_hemispheres: bool | None = None
     up: float | None = None
     up_toward: str | None = None
+    circles_from: str | None = None
     koppen: bool | None = None
     koppen_class: list[str] | None = None
     trewartha: bool | None = None

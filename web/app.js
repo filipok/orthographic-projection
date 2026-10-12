@@ -82,6 +82,7 @@ function buildRequest() {
   } else if ($("up-toward").value.trim()) {
     req.up_toward = $("up-toward").value.trim();
   }
+  if ($("circles-from").value.trim()) req.circles_from = $("circles-from").value.trim();
 
   const climate = $("climate").value;
   if (climate === "koppen" || climate === "trewartha") {
