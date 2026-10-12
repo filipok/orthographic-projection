@@ -1,0 +1,14 @@
+# The voyages of Zheng He's treasure fleets, 1405-1433, from Nanjing across the Indian
+# Ocean to Hormuz, Arabia and East Africa: a 5,500 km radius map on NASA imagery, with the
+# deserts, dry-winter continental and polar climates of Köppen-Geiger, and keys.
+lat = 15
+lon = 81
+radius = 5500
+circles-from = "32.06,118.78"       # distances from Nanjing, where the fleets set out
+provider = "nasa"
+route = ["../routes/zheng_he_voyages.geojson"]
+route-legend = true
+# Köppen-Geiger: arid (B), dry-winter continental (Dw) and polar (E: tundra ET and ice cap EF)
+koppen-class = ["B", "Dw", "E", "EF"]
+climate-alpha = 0.6                 # stronger than 0.45, to show on the satellite imagery
+output = "orthographic_map_indian_ocean_nasa_z5_r5500km_zheng_he.png"

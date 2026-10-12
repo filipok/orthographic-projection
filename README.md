@@ -29,6 +29,12 @@ The main script is [ortho.py](ortho.py).
 *Both hemispheres: Lisbon's globe and, beside it, the globe centred on its antipode in the Tasman Sea, which shows Magellan's Pacific crossing and Elcano's return across the Indian Ocean (Google Satellite, zoom 3).*
 
 <p align="center">
+  <img src="sample_zheng_he_voyages.png" alt="Satellite map of the Indian Ocean within 5,500 km of southern India with the voyages of Zheng He: a red route from Nanjing down the Chinese coast past Champa, Java, Palembang, Malacca and Sumatra to Ceylon and Calicut; yellow on to Hormuz; green along Arabia to Aden and across to Mogadishu, Brava and Malindi; white squadrons to Siam, Bengal and Jeddah for Mecca; Köppen-Geiger deserts and steppes shaded over Arabia, Iran and Central Asia, dry-winter continental climates in northeast China and tundra and ice cap on the Tibetan Plateau; dashed circles 2,500, 5,000 and 7,500 km from Nanjing; and keys" width="60%">
+</p>
+
+*The voyages of Zheng He's treasure fleets, 1405–1433: the route from Nanjing to Calicut that all seven voyages sailed, and the later voyages on to Hormuz, Arabia and East Africa, over the Köppen-Geiger arid (B), dry-winter continental (Dw) and polar (E) climates, with distance circles from Nanjing (NASA Blue Marble, a 5,500 km radius map at zoom 5).*
+
+<p align="center">
   <img src="sample_london_wheat.png" alt="Globe centred on London with wheat-growing areas shaded gold, from Europe and the Black Sea to Kazakhstan, the Middle East and Ethiopia" width="48%">
   <img src="sample_shanghai_wheat_rice.png" alt="Globe centred on Shanghai with wheat in gold and rice in teal, showing wheat in northern China and north-west India and rice to the south and east" width="48%">
 </p>
@@ -416,6 +422,7 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `portuguese_voyages.toml` | The Portuguese voyages of discovery, with a key |
 | `portuguese_hemispheres.toml` | The Portuguese voyages on both hemispheres |
 | `viking_routes.toml` | The Viking Age, with polar ice |
+| `zheng_he_voyages.toml` | The voyages of Zheng He's treasure fleets, a radius map of the Indian Ocean with the Köppen-Geiger B, Dw, E and EF (ice cap) climates |
 | `london_wheat.toml` | Where wheat is grown, centred on London |
 | `shanghai_wheat_rice.toml` | Wheat or rice, centred on Shanghai |
 | `nyc_toward_london.toml` | New York turned toward London, NASA imagery |
@@ -694,21 +701,31 @@ When a climate overlay is on, the route key goes below the climate key.
 | `viking_trade.geojson` | orange | Dnieper and Volga river routes, Baltic and North Sea trade |
 | `viking_raids.geojson` | red | Lindisfarne, Iona and Dublin, Paris, Iberia and the Mediterranean, East Anglia, the Caspian |
 | `viking_exploration.geojson` | purple | Faroes, Iceland and Greenland, Vinland, Ohthere's White Sea voyage |
+| `zheng_he_voyages.geojson` | one per stage | Zheng He's treasure fleets, 1405–1433: Nanjing to Calicut by Champa, Java, Palembang, Malacca, Semudera and Ceylon (red, all seven voyages); on to Hormuz (yellow, from the fourth); Dhofar, Aden, Mogadishu, Brava and Malindi (green, from the fifth); squadrons to Siam, Bengal and Jeddah for Mecca (white) |
 
-The Portuguese and Viking files carry `legend` labels, so they make compact keys.
-The three historical sample maps above were rendered with these recipes (see
-"Recipe Files"):
+The Portuguese, Viking and Zheng He files carry `legend` labels, so they make
+compact keys. The four historical sample maps above were rendered with these
+recipes (see "Recipe Files"):
 
 ```powershell
 python ortho.py --config recipes/portuguese_voyages.toml
 python ortho.py --config recipes/viking_routes.toml
 python ortho.py --config recipes/portuguese_hemispheres.toml
+python ortho.py --config recipes/zheng_he_voyages.toml
 ```
 
 The Viking recipe, for example, stands for
 `--lat 62 --lon 15 --route routes/viking_homelands.geojson --route routes/viking_settlements.geojson --route routes/viking_trade.geojson --route routes/viking_raids.geojson --route routes/viking_exploration.geojson --route-legend --ice`.
 
 The ice on the Viking map is today's winter maximum, not the Viking Age's.
+
+All seven of Zheng He's voyages sailed the same route from Nanjing to Calicut,
+so the Zheng He file draws it once and adds the later voyages' extensions as
+their own layers, rather than seven lines on top of each other. The ports follow
+the fleet's own inscriptions at Liujiagang (1431) and Changle (1432) and Ma
+Huan's account of the voyages; the courses between them are approximate. The
+Nanjing leg follows the Yangtze, the Palembang leg the Musi, the Siam leg the
+Chao Phraya up to Ayutthaya, and the Mecca leg goes overland from Jeddah.
 
 The routes are approximate, drawn through documented landfalls and checked so
 that sea legs stay off land. The homeland and settlement areas are approximate
@@ -744,8 +761,9 @@ python ortho.py --config recipes/alps_radius.toml
   2,500 km, every 250 km for 800 km.
 - **Circles from another place.** `--circles-from PLACE` (a city or `LAT,LON`)
   measures the circles from there instead, marked with a hollow ring, and spaces
-  them to cover the map as seen from it. It works on whole-globe maps too, with
-  the usual 2,500 and 5,000 km rings.
+  them to cover the map as seen from it. The Zheng He sample measures them from
+  Nanjing, where the fleets set out, at 2,500, 5,000 and 7,500 km. It works on
+  whole-globe maps too, with the usual 2,500 and 5,000 km rings.
 - The climate, soil, crop, ice, wind and route layers are drawn as usual; the
   climate and soil grids (7–15 km) look blocky on small radii.
 - It works with `--up` and `--up-toward`, but not with `--both-hemispheres`.
