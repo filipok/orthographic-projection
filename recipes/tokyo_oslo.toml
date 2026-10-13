@@ -1,9 +1,0 @@
-# Tokyo and Oslo side by side on the plain OSM base map: the year's prevailing winds,
-# polar ice at its winter maximum, and wheat or rice, whichever covers more land.
-city = "tokyo"
-beside = "59.91, 10.75"             # Oslo
-provider = "osm_plain"
-wind = "year"
-ice = true
-crop = ["wheat", "rice"]
-output = "orthographic_map_tokyo_and_custom_osm_plain_z3.png"

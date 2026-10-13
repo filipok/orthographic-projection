@@ -1,0 +1,9 @@
+# Tokyo and Lisbon side by side on the plain OSM base map: the year's prevailing winds,
+# polar ice at its winter maximum, and wheat or rice, whichever covers more land.
+city = "tokyo"
+beside = "lisbon"
+provider = "osm_plain"
+wind = "year"
+ice = true
+crop = ["wheat", "rice"]
+output = "orthographic_map_tokyo_and_lisbon_osm_plain_z3.png"
