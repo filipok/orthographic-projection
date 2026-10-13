@@ -139,7 +139,8 @@ class MapRequest(BaseModel):
     biomes: bool | None = None
     biome_class: list[str] | None = None
     ecoregions: bool | None = None
-    realms: bool | None = None
+    realms: str | None = None
+    realm_regions: bool | None = None
     biome_alpha: float | None = None
     soil: bool | None = None
     soil_class: list[str] | None = None

@@ -756,7 +756,12 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc", "--ecoregions", "--biome-class", "temperate", "--biome-class", "14",
                             "--biome-alpha", "0.5"])
         assert args.ecoregions and args.biome_class == ["temperate", "14"] and args.biome_alpha == 0.5
-        assert not args.realms and self._parse(["--city", "nyc", "--realms"]).realms
+        assert args.realms is None and not args.realm_regions
+        assert self._parse(["--city", "nyc", "--realms"]).realms == "wwf"
+        args = self._parse(["--city", "nyc", "--realms", "holt", "--realm-regions"])
+        assert args.realms == "holt" and args.realm_regions
+        with pytest.raises(SystemExit):
+            self._parse(["--city", "nyc", "--realms", "sclater"])
 
     def test_soil_property_flags(self):
         args = self._parse(["--city", "nyc"])
@@ -992,7 +997,7 @@ class TestRunCLIValidation:
             elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
-            biomes=False, biome_class=None, ecoregions=False, realms=False, biome_alpha=0.6,
+            biomes=False, biome_class=None, ecoregions=False, realms=None, realm_regions=False, biome_alpha=0.6,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1372,7 +1377,9 @@ class TestRunCLIValidation:
         assert kwargs["biome_classes"] == ["mangroves"] and kwargs["biome_alpha"] == 0.5
 
     @pytest.mark.parametrize("overrides", [{"biome_class": ["jungle"]}, {"biomes": True, "biome_alpha": 1.5},
-                                           {"ecoregions": True, "realms": True}])
+                                           {"ecoregions": True, "realms": "wwf"},
+                                           {"realms": "holt", "biome_class": ["forest"]},
+                                           {"realms": "holt", "biomes": True}])
     def test_bad_biome_options_exit_before_render(self, overrides):
         args = self._make_args(city="paris", **overrides)
         with mock.patch.object(ortho, "generate_orthographic_map") as render:
@@ -1629,6 +1636,45 @@ class TestGenerateOrthographicMapIntegration:
                   "realm": ortho.REALM_ATTRIBUTION}[by]
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], credit]
 
+    @pytest.mark.parametrize("realms, regions", [("holt", False), ("holt", True), (None, True)])
+    def test_holt_realms_and_regions_key_and_credit(self, tmp_path, realms, regions):
+        holt = mock.Mock(realms="grid")
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_holt", return_value=holt), \
+                mock.patch.object(ortho, "load_ecoregions") as resolve, \
+                mock.patch.object(ortho, "add_holt_realm_overlay") as overlay, \
+                mock.patch.object(ortho, "draw_holt_regions") as outlines, \
+                mock.patch.object(ortho, "visible_values", return_value="visible") as visible, \
+                mock.patch.object(ortho, "add_holt_realm_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=31, lon=121, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path),
+                realms=realms, realm_regions=regions, biome_alpha=0.5,
+            )
+        resolve.assert_not_called()                                   # RESOLVE is not needed
+        assert overlay.call_count == (realms == "holt")
+        if realms:
+            assert overlay.call_args.kwargs["alpha"] == 0.5
+            assert visible.call_args.args[1] == "grid"
+            assert key.call_args.args[1] == "visible"
+        else:
+            key.assert_not_called()
+        assert outlines.call_count == regions
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.HOLT_ATTRIBUTION]
+
+    def test_holt_failure_still_saves_map_without_key_or_credit(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_holt", side_effect=ortho.HoltDataError("offline")), \
+                mock.patch.object(ortho, "add_holt_realm_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path),
+                realms="holt", realm_regions=True,
+            )
+        assert os.path.exists(result)
+        key.assert_not_called()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
     def test_biome_failure_still_saves_map_without_key_or_credit(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
                 mock.patch.object(ortho, "load_ecoregions", side_effect=ortho.BiomeDataError("offline")), \
@@ -1739,7 +1785,9 @@ class TestGenerateOrthographicMapIntegration:
     @pytest.mark.parametrize("kwargs, message", [
         ({"biome_classes": ["jungle"]}, "Unknown biome"),
         ({"biomes": True, "biome_alpha": -0.1}, "biome_alpha"),
-        ({"ecoregions": True, "realms": True}, "ecoregions or realms"),
+        ({"ecoregions": True, "realms": "wwf"}, "ecoregions or realms"),
+        ({"realms": "holt", "biome_classes": ["forest"]}, "not split by biome"),
+        ({"realms": "sclater"}, "realms must be"),
     ])
     def test_bad_biome_options_fail_before_any_work(self, tmp_path, kwargs, message):
         with mock.patch.object(ortho, "create_tile_source") as create:

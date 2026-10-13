@@ -53,7 +53,10 @@ from elevation import (
 from biomes import (
     BIOME_ATTRIBUTION, ECOREGION_ATTRIBUTION, REALM_ATTRIBUTION, BiomeDataError, add_biome_legend,
     add_ecoregion_legend, add_ecoregion_overlay, add_realm_legend, load_ecoregions, resolve_biome_classes,
-    visible_ecoregions,
+    visible_ecoregions, visible_values,
+)
+from zoogeography import (
+    HOLT_ATTRIBUTION, HoltDataError, add_holt_realm_legend, add_holt_realm_overlay, draw_holt_regions, load_holt,
 )
 from soil import (
     SOIL_ATTRIBUTION, SoilDataError, add_soil_legend, add_soil_overlay, resolve_soil_classes,
@@ -654,7 +657,8 @@ def generate_orthographic_map(
     biomes: bool = False,
     biome_classes: Sequence[str] | None = None,
     ecoregions: bool = False,
-    realms: bool = False,
+    realms: str | None = None,
+    realm_regions: bool = False,
     biome_alpha: float = 0.6,
     wind: str | None = None,
     radius_km: float | None = None,
@@ -804,12 +808,18 @@ def generate_orthographic_map(
     ecoregions : bool
         Colour each of the 846 ecoregions instead of their biomes (only those
         of *biome_classes*, if given), with a key naming the largest on the map.
-    realms : bool
-        Colour each of WWF's eight biogeographic realms instead (Nearctic,
-        Palearctic …), with a key; with *biome_classes*, only in those biomes.
-        Not with *ecoregions*.
+    realms : str, optional
+        Colour biogeographic realms instead of biomes, with a key: ``"wwf"``
+        for WWF's eight (Nearctic, Palearctic …, from RESOLVE; with
+        *biome_classes*, only in those biomes), or ``"holt"`` for the 11
+        zoogeographic realms of Holt et al. (2013), the update of Wallace's map
+        (see :mod:`zoogeography`; not with *biomes* or *biome_classes*). Not
+        with *ecoregions*.
+    realm_regions : bool
+        Outline Holt et al.'s 20 zoogeographic regions and name those on the
+        map, over any layer.
     biome_alpha : float
-        Opacity of the biome or ecoregion layer (0–1).
+        Opacity of the biome, ecoregion or realm layer (0–1).
     wind : str, optional
         Draw the prevailing winds (NCEP/NCAR 1991–2020 mean 10 m wind, see
         :mod:`wind`) for ``"year"``, a season (``"djf"``, ``"mam"``,
@@ -857,9 +867,16 @@ def generate_orthographic_map(
     soil_codes = resolve_soil_classes(soil_classes or [])
     soil = soil or bool(soil_codes)
     biome_codes = resolve_biome_classes(biome_classes or [])
+    if realms is True:                       # realms=True: the default source
+        realms = "wwf"
+    if realms not in (None, False, "wwf", "holt"):
+        raise ValueError(f"realms must be 'wwf' or 'holt', got {realms!r}")
     if ecoregions and realms:
         raise ValueError("choose one: ecoregions or realms")
-    biomes = biomes or ecoregions or realms or bool(biome_codes)
+    holt_realms = realms == "holt"
+    if holt_realms and (biomes or biome_codes):
+        raise ValueError("Holt's realms are not split by biome: not with biomes or biome classes")
+    biomes = biomes or ecoregions or realms == "wwf" or bool(biome_codes)
     colour_by = "ecoregion" if ecoregions else "realm" if realms else "biome"
     prop, prop_depth = resolve_soil_property(soil_property, soil_depth) if soil_property else (None, None)
     if soil_depth and not soil_property:
@@ -1026,6 +1043,26 @@ def generate_orthographic_map(
             # Missing data should not throw away the rest of the map
             logger.warning("Skipping %s: %s", what, e)
             biome_layer = None
+
+    # Holt et al.'s zoogeographic realms in the same place, and their regions outlined
+    holt = None
+    holt_drawn = False
+    if holt_realms or realm_regions:
+        logger.info("Applying Holt et al.'s zoogeographic %s …",
+                    "realms" + (" and regions" if realm_regions else "") if holt_realms else "regions")
+        try:
+            holt = load_holt()
+            for ax in axes:
+                if holt_realms:
+                    add_holt_realm_overlay(ax, holt, alpha=biome_alpha, regrid_shape=regrid_shape)
+                if realm_regions:
+                    draw_holt_regions(ax, holt)
+        except (HoltDataError, OSError) as e:
+            # Missing data should not throw away the rest of the map
+            logger.warning("Skipping the zoogeographic realms: %s", e)
+            holt = None
+        else:
+            holt_drawn = True
 
     # Step 5b: Climate overlay, Köppen-Geiger or Trewartha (above tiles, below
     # gridlines), with one key; its credit lines are kept for step 7e
@@ -1257,6 +1294,8 @@ def generate_orthographic_map(
                    "realm": add_realm_legend}[colour_by]
         keys.append(add_key(near, visible_ecoregions(axes, biome_layer), biome_layer, x=key_x,
                             classes=biome_codes or None))
+    if holt is not None and holt_realms:
+        keys.append(add_holt_realm_legend(near, visible_values(axes, holt.realms), x=key_x))
     if soil_drawn:
         keys.append(add_soil_legend(near, x=key_x, classes=soil_codes or None))
     if property_drawn and prop is not None and prop_depth is not None:
@@ -1276,6 +1315,8 @@ def generate_orthographic_map(
     if biome_layer is not None:
         credits.append({"biome": BIOME_ATTRIBUTION, "ecoregion": ECOREGION_ATTRIBUTION,
                         "realm": REALM_ATTRIBUTION}[colour_by])
+    if holt_drawn:
+        credits.append(HOLT_ATTRIBUTION)
     if climate_mean_drawn:
         climate_credits.append(CLIMATE_ATTRIBUTION)
     if sea_credit:
@@ -2000,16 +2041,26 @@ def build_cli_parser() -> argparse.ArgumentParser:
     )
     eco.add_argument(
         "--realms",
+        nargs="?",
+        const="wwf",
+        choices=["wwf", "holt"],
+        metavar="SOURCE",
+        help="Colour biogeographic realms instead of the biomes: wwf (the default) for WWF's eight "
+             "(Nearctic, Palearctic, Indomalayan ...; with --biome-class, only in those biomes), or holt "
+             "for the 11 zoogeographic realms of Holt et al. (2013), the update of Wallace's map "
+             "(downloaded once from CMEC, ~18 MB). Not with --ecoregions.",
+    )
+    eco.add_argument(
+        "--realm-regions",
         action="store_true",
-        help="Colour WWF's eight biogeographic realms (Nearctic, Palearctic, Indomalayan ...) instead of "
-             "the biomes (with --biome-class, only in those biomes). Not with --ecoregions.",
+        help="Outline Holt et al.'s 20 zoogeographic regions and name those on the map, over any layer.",
     )
     eco.add_argument(
         "--biome-alpha",
         type=float,
         default=0.6,
         metavar="ALPHA",
-        help="Opacity of the biome or ecoregion layer (0-1, default: 0.6).",
+        help="Opacity of the biome, ecoregion or realm layer (0-1, default: 0.6).",
     )
 
     soils = parser.add_argument_group("Soil (SoilGrids)")
@@ -2346,15 +2397,19 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
                 print(f"{e}\n")
 
     biome_input = input(
-        "Biomes (RESOLVE): [b]iomes, [e]coregions, [r]ealms, or blank for none: "
+        "Biomes and realms: [b]iomes, [e]coregions, [r]ealms (WWF), [h]olt's zoogeographic realms, "
+        "or blank for none: "
     ).strip().lower()
     enable_biomes = biome_input in ("b", "biomes", "y", "yes")
     enable_ecoregions = biome_input in ("e", "ecoregions")
-    enable_realms = biome_input in ("r", "realms")
+    realm_source = {"r": "wwf", "realms": "wwf", "h": "holt", "holt": "holt"}.get(biome_input)
     biome_classes: list[str] = []
-    if enable_biomes or enable_ecoregions or enable_realms:
+    if enable_biomes or enable_ecoregions or realm_source == "wwf":
         biome_classes = prompt_for_climate_classes(
             resolve_biome_classes, "e.g. temperate, mangroves", what="Biomes")
+    realm_regions = input(
+        "Outline Holt's 20 zoogeographic regions? [y/N]: "
+    ).strip().lower() in ("y", "yes")
 
     wind_period = None
     if input("Draw the prevailing winds? [y/N]: ").strip().lower() in ("y", "yes"):
@@ -2422,7 +2477,8 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             biomes=enable_biomes,
             biome_classes=biome_classes,
             ecoregions=enable_ecoregions,
-            realms=enable_realms,
+            realms=realm_source,
+            realm_regions=realm_regions,
             wind=wind_period,
             radius_km=radius_km,
             **climate_means,
@@ -2492,6 +2548,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
     resolve_biome_classes(args.biome_class or [])
     if args.ecoregions and args.realms:
         raise ValueError("Choose --ecoregions or --realms, not both.")
+    if args.realms == "holt" and (args.biomes or args.biome_class):
+        raise ValueError("--realms holt is not split by biome: not with --biomes or --biome-class.")
     resolve_land_cover_classes(args.landcover_class or [])
     if args.ndvi:
         resolve_ndvi_month(args.ndvi)
@@ -2628,6 +2686,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         biome_classes=args.biome_class,
         ecoregions=args.ecoregions,
         realms=args.realms,
+        realm_regions=args.realm_regions,
         biome_alpha=args.biome_alpha,
         wind=args.wind,
         temperature=args.temperature,

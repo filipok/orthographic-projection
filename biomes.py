@@ -249,7 +249,7 @@ def _default_cache_dir() -> str:
     return os.path.join(os.path.expanduser("~"), ".cache", "ortho_tiles", "biomes")
 
 
-def _download(url: str, dest: str, timeout: float = 120) -> None:
+def _download(url: str, dest: str, timeout: float = 120, label: str = "ecoregions") -> None:
     """Download *url* to *dest*, through a ``.part`` file so a broken transfer leaves nothing."""
     part = dest + ".part"
     request = urllib.request.Request(url, headers={"User-Agent": "ortho/1.0"})
@@ -263,7 +263,7 @@ def _download(url: str, dest: str, timeout: float = 120) -> None:
                 done += len(chunk)
                 if total and done * 10 // total != shown:
                     shown = done * 10 // total
-                    logger.info("  ecoregions: %d of %d MB", done >> 20, total >> 20)
+                    logger.info("  %s: %d of %d MB", label, done >> 20, total >> 20)
         if total and done != total:
             raise BiomeDataError(f"incomplete download of {url} ({done} of {total} bytes)")
         os.replace(part, dest)
@@ -359,13 +359,15 @@ def add_ecoregion_overlay(ax: GeoAxes, layer: Ecoregions, alpha: float = 0.6, re
     logger.info("%s overlay rendered (alpha=%.2f).", by.capitalize(), alpha)
 
 
-def visible_ecoregions(axes: Iterable[GeoAxes], layer: Ecoregions, samples: int = 300) -> Counter[int]:
-    """How much of the globes on *axes* each ecoregion covers, in sample points.
+def visible_values(axes: Iterable[GeoAxes], grid: np.ndarray, samples: int = 300) -> Counter[int]:
+    """How much of the globes on *axes* each value of *grid* covers, in sample points.
 
-    Points are spread evenly over each globe's disc as drawn, so what is
-    foreshortened near the rim counts for less, as it looks.
+    *grid* is global, north to south from 90°N and west to east from 180°W;
+    :data:`NODATA` is not counted. Points are spread evenly over each globe's
+    disc as drawn, so what is foreshortened near the rim counts for less, as
+    it looks.
     """
-    cells = layer.ids.shape[1] // 360
+    cells = grid.shape[1] // 360
     counts: Counter[int] = Counter()
     steps = (np.arange(samples) + 0.5) / samples
     for ax in axes:
@@ -376,11 +378,16 @@ def visible_ecoregions(axes: Iterable[GeoAxes], layer: Ecoregions, samples: int 
         lonlat = ccrs.PlateCarree().transform_points(ax.projection, gx[inside], gy[inside])
         lon, lat = lonlat[:, 0], lonlat[:, 1]
         ok = np.isfinite(lon) & np.isfinite(lat)
-        col = np.clip(((lon[ok] + 180) * cells).astype(int), 0, layer.ids.shape[1] - 1)
-        row = np.clip(((90 - lat[ok]) * cells).astype(int), 0, layer.ids.shape[0] - 1)
-        ids, n = np.unique(layer.ids[row, col], return_counts=True)
-        counts.update({int(i): int(c) for i, c in zip(ids, n) if i != NODATA})
+        col = np.clip(((lon[ok] + 180) * cells).astype(int), 0, grid.shape[1] - 1)
+        row = np.clip(((90 - lat[ok]) * cells).astype(int), 0, grid.shape[0] - 1)
+        values, n = np.unique(grid[row, col], return_counts=True)
+        counts.update({int(v): int(c) for v, c in zip(values, n) if v != NODATA})
     return counts
+
+
+def visible_ecoregions(axes: Iterable[GeoAxes], layer: Ecoregions, samples: int = 300) -> Counter[int]:
+    """How much of the globes on *axes* each ecoregion covers, in sample points (see :func:`visible_values`)."""
+    return visible_values(axes, layer.ids, samples)
 
 
 def _key(ax: GeoAxes, handles: list[mpatches.Patch], labels: list[str], title: str, ncol: int,

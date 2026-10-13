@@ -118,14 +118,17 @@ function buildRequest() {
   }
   if (vegetation) req.vegetation_alpha = changed("vegetation-alpha", options.alpha.vegetation);
   const biomes = $("biomes").value;
-  if (biomes) {
+  if (biomes === "holt") {
+    req.realms = "holt";
+  } else if (biomes) {
     const classes = list($("biome-classes").value);
     if (classes.length) req.biome_class = classes;
     if (biomes === "ecoregions") req.ecoregions = true;
-    else if (biomes === "realms") req.realms = true;
+    else if (biomes === "realms") req.realms = "wwf";
     else if (!classes.length) req.biomes = true;
-    req.biome_alpha = changed("biome-alpha", options.alpha.biome);
   }
+  if (biomes) req.biome_alpha = changed("biome-alpha", options.alpha.biome);
+  if ($("realm-regions").checked) req.realm_regions = true;
   const soil = $("soil").value;
   if (soil === "groups") {
     const classes = list($("soil-classes").value);
@@ -259,10 +262,12 @@ function fillForm(req) {
   }
   set("vegetation-alpha", req.vegetation_alpha);
   if (req.ecoregions) $("biomes").value = "ecoregions";
+  else if (req.realms === "holt") $("biomes").value = "holt";
   else if (req.realms) $("biomes").value = "realms";
   else if (req.biomes || req.biome_class) $("biomes").value = "biomes";
   $("biome-classes").value = (req.biome_class || []).join(", ");
   set("biome-alpha", req.biome_alpha);
+  $("realm-regions").checked = Boolean(req.realm_regions);
   if (req.soil || req.soil_class) {
     $("soil").value = "groups";
     $("soil-classes").value = (req.soil_class || []).join(", ");
