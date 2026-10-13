@@ -123,6 +123,8 @@ class TestMaps:
         assert renders[0]["ecoregions"] is True and renders[0]["biome_classes"] == ["temperate", "rock"]
         assert renders[0]["biome_alpha"] == 0.5
         assert "--biome-class temperate --biome-class rock --ecoregions --biome-alpha 0.5" in status["command"]
+        _, status = _render(client, city="Shanghai", realms=True)
+        assert renders[1]["realms"] is True and "--realms" in status["command"]
 
     def test_a_globe_beside(self, client, renders):
         _, status = _render(client, city="Lisbon", beside="Tokyo")

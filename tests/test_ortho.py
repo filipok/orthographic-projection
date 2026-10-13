@@ -756,6 +756,7 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc", "--ecoregions", "--biome-class", "temperate", "--biome-class", "14",
                             "--biome-alpha", "0.5"])
         assert args.ecoregions and args.biome_class == ["temperate", "14"] and args.biome_alpha == 0.5
+        assert not args.realms and self._parse(["--city", "nyc", "--realms"]).realms
 
     def test_soil_property_flags(self):
         args = self._parse(["--city", "nyc"])
@@ -991,7 +992,7 @@ class TestRunCLIValidation:
             elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
-            biomes=False, biome_class=None, ecoregions=False, biome_alpha=0.6,
+            biomes=False, biome_class=None, ecoregions=False, realms=False, biome_alpha=0.6,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1370,7 +1371,8 @@ class TestRunCLIValidation:
         assert kwargs["ecoregions"] is True and kwargs["biomes"] is False
         assert kwargs["biome_classes"] == ["mangroves"] and kwargs["biome_alpha"] == 0.5
 
-    @pytest.mark.parametrize("overrides", [{"biome_class": ["jungle"]}, {"biomes": True, "biome_alpha": 1.5}])
+    @pytest.mark.parametrize("overrides", [{"biome_class": ["jungle"]}, {"biomes": True, "biome_alpha": 1.5},
+                                           {"ecoregions": True, "realms": True}])
     def test_bad_biome_options_exit_before_render(self, overrides):
         args = self._make_args(city="paris", **overrides)
         with mock.patch.object(ortho, "generate_orthographic_map") as render:
@@ -1597,8 +1599,8 @@ class TestGenerateOrthographicMapIntegration:
         assert key.call_args.kwargs["classes"] == codes
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.SOIL_ATTRIBUTION]
 
-    @pytest.mark.parametrize("ecoregions", [False, True])
-    def test_biome_classes_imply_the_overlay_key_and_credit(self, tmp_path, ecoregions):
+    @pytest.mark.parametrize("by", ["biome", "ecoregion", "realm"])
+    def test_biome_classes_imply_the_overlay_key_and_credit(self, tmp_path, by):
         layer = object()
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
                 mock.patch.object(ortho, "load_ecoregions", return_value=layer), \
@@ -1606,21 +1608,25 @@ class TestGenerateOrthographicMapIntegration:
                 mock.patch.object(ortho, "visible_ecoregions", return_value="visible") as visible, \
                 mock.patch.object(ortho, "add_biome_legend") as biome_key, \
                 mock.patch.object(ortho, "add_ecoregion_legend") as ecoregion_key, \
+                mock.patch.object(ortho, "add_realm_legend") as realm_key, \
                 mock.patch.object(ortho, "_add_attribution") as attribution:
             ortho.generate_orthographic_map(
                 lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path),
-                biome_classes=["temperate"], ecoregions=ecoregions, biome_alpha=0.5, beside=(35.7, 139.7),
+                biome_classes=["temperate"], ecoregions=by == "ecoregion", realms=by == "realm",
+                biome_alpha=0.5, beside=(35.7, 139.7),
             )
+        all_keys = {"biome": biome_key, "ecoregion": ecoregion_key, "realm": realm_key}
         codes = ortho.resolve_biome_classes(["temperate"])
         assert overlay.call_count == 2                                   # one per globe
         assert overlay.call_args.args[1] is layer
-        assert overlay.call_args.kwargs == dict(alpha=0.5, regrid_shape=mock.ANY, classes=codes,
-                                                ecoregions=ecoregions)
+        assert overlay.call_args.kwargs == dict(alpha=0.5, regrid_shape=mock.ANY, classes=codes, by=by)
         assert len(visible.call_args.args[0]) == 2                      # the key counts both globes
-        key, unused = (ecoregion_key, biome_key) if ecoregions else (biome_key, ecoregion_key)
+        key = all_keys.pop(by)
         assert key.call_args.args[1:] == ("visible", layer) and key.call_args.kwargs["classes"] == codes
-        unused.assert_not_called()
-        credit = ortho.ECOREGION_ATTRIBUTION if ecoregions else ortho.BIOME_ATTRIBUTION
+        for unused in all_keys.values():
+            unused.assert_not_called()
+        credit = {"biome": ortho.BIOME_ATTRIBUTION, "ecoregion": ortho.ECOREGION_ATTRIBUTION,
+                  "realm": ortho.REALM_ATTRIBUTION}[by]
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], credit]
 
     def test_biome_failure_still_saves_map_without_key_or_credit(self, tmp_path):
@@ -1733,6 +1739,7 @@ class TestGenerateOrthographicMapIntegration:
     @pytest.mark.parametrize("kwargs, message", [
         ({"biome_classes": ["jungle"]}, "Unknown biome"),
         ({"biomes": True, "biome_alpha": -0.1}, "biome_alpha"),
+        ({"ecoregions": True, "realms": True}, "ecoregions or realms"),
     ])
     def test_bad_biome_options_fail_before_any_work(self, tmp_path, kwargs, message):
         with mock.patch.object(ortho, "create_tile_source") as create:

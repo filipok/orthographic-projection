@@ -125,15 +125,16 @@
           <span>Opacity <output for="vegetation-alpha"></output></span>
           <input id="vegetation-alpha" type="range" min="0" max="1" step="0.05"></label>
 
-        <label class="field"><span>Biomes (RESOLVE, ~150 MB once)</span>
+        <label class="field"><span>Biomes and realms (RESOLVE, ~150 MB once)</span>
           <select id="biomes">
             <option value="">None</option>
             <option value="biomes">Biomes</option>
             <option value="ecoregions">Ecoregions</option>
+            <option value="realms">Realms</option>
           </select></label>
-        <label class="field" data-show="biomes:biomes,ecoregions" hidden><span>Only these biomes</span>
+        <label class="field" data-show="biomes:biomes,ecoregions,realms" hidden><span>Only these biomes</span>
           <input id="biome-classes" type="text" placeholder="e.g. temperate, mangroves"></label>
-        <label class="field slider" data-show="biomes:biomes,ecoregions" hidden>
+        <label class="field slider" data-show="biomes:biomes,ecoregions,realms" hidden>
           <span>Opacity <output for="biome-alpha"></output></span>
           <input id="biome-alpha" type="range" min="0" max="1" step="0.05"></label>
 

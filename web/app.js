@@ -122,6 +122,7 @@ function buildRequest() {
     const classes = list($("biome-classes").value);
     if (classes.length) req.biome_class = classes;
     if (biomes === "ecoregions") req.ecoregions = true;
+    else if (biomes === "realms") req.realms = true;
     else if (!classes.length) req.biomes = true;
     req.biome_alpha = changed("biome-alpha", options.alpha.biome);
   }
@@ -258,6 +259,7 @@ function fillForm(req) {
   }
   set("vegetation-alpha", req.vegetation_alpha);
   if (req.ecoregions) $("biomes").value = "ecoregions";
+  else if (req.realms) $("biomes").value = "realms";
   else if (req.biomes || req.biome_class) $("biomes").value = "biomes";
   $("biome-classes").value = (req.biome_class || []).join(", ");
   set("biome-alpha", req.biome_alpha);

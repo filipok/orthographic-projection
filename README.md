@@ -133,7 +133,7 @@ The main script is [ortho.py](ortho.py).
 - Optional Trewartha climate classification overlay, computed from CHELSA v2.1 monthly climate and terrain heights (with a highland group), for all classes or only chosen ones
 - Optional elevation layer: land coloured by height and hill-shaded, from open terrain tiles, with a key
 - Optional vegetation layer: MODIS land cover (17 IGBP classes, any year 2001–2024, all or chosen classes) or monthly NDVI greenness
-- Optional biome layer: the 14 biomes of RESOLVE Ecoregions 2017, or its 846 ecoregions with a key naming the largest on the map, for all or only chosen biomes
+- Optional biome layer: the 14 biomes of RESOLVE Ecoregions 2017, its 846 ecoregions with a key naming the largest on the map, or WWF's eight biogeographic realms, for all or only chosen biomes
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
 - Optional prevailing winds for the year, a season or a month: arrows of the 1991–2020 mean surface wind, coloured by how steady it is
@@ -266,7 +266,7 @@ You will be prompted to choose:
 7. An optional climate overlay: Köppen-Geiger or Trewartha and the classes to show (blank for all), or the mean temperature, precipitation or humidity and its period (see "Climate Means"); then its opacity/alpha (0–1)
 8. Whether to colour the land by height, with relief shading (see "Elevation")
 9. An optional vegetation layer: MODIS land cover and the classes to show, or NDVI for a month (see "Vegetation")
-10. An optional biome layer: biomes or ecoregions, and which biomes (blank for all; see "Biomes and Ecoregions")
+10. An optional biome layer: biomes, ecoregions or realms, and which biomes (blank for all; see "Biomes, Ecoregions and Realms")
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Whether to add polar ice at its winter maximum (see "Polar Ice")
@@ -328,10 +328,11 @@ python ortho.py --lat 50 --lon -95 --landcover-class forest --landcover-class cr
 python ortho.py --lat 35 --lon 30 --ndvi january
 python ortho.py --lat 35 --lon 30 --ndvi 2026-07
 
-# Biomes, all or some, or the ecoregions within 1,200 km of Madagascar (see "Biomes and Ecoregions")
+# Biomes, all or some, the ecoregions within 1,200 km of Madagascar, or the realms (see "Biomes, Ecoregions and Realms")
 python ortho.py --lat 5 --lon 20 --biomes
 python ortho.py --lat 10 --lon 100 --biome-class mangroves --biome-class "tropical moist"
 python ortho.py --lat -19 --lon 46.5 --radius 1200 --ecoregions
+python ortho.py --city Shanghai --realms
 
 # Soil groups, all or some: the steppe's black earths (see "Soil Groups")
 python ortho.py --lat 35 --lon 40 --soil
@@ -399,7 +400,8 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--biomes` | Colour the land by its biome (RESOLVE Ecoregions 2017), with a key | off |
 | `--biome-class BIOME` | Show only this biome, by number (`1`–`14`) or words from its name (`mangroves`, `temperate`, `forest`, `rock`); repeat for several; implies `--biomes` | all |
 | `--ecoregions` | Colour each of the 846 ecoregions instead of their biomes (with `--biome-class`, only those biomes' ecoregions); the key names the largest on the map | off |
-| `--biome-alpha ALPHA` | Opacity of the biome or ecoregion layer (0–1) | `0.6` |
+| `--realms` | Colour WWF's eight biogeographic realms instead of the biomes (with `--biome-class`, only in those biomes); not with `--ecoregions` | off |
+| `--biome-alpha ALPHA` | Opacity of the biome, ecoregion or realm layer (0–1) | `0.6` |
 | `--soil` | Colour the land by its most probable soil group, with a key | off |
 | `--soil-class GROUP` | Show only this soil group, by name (`Chernozems`) or WRB code (`CH`); repeat for several; implies `--soil` | all |
 | `--soil-alpha ALPHA` | Opacity of the soil overlay, groups or property (0–1) | `0.6` |
@@ -424,7 +426,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 > One climate layer at a time: `--koppen`, `--trewartha`, `--temperature`, `--precipitation` and `--humidity` exclude each other. `--sea-temperature` colours the sea alongside any of them.
 
 `python ortho.py --help` lists the options in groups: Location, Imagery and
-output, Globe layout, Climate, Elevation, Vegetation, Biomes and ecoregions, Soil,
+output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
 Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
@@ -1118,7 +1120,7 @@ base map. The sample above is the two recipes `ndvi_january.toml` and
   the eastern edge (168.75°E–180°) are missing at zoom 5 and stay clear too.
 - `--vegetation-alpha` sets the layer's opacity (default 0.7).
 
-## Biomes and Ecoregions
+## Biomes, Ecoregions and Realms
 
 Pass `--biomes` (CLI) or `biomes=True` (API) to colour the land by its biome, the
 kind of natural community its climate and history support (tropical rainforest,
@@ -1131,6 +1133,7 @@ the globe names the biomes on the map, in RESOLVE's colours.
 python ortho.py --lat 5 --lon 20 --provider osm_plain --biomes
 python ortho.py --lat 10 --lon 100 --biome-class mangroves --biome-class "tropical moist"
 python ortho.py --lat -19 --lon 46.5 --radius 1200 --ecoregions
+python ortho.py --city Shanghai --provider osm_plain --realms
 ```
 
 The samples above are `python ortho.py --config recipes/africa_biomes.toml` and
@@ -1162,6 +1165,25 @@ most of the map (as drawn, so the foreshortened rim counts for less) and says ho
 many there are; a radius map shows fewer. With `--biome-class`, only those
 biomes' ecoregions are drawn and named. Neighbouring ecoregions sometimes share
 a colour in RESOLVE's palette.
+
+**Realms.** `--realms` (`realms=True`) colours the eight biogeographic realms
+the ecoregions are grouped into (WWF, Olson et al. 2001): the great regions whose
+plants and animals evolved largely apart, after Sclater's and Wallace's
+zoogeographic regions. They are the Nearctic (North America), Neotropic (South
+and Central America), Palearctic (Europe, North Africa, northern and central
+Asia), Afrotropic (Africa south of the Sahara), Indomalayan (South and Southeast
+Asia), Australasia (Australia, New Guinea, Wallacea), Oceania (the Pacific
+islands) and Antarctica. The key names those on the map and where each lies.
+Centred on Shanghai, the map shows the Palearctic–Indomalayan boundary across
+southern China and Wallace's Line between Borneo and Sulawesi. Rock & Ice has no
+realm and stays clear (the Greenland ice sheet, the high Himalaya). Not with
+`--ecoregions`; `--biome-class` keeps only those biomes.
+
+*Why not Holt et al.'s updated Wallace map?* Holt et al. (2013, *Science*) redrew
+the zoogeographic regions from the ranges of 21,037 vertebrates: 11 realms and
+20 regions, with a separate Saharo-Arabian, Sino-Japanese and Panamanian realm.
+Its GIS files are online, but their only stated term is that any use must credit
+*Science*/AAAS, with no open licence, so they are not used here.
 
 - **Data.** The first run downloads the RESOLVE shapefile (~150 MB) and fills a
   0.05° (~5.5 km) grid with the ecoregion whose outline holds each cell's centre,
@@ -1447,7 +1469,7 @@ to the attribution block.
 | MODIS Land Cover Type (MCD12Q1 v6.1, IGBP), yearly 2001–2024, 500 m | Friedl, M. & Sulla-Menashe, D., NASA LP DAAC | NASA open data, no restrictions | [doi:10.5067/MODIS/MCD12Q1.061](https://doi.org/10.5067/MODIS/MCD12Q1.061), via [NASA GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api) |
 | MODIS Terra Vegetation Indices monthly (NDVI, MOD13A3 v6.1, 1 km) | Didan, K., NASA LP DAAC | NASA open data, no restrictions | [doi:10.5067/MODIS/MOD13A3.061](https://doi.org/10.5067/MODIS/MOD13A3.061), via NASA GIBS |
 | Mapzen Terrain Tiles (Terrarium), from GMTED2010 and SRTM (USGS) and ETOPO1 (NOAA), used at zoom 4–5 for the elevation layer and the Trewartha highlands | Mapzen / Tilezen, AWS Open Data | Free to use; the sources must be credited ([attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | [registry.opendata.aws/terrain-tiles](https://registry.opendata.aws/terrain-tiles/) |
-| RESOLVE Ecoregions 2017: 846 ecoregions in 14 biomes, used at 0.05° (~5.5 km) | Dinerstein, E. et al. (2017), RESOLVE | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1093/biosci/bix014](https://doi.org/10.1093/biosci/bix014), [ecoregions.appspot.com](https://ecoregions.appspot.com/) |
+| RESOLVE Ecoregions 2017: 846 ecoregions in 14 biomes and 8 realms, used at 0.05° (~5.5 km) | Dinerstein, E. et al. (2017), RESOLVE | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1093/biosci/bix014](https://doi.org/10.1093/biosci/bix014), [ecoregions.appspot.com](https://ecoregions.appspot.com/) |
 | SoilGrids 2.0: most probable WRB Reference Soil Group, 250 m, used at 0.067° (~7 km); soil properties, 5 km aggregates, used at 0.05° | Poggio, L. et al. (2021), ISRIC World Soil Information | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.5194/soil-7-217-2021](https://doi.org/10.5194/soil-7-217-2021), [isric.org/explore/soilgrids](https://www.isric.org/explore/soilgrids) |
 | NCEP/NCAR Reanalysis 1, long-term monthly means 1991–2020 of the 10 m wind (u, v) and wind speed, and 1981–2010 of the 2 m air temperature (for `--temperature-over-sea`), T62 Gaussian grid (~1.9°) | Kalnay, E. et al. (1996); NOAA PSL | Public domain (US government); acknowledgement requested: "NCEP-NCAR Reanalysis 1 data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/1520-0477(1996)077<0437:TNYRP>2.0.CO;2](https://doi.org/10.1175/1520-0477(1996)077%3C0437:TNYRP%3E2.0.CO;2), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.derived.html) |
 | NOAA OI SST V2.1 High Resolution, long-term monthly means 1991–2020 of the sea surface temperature, 0.25° | Huang, B. et al. (2021); NOAA NCEI, via NOAA PSL | Public domain (US government); acknowledgement requested: "NOAA OI SST V2 High Resolution data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/JCLI-D-20-0166.1](https://doi.org/10.1175/JCLI-D-20-0166.1), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.noaa.oisst.v2.highres.html) |
@@ -1476,6 +1498,7 @@ the globe:
 | `--ndvi` layer | *NDVI: MODIS Terra monthly, Month YYYY (NASA), via NASA GIBS* |
 | `--biomes` layer | *Biomes: RESOLVE Ecoregions 2017 (Dinerstein et al. 2017), CC BY 4.0* |
 | `--ecoregions` layer | *Ecoregions: RESOLVE Ecoregions 2017 (Dinerstein et al. 2017), CC BY 4.0* |
+| `--realms` layer | *Realms: RESOLVE Ecoregions 2017 (Dinerstein et al. 2017), CC BY 4.0* |
 | `--soil` overlay | *Soil groups: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
 | `--soil-property` overlay | *Soil properties: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
 | `--wind` layer | *Winds: NCEP/NCAR Reanalysis 1, 1991–2020 means, NOAA PSL* |
@@ -1539,7 +1562,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [trewartha.py](trewartha.py): Trewartha climate classes computed from CHELSA v2.1, overlay and legend
 - [elevation.py](elevation.py): elevation layer and heights from the Mapzen terrain tiles
 - [vegetation.py](vegetation.py): MODIS land cover and NDVI layers and keys (NASA GIBS tiles)
-- [biomes.py](biomes.py): biome and ecoregion layer and keys (RESOLVE Ecoregions 2017, rasterised from its shapefile)
+- [biomes.py](biomes.py): biome, ecoregion and realm layer and keys (RESOLVE Ecoregions 2017, rasterised from its shapefile)
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)
 - [soil_properties.py](soil_properties.py): soil property overlay and key (SoilGrids 2.0, 5 km)
 - [wind.py](wind.py): prevailing-wind arrows and key (NCEP/NCAR Reanalysis 1991–2020 means)

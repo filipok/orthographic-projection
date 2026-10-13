@@ -20,7 +20,7 @@ FIELDS = [
     "circles_from", "koppen", "koppen_class", "trewartha", "trewartha_class", "temperature", "precipitation",
     "humidity", "temperature_over_sea", "sea_temperature", "koppen_alpha", "elevation", "elevation_alpha",
     "landcover", "landcover_class", "landcover_year", "ndvi", "vegetation_alpha", "biomes", "biome_class",
-    "ecoregions", "biome_alpha", "soil", "soil_class",
+    "ecoregions", "realms", "biome_alpha", "soil", "soil_class",
     "soil_alpha", "soil_property", "soil_depth", "wind", "ice", "ice_year", "crop", "route", "route_legend",
 ]
 

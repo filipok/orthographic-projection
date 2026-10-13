@@ -51,8 +51,9 @@ from elevation import (
     ELEVATION_ATTRIBUTION, RELIEF_ZOOM, TerrariumTiles, add_elevation_legend, relief_rgba,
 )
 from biomes import (
-    BIOME_ATTRIBUTION, ECOREGION_ATTRIBUTION, BiomeDataError, add_biome_legend, add_ecoregion_legend,
-    add_ecoregion_overlay, load_ecoregions, resolve_biome_classes, visible_ecoregions,
+    BIOME_ATTRIBUTION, ECOREGION_ATTRIBUTION, REALM_ATTRIBUTION, BiomeDataError, add_biome_legend,
+    add_ecoregion_legend, add_ecoregion_overlay, add_realm_legend, load_ecoregions, resolve_biome_classes,
+    visible_ecoregions,
 )
 from soil import (
     SOIL_ATTRIBUTION, SoilDataError, add_soil_legend, add_soil_overlay, resolve_soil_classes,
@@ -653,6 +654,7 @@ def generate_orthographic_map(
     biomes: bool = False,
     biome_classes: Sequence[str] | None = None,
     ecoregions: bool = False,
+    realms: bool = False,
     biome_alpha: float = 0.6,
     wind: str | None = None,
     radius_km: float | None = None,
@@ -802,6 +804,10 @@ def generate_orthographic_map(
     ecoregions : bool
         Colour each of the 846 ecoregions instead of their biomes (only those
         of *biome_classes*, if given), with a key naming the largest on the map.
+    realms : bool
+        Colour each of WWF's eight biogeographic realms instead (Nearctic,
+        Palearctic …), with a key; with *biome_classes*, only in those biomes.
+        Not with *ecoregions*.
     biome_alpha : float
         Opacity of the biome or ecoregion layer (0–1).
     wind : str, optional
@@ -851,7 +857,10 @@ def generate_orthographic_map(
     soil_codes = resolve_soil_classes(soil_classes or [])
     soil = soil or bool(soil_codes)
     biome_codes = resolve_biome_classes(biome_classes or [])
-    biomes = biomes or ecoregions or bool(biome_codes)
+    if ecoregions and realms:
+        raise ValueError("choose one: ecoregions or realms")
+    biomes = biomes or ecoregions or realms or bool(biome_codes)
+    colour_by = "ecoregion" if ecoregions else "realm" if realms else "biome"
     prop, prop_depth = resolve_soil_property(soil_property, soil_depth) if soil_property else (None, None)
     if soil_depth and not soil_property:
         raise ValueError("soil_depth needs a soil_property")
@@ -1006,13 +1015,13 @@ def generate_orthographic_map(
     # Step 5a3: Biomes or ecoregions (above the vegetation, below the climate colours)
     biome_layer = None
     if biomes:
-        what = "ecoregions" if ecoregions else "biomes"
+        what = colour_by + "s"
         logger.info("Applying %s (alpha=%.2f) …", what, biome_alpha)
         try:
             biome_layer = load_ecoregions()
             for ax in axes:
                 add_ecoregion_overlay(ax, biome_layer, alpha=biome_alpha, regrid_shape=regrid_shape,
-                                      classes=biome_codes or None, ecoregions=ecoregions)
+                                      classes=biome_codes or None, by=colour_by)
         except (BiomeDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
             logger.warning("Skipping %s: %s", what, e)
@@ -1244,7 +1253,8 @@ def generate_orthographic_map(
     elif ndvi_month:
         keys.append(add_ndvi_legend(near, *ndvi_month, x=key_x))
     if biome_layer is not None:
-        add_key = add_ecoregion_legend if ecoregions else add_biome_legend
+        add_key = {"biome": add_biome_legend, "ecoregion": add_ecoregion_legend,
+                   "realm": add_realm_legend}[colour_by]
         keys.append(add_key(near, visible_ecoregions(axes, biome_layer), biome_layer, x=key_x,
                             classes=biome_codes or None))
     if soil_drawn:
@@ -1264,7 +1274,8 @@ def generate_orthographic_map(
     if vegetation_credit:
         credits.append(vegetation_credit)
     if biome_layer is not None:
-        credits.append(ECOREGION_ATTRIBUTION if ecoregions else BIOME_ATTRIBUTION)
+        credits.append({"biome": BIOME_ATTRIBUTION, "ecoregion": ECOREGION_ATTRIBUTION,
+                        "realm": REALM_ATTRIBUTION}[colour_by])
     if climate_mean_drawn:
         climate_credits.append(CLIMATE_ATTRIBUTION)
     if sea_credit:
@@ -1966,7 +1977,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Opacity of the land cover or NDVI layer (0-1, default: 0.7).",
     )
 
-    eco = parser.add_argument_group("Biomes and ecoregions (RESOLVE Ecoregions 2017)")
+    eco = parser.add_argument_group("Biomes, ecoregions and realms (RESOLVE Ecoregions 2017)")
     eco.add_argument(
         "--biomes",
         action="store_true",
@@ -1986,6 +1997,12 @@ def build_cli_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Colour each of the 846 ecoregions instead of their biomes (with --biome-class, only "
              "those biomes' ecoregions); the key names the largest on the map.",
+    )
+    eco.add_argument(
+        "--realms",
+        action="store_true",
+        help="Colour WWF's eight biogeographic realms (Nearctic, Palearctic, Indomalayan ...) instead of "
+             "the biomes (with --biome-class, only in those biomes). Not with --ecoregions.",
     )
     eco.add_argument(
         "--biome-alpha",
@@ -2329,12 +2346,13 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
                 print(f"{e}\n")
 
     biome_input = input(
-        "Biomes (RESOLVE): [b]iomes, [e]coregions, or blank for none: "
+        "Biomes (RESOLVE): [b]iomes, [e]coregions, [r]ealms, or blank for none: "
     ).strip().lower()
     enable_biomes = biome_input in ("b", "biomes", "y", "yes")
     enable_ecoregions = biome_input in ("e", "ecoregions")
+    enable_realms = biome_input in ("r", "realms")
     biome_classes: list[str] = []
-    if enable_biomes or enable_ecoregions:
+    if enable_biomes or enable_ecoregions or enable_realms:
         biome_classes = prompt_for_climate_classes(
             resolve_biome_classes, "e.g. temperate, mangroves", what="Biomes")
 
@@ -2404,6 +2422,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             biomes=enable_biomes,
             biome_classes=biome_classes,
             ecoregions=enable_ecoregions,
+            realms=enable_realms,
             wind=wind_period,
             radius_km=radius_km,
             **climate_means,
@@ -2471,6 +2490,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
     resolve_biome_classes(args.biome_class or [])
+    if args.ecoregions and args.realms:
+        raise ValueError("Choose --ecoregions or --realms, not both.")
     resolve_land_cover_classes(args.landcover_class or [])
     if args.ndvi:
         resolve_ndvi_month(args.ndvi)
@@ -2606,6 +2627,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         biomes=args.biomes,
         biome_classes=args.biome_class,
         ecoregions=args.ecoregions,
+        realms=args.realms,
         biome_alpha=args.biome_alpha,
         wind=args.wind,
         temperature=args.temperature,

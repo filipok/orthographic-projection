@@ -164,9 +164,19 @@ class TestColours:
         assert rgba[1, 1, 3] == 0                                       # sea and lakes are clear
 
     def test_by_ecoregion_and_only_some_biomes(self):
-        rgba = biomes.ecoregion_rgba(_layer(self.IDS), alpha=1.0, classes=(4,), ecoregions=True)
+        rgba = biomes.ecoregion_rgba(_layer(self.IDS), alpha=1.0, classes=(4,), by="ecoregion")
         assert rgba[0, 1].tolist() == [0x11, 0x22, 0x33, 255]
         assert rgba[0, 0, 3] == rgba[1, 0, 3] == rgba[1, 1, 3] == 0
+
+    def test_by_realm(self):
+        rgba = biomes.ecoregion_rgba(_layer(self.IDS), alpha=1.0, by="realm")
+        assert rgba[0, 1].tolist() == [*biomes.REALMS["Palearctic"][1], 255]
+        assert rgba[1, 0].tolist() == [*biomes.REALMS["Neotropic"][1], 255]
+        assert rgba[0, 0, 3] == 0                                       # Rock & Ice has no realm
+
+    def test_unknown_colouring(self):
+        with pytest.raises(ValueError, match="by must be"):
+            biomes.ecoregion_rgba(_layer(self.IDS), alpha=1.0, by="kingdom")
 
 
 def _globe(lat, lon, radius_km=None):
@@ -227,3 +237,18 @@ class TestKeys:
         title, labels = self._texts(biomes.add_ecoregion_legend(ax, Counter({0: 5, 2: 9}), layer, classes=(7,)))
         assert labels == ["Cerrado"] and title == "Ecoregions (RESOLVE 2017)"
         assert biomes.add_ecoregion_legend(ax, Counter(), layer) is None
+
+    def test_realm_key_names_the_realms_on_the_map_and_where_they_are(self):
+        ax = _globe(0, 0)
+        layer = _layer([[0]])
+        title, labels = self._texts(biomes.add_realm_legend(ax, Counter({0: 5, 2: 9, 1: 1}), layer))
+        assert labels == [f"Neotropic: {biomes.REALMS['Neotropic'][0]}",
+                          f"Palearctic: {biomes.REALMS['Palearctic'][0]}"]   # in REALMS order; Rock & Ice has none
+        assert "realms" in title
+        _, labels = self._texts(biomes.add_realm_legend(ax, Counter({1: 1, 2: 9}), layer, classes=(4,)))
+        assert labels == [f"Palearctic: {biomes.REALMS['Palearctic'][0]}"]
+        assert biomes.add_realm_legend(ax, Counter({0: 5}), layer) is None
+
+    def test_the_realms_are_the_ones_in_the_data(self):
+        assert set(biomes.REALMS) == {"Nearctic", "Neotropic", "Palearctic", "Afrotropic", "Indomalayan",
+                                      "Australasia", "Oceania", "Antarctica"}

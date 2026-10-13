@@ -8,7 +8,8 @@ Approach to Protecting Half the Terrestrial Realm. *BioScience* 67(6),
 map, CC BY 4.0.
 
 It divides the land into 846 ecoregions, each in one of 14 biomes, plus
-"Rock & Ice" for ice caps and bare high mountains. Large lakes are left out.
+"Rock & Ice" for ice caps and bare high mountains, and in one of WWF's eight
+biogeographic realms. Large lakes are left out.
 The shapefile (~150 MB) is downloaded once and burned into a 0.05° (~5.5 km)
 grid of ecoregion numbers, under 1 MB once cached; the download is then
 deleted.
@@ -44,6 +45,10 @@ NODATA = 65535            # sea, large lakes
 
 BIOME_ATTRIBUTION = "Biomes: RESOLVE Ecoregions 2017 (Dinerstein et al. 2017), CC BY 4.0"
 ECOREGION_ATTRIBUTION = "Ecoregions: RESOLVE Ecoregions 2017 (Dinerstein et al. 2017), CC BY 4.0"
+REALM_ATTRIBUTION = "Realms: RESOLVE Ecoregions 2017 (Dinerstein et al. 2017), CC BY 4.0"
+
+# What the layer is coloured by: each cell's biome, ecoregion or realm
+COLOUR_BY = ("biome", "ecoregion", "realm")
 
 # Biome number -> (name, (R, G, B)), in RESOLVE's colours. Rock & Ice is
 # ecoregion 0 and has no biome of its own; RESOLVE colours it like sand,
@@ -65,6 +70,19 @@ BIOMES: dict[int, tuple[str, tuple[int, int, int]]] = {
     13: ("Deserts & Xeric Shrublands", (0xCC, 0x67, 0x67)),
     14: ("Mangroves", (0xFE, 0x01, 0xC4)),
     ROCK_AND_ICE: ("Rock & Ice", (0xE4, 0xE8, 0xEC)),
+}
+
+# WWF's biogeographic realms (Olson et al. 2001), as RESOLVE names them -> (where, (R, G, B)).
+# Rock & Ice has no realm and stays clear.
+REALMS: dict[str, tuple[str, tuple[int, int, int]]] = {
+    "Nearctic":    ("North America and Greenland", (86, 140, 205)),
+    "Neotropic":   ("South and Central America, the Caribbean", (60, 170, 90)),
+    "Palearctic":  ("Europe, North Africa, the Middle East, northern and central Asia", (230, 160, 60)),
+    "Afrotropic":  ("Africa south of the Sahara, southern Arabia, Madagascar", (205, 85, 70)),
+    "Indomalayan": ("South and Southeast Asia to Wallace's Line", (165, 95, 190)),
+    "Australasia": ("Australia, New Guinea, New Zealand, Wallacea", (230, 205, 70)),
+    "Oceania":     ("The Pacific islands", (70, 190, 200)),
+    "Antarctica":  ("Antarctica and the sub-Antarctic islands", (150, 165, 190)),
 }
 
 # The ecoregion key names the largest ecoregions on the map, at most this many
@@ -302,26 +320,35 @@ def load_ecoregions(cache_dir: str | None = None) -> Ecoregions:
 
 
 def ecoregion_rgba(layer: Ecoregions, alpha: float, classes: Sequence[int] | None = None,
-                   ecoregions: bool = False) -> np.ndarray:
-    """An RGBA image of *layer*, coloured by biome or, with *ecoregions*, by ecoregion.
+                   by: str = "biome") -> np.ndarray:
+    """An RGBA image of *layer*, coloured *by* biome, ecoregion or realm (see :data:`COLOUR_BY`).
 
     Only the ecoregions in the biomes *classes* are coloured (all by
-    default); the rest, the sea and lakes are clear.
+    default); the rest, the sea and lakes are clear, and so is Rock & Ice
+    by realm, having none.
     """
+    if by not in COLOUR_BY:
+        raise ValueError(f"by must be one of {COLOUR_BY}, got {by!r}")
     palette = np.zeros((NODATA + 1, 4), np.uint8)
     count = len(layer.biomes)
     shown = np.isin(layer.biomes, classes) if classes else np.ones(count, bool)
-    rgb = layer.colours if ecoregions else np.array([BIOMES[int(b)][1] for b in layer.biomes], np.uint8)
+    if by == "ecoregion":
+        rgb = layer.colours
+    elif by == "realm":
+        rgb = np.array([REALMS.get(str(r), ("", (0, 0, 0)))[1] for r in layer.realms], np.uint8)
+        shown &= np.isin(layer.realms, list(REALMS))
+    else:
+        rgb = np.array([BIOMES[int(b)][1] for b in layer.biomes], np.uint8)
     palette[:count, :3] = rgb
     palette[:count, 3] = np.where(shown, round(alpha * 255), 0)
     return palette[layer.ids]
 
 
 def add_ecoregion_overlay(ax: GeoAxes, layer: Ecoregions, alpha: float = 0.6, regrid_shape: int = 750,
-                          classes: Sequence[int] | None = None, ecoregions: bool = False) -> None:
-    """Render the biomes, or with *ecoregions* each ecoregion, on *ax*."""
+                          classes: Sequence[int] | None = None, by: str = "biome") -> None:
+    """Render the layer on *ax*, coloured *by* biome, ecoregion or realm."""
     ax.imshow(
-        ecoregion_rgba(layer, alpha, classes, ecoregions),
+        ecoregion_rgba(layer, alpha, classes, by),
         origin="upper",
         extent=(-180, 180, -90, 90),
         transform=ccrs.PlateCarree(),
@@ -329,7 +356,7 @@ def add_ecoregion_overlay(ax: GeoAxes, layer: Ecoregions, alpha: float = 0.6, re
         regrid_shape=regrid_shape,
         zorder=5,
     )
-    logger.info("%s overlay rendered (alpha=%.2f).", "Ecoregion" if ecoregions else "Biome", alpha)
+    logger.info("%s overlay rendered (alpha=%.2f).", by.capitalize(), alpha)
 
 
 def visible_ecoregions(axes: Iterable[GeoAxes], layer: Ecoregions, samples: int = 300) -> Counter[int]:
@@ -417,3 +444,20 @@ def add_ecoregion_legend(ax: GeoAxes, visible: Counter[int], layer: Ecoregions, 
     title = ("Ecoregions (RESOLVE 2017)" if len(shown) <= limit
              else f"Ecoregions (RESOLVE 2017): the {limit} largest of {len(shown)} on the map")
     return _key(ax, handles, labels, title, min(len(top), 3), x, y)
+
+
+def add_realm_legend(ax: GeoAxes, visible: Counter[int], layer: Ecoregions, y: float = -0.01, x: float = 0.5,
+                     classes: Sequence[int] | None = None) -> Legend | None:
+    """A key naming the realms on the map (in *classes*' biomes, if given), and where each lies.
+
+    Returns ``None`` when no realm shows.
+    """
+    present = {str(layer.realms[number]) for number in visible
+               if not classes or int(layer.biomes[number]) in classes}
+    shown = [name for name in REALMS if name in present]
+    if not shown:
+        return None
+    handles = [_swatch(REALMS[name][1]) for name in shown]
+    labels = [f"{name}: {REALMS[name][0]}" for name in shown]
+    return _key(ax, handles, labels, "Biogeographic realms (WWF, via RESOLVE Ecoregions 2017)",
+                min(len(shown), 2), x, y)
