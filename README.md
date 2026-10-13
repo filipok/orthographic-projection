@@ -162,6 +162,7 @@ The script currently includes:
 The interactive menu exposes these providers:
 
 - `osm`: OpenStreetMap
+- `osm_plain`: OpenStreetMap with forests, meadows, heath, farmland and sand deserts drawn as plain land, so the layers on top aren't tinted by OSM's land cover colours
 - `google`: Google road map (API key required)
 - `google_satellite`: Google satellite imagery (API key required; not available to EEA-billed projects, see below)
 - `nasa`: NASA Blue Marble satellite imagery with shaded relief and ocean-floor bathymetry; free, public domain, no key
@@ -172,6 +173,21 @@ Services (GIBS): the Blue Marble: Next Generation true-colour land composite
 zoom 8, far more than a globe needs. It needs no account or key, has no regional
 limits, and is cached like OSM (for a year, since the imagery never changes).
 Like Google satellite, it has no place names baked in, so it suits turned globes.
+
+`osm_plain` is the standard OSM map with forests, woods, meadows, grassland,
+heath, farmland and sand deserts drawn as plain land. OSM shades these green,
+olive or yellow; on a radius map most land is covered by one or another, and at
+lower zooms their tiny patches blur into a tint over whole countries (farmland
+over France, for one), which muddies the climate, crop and soil colours drawn on
+top. The tiles are recoloured as they are read: OSM fills each with one colour
+(forest `#add19e`, meadow `#cdebb0`, heath `#d6d99f`, farmland `#eef0d5`, sand
+`#f5e9c6`), and their anti-aliased edges are mixes of a fill and land, so both
+become land colour. Parks, golf courses, orchards, vineyards, scrub, beaches,
+water, built-up areas, roads and labels keep their colours; only allotments,
+which sit on the same forest-to-land colour line, are lightened too. Forest
+names and the green protected-area borders stay. Rocky deserts (much of the
+Sahara, the Gobi, the Atacama) are already plain land in OSM. It shares the
+`osm` tile cache.
 
 ## Requirements
 
@@ -327,7 +343,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--city CITY` | Pre-defined city (case-insensitive) | — |
 | `--lat LAT` | Custom latitude (-90 to 90) | — |
 | `--lon LON` | Custom longitude (-180 to 180) | — |
-| `--provider` | Tile provider: `osm`, `google`, `google_satellite`, `nasa` | `osm` |
+| `--provider` | Tile provider: `osm`, `osm_plain`, `google`, `google_satellite`, `nasa` | `osm` |
 | `--zoom ZOOM` | Tile zoom level: 1–4 for the whole globe; with `--radius`, up to one above its default | `3`, or chosen from `--radius` and the latitude |
 | `--dpi DPI` | Output resolution, 10–1200. The figure is 20 in, so 300 DPI = 6,000 px | `300` |
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
@@ -1250,7 +1266,7 @@ the globe:
 
 | Layer | Credit line |
 |---|---|
-| `osm` tiles | *Map tiles © OpenStreetMap contributors* |
+| `osm`, `osm_plain` tiles | *Map tiles © OpenStreetMap contributors* |
 | `nasa` tiles | *Imagery: NASA Blue Marble, via NASA GIBS (ESDIS)* |
 | `google`, `google_satellite` tiles | *Google Maps* plus the copyright string returned by the Map Tiles API |
 | `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |

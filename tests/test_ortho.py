@@ -42,6 +42,7 @@ class TestConstants:
 
     def test_tile_providers_list(self):
         assert "osm" in ortho.TILE_PROVIDERS
+        assert "osm_plain" in ortho.TILE_PROVIDERS
         assert "google" in ortho.TILE_PROVIDERS
         assert "google_satellite" in ortho.TILE_PROVIDERS
         assert "nasa" in ortho.TILE_PROVIDERS
@@ -236,6 +237,23 @@ class TestCreateTileSource:
         src = ortho.create_tile_source("osm", cache_dir=str(tmp_path))
         assert str(src.tile_source.cache_path) == str(tmp_path)
 
+    def test_osm_plain_shares_the_osm_cache(self, tmp_path):
+        src = ortho.create_tile_source("osm_plain", cache_dir=str(tmp_path)).tile_source
+        assert isinstance(src, ortho.CachedOSMPlain)
+        assert src._cache_dir == tmp_path / "osm"
+
+    def test_osm_plain_caches_the_tile_as_downloaded(self, tmp_path):
+        src = ortho.create_tile_source("osm_plain", cache_dir=str(tmp_path)).tile_source
+        tile = np.zeros((256, 256, 4), np.uint8)
+        tile[...] = (*ortho.OSM_FOREST_RGB, 255)
+        with mock.patch.object(ortho, "download_tile", return_value=tile) as download:
+            first, _, _ = src.get_image((1, 1, 2))
+            second, _, _ = src.get_image((1, 1, 2))
+        assert download.call_count == 1
+        assert tuple(first[0, 0]) == tuple(second[0, 0]) == (*ortho.OSM_LAND_RGB, 255)
+        cached = np.load(tmp_path / "osm" / "1_1_2.npy")
+        assert tuple(cached[0, 0]) == (*ortho.OSM_FOREST_RGB, 255)
+
     def test_google_is_never_cached(self, tmp_path):
         with mock.patch("google_tiles.create_session", return_value="S"):
             src = ortho.create_tile_source("google", cache_dir=str(tmp_path), api_key="k")
@@ -284,6 +302,38 @@ class TestCreateTileSource:
     def test_invalid_raises(self):
         with pytest.raises(ValueError, match="Unsupported.*nasa"):
             ortho.create_tile_source("bing")
+
+
+class TestPlainOsmLand:
+    @staticmethod
+    def _strip(hex_colour, alpha=255):
+        rgb = [int(hex_colour[i:i + 2], 16) for i in (0, 2, 4)]
+        return tuple(int(v) for v in ortho.plain_osm_land(np.array([[[*rgb, alpha]]], np.uint8))[0, 0])
+
+    @pytest.mark.parametrize("colour", ["add19e", "cdebb0", "d6d99f", "eef0d5", "f5e9c6"])   # forest, meadow, heath, farmland, sand
+    def test_fill_becomes_land(self, colour):
+        assert self._strip(colour) == (*ortho.OSM_LAND_RGB, 255)
+
+    @pytest.mark.parametrize("colour", ["cfe0c3", "e0edcc", "e4e4c4", "f0efdf", "f4ecd8"])   # half a fill, half land
+    def test_fill_edge_blended_with_land_becomes_land(self, colour):
+        assert max(abs(a - b) for a, b in zip(self._strip(colour), (*ortho.OSM_LAND_RGB, 255))) <= 1
+
+    @pytest.mark.parametrize("colour", [
+        "def6c0",   # golf course
+        "c8facc",   # park
+        "c8d7ab",   # scrub
+        "aedfa3",   # orchard
+        "fff1ba",   # beach
+        "aad3df",   # water
+        "f2efe9",   # land
+        "000000",   # text
+    ])
+    def test_other_colours_are_kept(self, colour):
+        rgb = tuple(int(colour[i:i + 2], 16) for i in (0, 2, 4))
+        assert self._strip(colour) == (*rgb, 255)
+
+    def test_alpha_is_kept(self):
+        assert self._strip("add19e", alpha=0)[3] == 0
 
 
 # ===================================================================

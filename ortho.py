@@ -180,6 +180,57 @@ class CachedNASA(CachedOSM):
         return self.URL.format(x=x, y=y, z=z)
 
 
+# OSM Carto's plain land colour, and the land cover fills osm_plain turns into it
+OSM_LAND_RGB = (0xf2, 0xef, 0xe9)
+OSM_FOREST_RGB = (0xad, 0xd1, 0x9e)     # forests and woods
+OSM_MEADOW_RGB = (0xcd, 0xeb, 0xb0)     # meadows, grassland and grass
+OSM_HEATH_RGB = (0xd6, 0xd9, 0x9f)      # heath and dry shrubland
+OSM_FARMLAND_RGB = (0xee, 0xf0, 0xd5)   # fields
+OSM_SAND_RGB = (0xf5, 0xe9, 0xc6)       # sand deserts and dunes
+OSM_PLAIN_FILLS = (OSM_FOREST_RGB, OSM_MEADOW_RGB, OSM_HEATH_RGB, OSM_FARMLAND_RGB, OSM_SAND_RGB)
+
+
+def plain_osm_land(img: np.ndarray, near: float = 6.0, far: float = 10.0) -> np.ndarray:
+    """Return the OSM tile *img* (RGB or RGBA ``uint8``) with its land cover fills turned into plain land.
+
+    The fills are :data:`OSM_PLAIN_FILLS`. Their edges are anti-aliased
+    against the land around them, so each pixel is read as a mix of a fill
+    and land: it is matched to the fill whose line to land it lies closest
+    to, placed on that line and moved toward land by its fill share. Pixels
+    more than *far* (RGB units) off every line, such as parks, orchards,
+    scrub, beaches, water, built-up areas, roads and labels, are kept; between
+    *near* and *far* the change fades out. Allotments (``#c9e1bf``) lie on
+    the forest line and are lightened too.
+    """
+    fills = np.array(OSM_PLAIN_FILLS, np.float32)                   # (fill, rgb)
+    steps = np.array(OSM_LAND_RGB, np.float32) - fills
+    rgb = img[..., :3].astype(np.float32)
+    rel = rgb[..., None, :] - fills                                 # (..., fill, rgb)
+    toward_land = np.clip((rel * steps).sum(-1) / (steps * steps).sum(-1), 0.0, 1.0)
+    off_line = np.linalg.norm(rel - toward_land[..., None] * steps, axis=-1)
+    nearest = off_line.argmin(-1)[..., None]
+    off_line = np.take_along_axis(off_line, nearest, -1)[..., 0]
+    toward_land = np.take_along_axis(toward_land, nearest, -1)[..., 0]
+    weight = np.clip((far - off_line) / (far - near), 0.0, 1.0)
+    out = img.copy()
+    out[..., :3] = np.clip(np.rint(rgb + (weight * (1.0 - toward_land))[..., None] * steps[nearest[..., 0]]), 0, 255)
+    return out
+
+
+class CachedOSMPlain(CachedOSM):
+    """OSM tiles with forests, meadows, heath, fields and sand deserts drawn as plain land.
+
+    Zoomed in, OSM tints most land green, olive or yellow by what covers it,
+    which clashes with the layers drawn over it (see :func:`plain_osm_land`).
+    The tiles share the ``osm`` cache: they are stored as downloaded and
+    recoloured on each read.
+    """
+
+    def get_image(self, tile: tuple[int, int, int]):  # same (image, extent, origin) shape as Cartopy
+        img, extent, origin = super().get_image(tile)
+        return plain_osm_land(img), extent, origin
+
+
 def load_env_files() -> list[str]:
     """Load API keys from .env-style files into the process environment.
 
@@ -234,6 +285,7 @@ MAJOR_METROPOLISES = {
 
 TILE_PROVIDERS = [
     "osm",
+    "osm_plain",
     "google",
     "google_satellite",
     "nasa",
@@ -245,6 +297,7 @@ GOOGLE_MAP_TYPES = {"google": "roadmap", "google_satellite": "satellite"}
 # credit depends on the data shown and comes from the Map Tiles API instead.
 TILE_ATTRIBUTIONS = {
     "osm": "Map tiles © OpenStreetMap contributors",
+    "osm_plain": "Map tiles © OpenStreetMap contributors",
     "nasa": "Imagery: NASA Blue Marble, via NASA GIBS (ESDIS)",
 }
 
@@ -395,6 +448,8 @@ def create_tile_source(
 
     if provider == "osm":
         tile_source = CachedOSM(cache=cache_dir or False, **tile_kwargs)
+    elif provider == "osm_plain":
+        tile_source = CachedOSMPlain(cache=cache_dir or False, **tile_kwargs)
     elif provider == "nasa":
         tile_source = CachedNASA(cache=cache_dir or False, **tile_kwargs)
     elif provider in GOOGLE_MAP_TYPES:
@@ -595,7 +650,8 @@ def generate_orthographic_map(
         Ocean colour (the fallback ocean under the tiles). The PNG itself is
         saved with a transparent background.
     tile_provider : str
-        One of ``"osm"``, ``"google"``, ``"google_satellite"``.
+        One of :data:`TILE_PROVIDERS`: ``"osm"``, ``"osm_plain"``, ``"google"``,
+        ``"google_satellite"``, ``"nasa"``.
     tile_kwargs : dict, optional
         Extra keyword arguments forwarded to the tile source constructor.
         Google providers accept ``api_key`` (default: ``$GOOGLE_MAPS_API_KEY``),
