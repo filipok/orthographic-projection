@@ -313,6 +313,50 @@ def climate_rgba(values: np.ndarray, edges: Sequence[float], colours: Sequence[s
     return palette[band]
 
 
+Grid = tuple[np.ndarray, tuple[float, float, float]]   # values, rows north to south, and (west, north, cell)
+
+
+def _draw_bands(
+    ax: GeoAxes, land: Grid | None, sea: Grid | None, edges: Sequence[float], colours: Sequence[str],
+    alpha: float, regrid_shape: int, zoom: int,
+) -> tuple[tuple[int, int], float]:
+    """Colour *land* on the land of *ax* and *sea* on its sea and lakes, as one image cut by one coast.
+
+    Returns the grid's shape and cell size, in degrees.
+    """
+    view = visible_box(ax)
+    native = min(geo[2] for _, geo in (g for g in (land, sea) if g is not None))
+    width, height = view.east - view.west, view.north - view.south
+    # Fine enough for the output's pixels, within the upsampling and size caps
+    cell = max(native / MAX_UPSAMPLE, max(width, height) / regrid_shape,
+               float(np.sqrt(width * height / MAX_CELLS)))
+    cell = min(cell, native)
+    combined = None
+    on_land = None
+    extent = (0.0, 0.0, 0.0, 0.0)
+    for grid_and_geo, wanted_on_land in ((land, True), (sea, False)):
+        if grid_and_geo is None:
+            continue
+        grid, extent = resample(*grid_and_geo, view, cell)
+        if on_land is None:
+            on_land = land_mask(grid.shape, extent, view.centre_lon,
+                                scale="10m" if zoom >= FINE_COAST_ZOOM else "50m")
+            combined = np.full(grid.shape, np.nan, np.float32)
+        where = on_land if wanted_on_land else ~on_land
+        combined[where] = grid[where]
+    assert combined is not None
+    ax.imshow(
+        climate_rgba(combined, edges, colours, alpha),
+        origin="upper",
+        extent=extent,
+        transform=ccrs.PlateCarree(central_longitude=view.centre_lon),
+        interpolation="nearest",
+        regrid_shape=regrid_shape,
+        zorder=5,
+    )
+    return combined.shape, cell
+
+
 def add_climate_overlay(
     ax: GeoAxes,
     variable: ClimateVariable,
@@ -321,29 +365,29 @@ def add_climate_overlay(
     cache_dir: str | None = None,
     regrid_shape: int = 750,
     zoom: int = 3,
+    sea: Grid | None = None,
 ) -> None:
-    """Render *variable* over *period* on the land of *ax*, above the tiles."""
-    values, geo = load_climate(variable, period, cache_dir)
-    view = visible_box(ax)
-    native = geo[2]
-    width, height = view.east - view.west, view.north - view.south
-    # Fine enough for the output's pixels, within the upsampling and size caps
-    cell = max(native / MAX_UPSAMPLE, max(width, height) / regrid_shape,
-               float(np.sqrt(width * height / MAX_CELLS)))
-    cell = min(cell, native)
-    grid, extent = resample(values, geo, view, cell)
-    mask = land_mask(grid.shape, extent, view.centre_lon, scale="10m" if zoom >= FINE_COAST_ZOOM else "50m")
-    ax.imshow(
-        climate_rgba(grid, band_edges(variable, period), variable.colours, alpha, mask),
-        origin="upper",
-        extent=extent,
-        transform=ccrs.PlateCarree(central_longitude=view.centre_lon),
-        interpolation="nearest",
-        regrid_shape=regrid_shape,
-        zorder=5,
-    )
-    logger.info("%s overlay rendered for %s (%d × %d cells of %.3f°, alpha=%.2f).",
-                variable.title, period.label, grid.shape[1], grid.shape[0], cell, alpha)
+    """Render *variable* over *period* on the land of *ax*, above the tiles.
+
+    *sea*, a grid ``(values, geo)`` in the same unit (see :mod:`sea`), colours
+    the sea and lakes too, in the same image, so the two meet at the coast.
+    """
+    land = load_climate(variable, period, cache_dir)
+    shape, cell = _draw_bands(ax, land, sea, band_edges(variable, period), variable.colours, alpha,
+                              regrid_shape, zoom)
+    logger.info("%s overlay rendered for %s%s (%d × %d cells of %.3f°, alpha=%.2f).", variable.title,
+                period.label, ", with the sea" if sea is not None else "", shape[1], shape[0], cell, alpha)
+
+
+def add_sea_overlay(
+    ax: GeoAxes, sea: Grid, period: WindPeriod, alpha: float = 0.7, regrid_shape: int = 750, zoom: int = 3,
+) -> None:
+    """Colour the sea and lakes of *ax* by the temperature grid *sea* (see :mod:`sea`), in the temperature bands."""
+    variable = CLIMATE_VARIABLES["temperature"]
+    shape, cell = _draw_bands(ax, None, sea, band_edges(variable, period), variable.colours, alpha,
+                              regrid_shape, zoom)
+    logger.info("Sea temperature overlay rendered for %s (%d × %d cells of %.3f°, alpha=%.2f).",
+                period.label, shape[1], shape[0], cell, alpha)
 
 
 # ---------------------------------------------------------------------------
@@ -399,8 +443,11 @@ def legend_title(variable: ClimateVariable, period: WindPeriod) -> str:
 
 
 def add_climate_legend(ax: GeoAxes, variable: ClimateVariable, period: WindPeriod,
-                       y: float = -0.01, x: float = 0.5) -> Legend:
-    """Add a key below the globe: the band colours as a bar, with the edges between them."""
+                       y: float = -0.01, x: float = 0.5, title: str | None = None) -> Legend:
+    """Add a key below the globe: the band colours as a bar, with the edges between them.
+
+    *title* replaces the usual one (see :func:`legend_title`).
+    """
     edges = band_edges(variable, period)
     fontsize = 10
     widest = max(len(_number(e)) for e in edges)
@@ -411,7 +458,7 @@ def add_climate_legend(ax: GeoAxes, variable: ClimateVariable, period: WindPerio
         loc="upper center",
         bbox_to_anchor=(x, y),
         fontsize=fontsize,
-        title=legend_title(variable, period),
+        title=title or legend_title(variable, period),
         title_fontsize=10,
         frameon=True,
         fancybox=True,

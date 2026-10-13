@@ -658,6 +658,13 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc"])
         assert args.city == "nyc"
 
+    def test_sea_flags(self):
+        args = self._parse(["--city", "lisbon"])
+        assert args.temperature_over_sea is False and args.sea_temperature is None
+        args = self._parse(["--city", "lisbon", "--temperature", "--temperature-over-sea", "--sea-temperature"])
+        assert args.temperature_over_sea is True and args.sea_temperature == "year"
+        assert self._parse(["--city", "lisbon", "--sea-temperature", "jan"]).sea_temperature == "jan"
+
     def test_beside_flag(self):
         assert self._parse(["--city", "lisbon"]).beside is None
         assert self._parse(["--city", "lisbon", "--beside", "Tokyo"]).beside == "Tokyo"
@@ -972,7 +979,8 @@ class TestRunCLIValidation:
             output=None, output_dir=None, cache_dir=None,
             koppen=False, koppen_alpha=None, route=None, route_legend=False,
             both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
-            koppen_class=None, up=0.0, up_toward=None, circles_from=None, beside=None, trewartha=False, trewartha_class=None,
+            koppen_class=None, up=0.0, up_toward=None, circles_from=None, beside=None, temperature_over_sea=False, sea_temperature=None,
+            trewartha=False, trewartha_class=None,
             elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
@@ -1255,6 +1263,29 @@ class TestRunCLIValidation:
     ])
     def test_bad_globe_beside_exits_before_render(self, caplog, overrides, message):
         args = self._make_args(city="lisbon", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"), \
+                pytest.raises(SystemExit):
+            ortho.run_cli(args)
+        render.assert_not_called()
+        assert message in caplog.text
+
+    def test_sea_options_passed_to_renderer(self):
+        with mock.patch.object(ortho, "configure_tile_cache"):
+            kwargs = ortho.prepare_render(self._make_args(city="paris", temperature="july",
+                                                          temperature_over_sea=True)).kwargs
+            assert kwargs["temperature_over_sea"] is True and kwargs["sea_temperature"] is None
+            kwargs = ortho.prepare_render(self._make_args(city="paris", sea_temperature="jja")).kwargs
+            assert kwargs["temperature_over_sea"] is False and kwargs["sea_temperature"] == "jja"
+
+    @pytest.mark.parametrize("overrides, message", [
+        (dict(temperature_over_sea=True), "--temperature-over-sea needs --temperature."),
+        (dict(temperature="year", temperature_over_sea=True, sea_temperature="year"),
+         "Choose --temperature-over-sea or --sea-temperature, not both."),
+        (dict(sea_temperature="monsoon"), "Unknown sea temperature period"),
+    ])
+    def test_bad_sea_options_exit_before_render(self, caplog, overrides, message):
+        args = self._make_args(city="paris", **overrides)
         with mock.patch.object(ortho, "generate_orthographic_map") as render, \
                 mock.patch.object(ortho, "configure_tile_cache"), \
                 pytest.raises(SystemExit):
@@ -2306,6 +2337,98 @@ class TestRadiusAndWindRendering:
         (dict(temperature="monsoon"), "Unknown temperature period"),
     ])
     def test_bad_climate_means_fail_before_any_work(self, tmp_path, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", output_dir=str(tmp_path),
+                                            **kwargs)
+
+    def test_temperature_over_sea_joins_the_land(self, tmp_path):
+        grid = object()
+        with mock.patch.object(ortho, "load_sea_air", return_value=grid) as load, \
+                mock.patch.object(ortho, "add_climate_overlay") as overlay, \
+                mock.patch.object(ortho, "add_sea_overlay") as sea_only, \
+                mock.patch.object(ortho, "add_climate_legend") as key:
+            _, _, credits = self._render(tmp_path, temperature="july", temperature_over_sea=True)
+        assert load.call_args.args[0].months == (7,)
+        assert overlay.call_args.kwargs["sea"] is grid
+        sea_only.assert_not_called()
+        key.assert_called_once()
+        assert key.call_args.kwargs["title"] is None                # the land's own title covers both
+        assert credits[-2:] == [ortho.CLIMATE_ATTRIBUTION, ortho.SEA_AIR_ATTRIBUTION]
+
+    def test_sea_temperature_with_the_land_over_the_same_period_shares_image_and_key(self, tmp_path):
+        grid = object()
+        with mock.patch.object(ortho, "load_sea_temperature", return_value=grid), \
+                mock.patch.object(ortho, "add_climate_overlay") as overlay, \
+                mock.patch.object(ortho, "add_sea_overlay") as sea_only, \
+                mock.patch.object(ortho, "add_climate_legend") as key:
+            _, _, credits = self._render(tmp_path, temperature="jja", sea_temperature="jja")
+        assert overlay.call_args.kwargs["sea"] is grid
+        sea_only.assert_not_called()
+        key.assert_called_once()
+        assert key.call_args.kwargs["title"].startswith("Air temperature on land (1981–2010) and sea surface")
+        assert credits[-2:] == [ortho.CLIMATE_ATTRIBUTION, ortho.SEA_TEMPERATURE_ATTRIBUTION]
+
+    def test_sea_temperature_over_another_period_gets_its_own_image_and_key(self, tmp_path):
+        grid = object()
+        with mock.patch.object(ortho, "load_sea_temperature", return_value=grid), \
+                mock.patch.object(ortho, "add_climate_overlay") as overlay, \
+                mock.patch.object(ortho, "add_sea_overlay") as sea_only, \
+                mock.patch.object(ortho, "add_climate_legend") as key:
+            self._render(tmp_path, temperature="year", sea_temperature="july")
+        assert overlay.call_args.kwargs["sea"] is None
+        assert sea_only.call_args.args[1:3] == (grid, ortho.resolve_sea_period("july"))
+        assert key.call_count == 2
+        assert key.call_args_list[1].kwargs["title"] == "Sea surface temperature, July mean, 1991–2020 (°C)"
+
+    def test_sea_temperature_beside_a_classification_keeps_its_own_opacity(self, tmp_path):
+        with mock.patch.object(ortho, "load_sea_temperature", return_value=object()), \
+                mock.patch.object(ortho, "add_koppen_overlay") as koppen, \
+                mock.patch.object(ortho, "add_koppen_legend"), \
+                mock.patch.object(ortho, "add_sea_overlay") as sea_only, \
+                mock.patch.object(ortho, "add_climate_legend"):
+            _, _, credits = self._render(tmp_path, koppen=True, sea_temperature="year")
+        assert koppen.call_args.kwargs["alpha"] == ortho.CLASSIFICATION_ALPHA
+        assert sea_only.call_args.kwargs["alpha"] == ortho.CLIMATE_MEAN_ALPHA
+        assert credits[-1] == ortho.SEA_TEMPERATURE_ATTRIBUTION
+
+    def test_sea_temperature_alone(self, tmp_path):
+        with mock.patch.object(ortho, "load_sea_temperature", return_value=object()), \
+                mock.patch.object(ortho, "add_sea_overlay") as sea_only, \
+                mock.patch.object(ortho, "add_climate_legend") as key:
+            _, _, credits = self._render(tmp_path, sea_temperature="jan", koppen_alpha=0.4)
+        assert sea_only.call_args.kwargs["alpha"] == 0.4
+        assert key.call_args.args[1].key == "temperature"
+        assert credits == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.SEA_TEMPERATURE_ATTRIBUTION]
+
+    def test_the_sea_is_drawn_on_its_own_when_the_land_fails(self, tmp_path, caplog):
+        with mock.patch.object(ortho, "load_sea_air", return_value=object()), \
+                mock.patch.object(ortho, "add_climate_overlay", side_effect=ortho.ClimateDataError("offline")), \
+                mock.patch.object(ortho, "add_sea_overlay") as sea_only, \
+                mock.patch.object(ortho, "add_climate_legend") as key:
+            _, _, credits = self._render(tmp_path, temperature="july", temperature_over_sea=True)
+        sea_only.assert_called_once()
+        key.assert_called_once()
+        assert credits == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.SEA_AIR_ATTRIBUTION]
+        assert "Skipping air temperature" in caplog.text
+
+    def test_sea_failure_still_saves_the_land(self, tmp_path, caplog):
+        with mock.patch.object(ortho, "load_sea_temperature", side_effect=ortho.SeaDataError("offline")), \
+                mock.patch.object(ortho, "add_climate_overlay") as overlay, \
+                mock.patch.object(ortho, "add_sea_overlay") as sea_only, \
+                mock.patch.object(ortho, "add_climate_legend") as key:
+            _, _, credits = self._render(tmp_path, temperature="july", sea_temperature="july")
+        assert overlay.call_args.kwargs["sea"] is None
+        sea_only.assert_not_called()
+        key.assert_called_once()
+        assert credits[-1] == ortho.CLIMATE_ATTRIBUTION and "Skipping the sea surface temperature" in caplog.text
+
+    @pytest.mark.parametrize("kwargs, match", [
+        (dict(temperature_over_sea=True), "temperature_over_sea needs temperature"),
+        (dict(humidity="year", temperature_over_sea=True), "temperature_over_sea needs temperature"),
+        (dict(temperature="year", temperature_over_sea=True, sea_temperature="year"), "choose one layer for the sea"),
+        (dict(sea_temperature="monsoon"), "Unknown sea temperature period"),
+    ])
+    def test_bad_sea_options_fail_before_any_work(self, tmp_path, kwargs, match):
         with pytest.raises(ValueError, match=match):
             ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", output_dir=str(tmp_path),
                                             **kwargs)

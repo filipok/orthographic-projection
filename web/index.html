@@ -76,11 +76,15 @@
           </select></label>
         <label class="field" data-show="climate:temperature,precipitation,humidity" hidden><span>Period</span>
           <select id="period" class="periods"></select></label>
+        <label class="check" data-show="climate:temperature" hidden><input id="temperature-over-sea" type="checkbox">
+          Over the sea too (air temperature, NCEP/NCAR, ~200 km)</label>
         <label class="field" data-show="climate:koppen,trewartha" hidden><span>Only these classes (blank for all)</span>
           <input id="climate-classes" type="text" placeholder="e.g. Cfb, Cs"></label>
         <label class="field slider" data-show="climate:koppen,trewartha,temperature,precipitation,humidity" hidden>
           <span>Opacity <output for="climate-alpha"></output></span>
           <input id="climate-alpha" type="range" min="0" max="1" step="0.05"></label>
+        <label class="field"><span>Sea surface temperature (OISST, 1991–2020)</span>
+          <select id="sea-temperature" class="periods"><option value="">None</option></select></label>
       </fieldset>
 
       <details>

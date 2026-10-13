@@ -110,6 +110,13 @@ class TestMaps:
         assert renders[0]["circles_from"] == (51.5074, -0.1278)
         assert "--circles-from London" in status["command"]
 
+    def test_temperatures_over_the_sea(self, client, renders):
+        _, status = _render(client, city="Lisbon", temperature="july", temperature_over_sea=True)
+        assert renders[0]["temperature_over_sea"] is True
+        assert "--temperature july --temperature-over-sea" in status["command"]
+        _, status = _render(client, city="Lisbon", sea_temperature="jan")
+        assert renders[1]["sea_temperature"] == "jan" and "--sea-temperature jan" in status["command"]
+
     def test_a_globe_beside(self, client, renders):
         _, status = _render(client, city="Lisbon", beside="Tokyo")
         assert renders[0]["beside"] == (35.6762, 139.6503) and renders[0]["beside_name"] == "Tokyo"

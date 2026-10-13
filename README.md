@@ -129,6 +129,7 @@ The main script is [ortho.py](ortho.py).
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
 - Optional prevailing winds for the year, a season or a month: arrows of the 1991–2020 mean surface wind, coloured by how steady it is
 - Optional climate means for the year, a season or a month: air temperature, precipitation or relative humidity over 1981–2010 (CHELSA v2.1), in coloured bands with a key
+- Optional temperatures over the sea: the sea surface's (NOAA OISST, 1991–2020), or the air's, carrying the land's air temperature out over the sea
 - Optional polar ice: sea ice at its latest winter maximum (NSIDC) and permanent polar land ice
 - Optional crop areas for any of 173 crops (CROPGRIDS), one or several at once, with a key
 - Any compass direction at the top of the globe (south up, or the direction toward a place), with text kept upright
@@ -340,6 +341,10 @@ python ortho.py --lat 5 --lon 100 --precipitation
 python ortho.py --lat 30 --lon 20 --humidity jja
 python ortho.py --lat 46 --lon 10 --radius --temperature july --elevation
 
+# The sea too: its surface temperature, or the air over it with the land's (see "Temperatures over the Sea")
+python ortho.py --lat 20 --lon -40 --sea-temperature july
+python ortho.py --lat 20 --lon -40 --temperature july --temperature-over-sea
+
 # South up, or the direction toward a place at the top (see "Turning the Globe")
 python ortho.py --city sydney --up 180
 python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi"
@@ -366,6 +371,8 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--temperature [PERIOD]` | Colour the land by its 1981–2010 mean air temperature for `year`, a season (`djf`, `mam`, `jja`, `son`) or a month (`july`, `7`) | off (`year` when given alone) |
 | `--precipitation [PERIOD]` | Colour the land by its 1981–2010 precipitation total over PERIOD, as for `--temperature` | off (`year` when given alone) |
 | `--humidity [PERIOD]` | Colour the land by its 1981–2010 mean relative humidity over PERIOD, as for `--temperature` | off (`year` when given alone) |
+| `--temperature-over-sea` | With `--temperature`, colour the sea and lakes by the air temperature over them too (NCEP/NCAR, 1981–2010, ~1.9°) | off |
+| `--sea-temperature [PERIOD]` | Colour the sea and lakes by their 1991–2020 mean surface temperature (NOAA OISST v2.1, 0.25°), alongside any climate layer but `--temperature-over-sea` | off (`year` when given alone) |
 | `--climate-alpha ALPHA` | Opacity of the climate layer (0–1); `--koppen-alpha` is the same option | `0.45` for a classification, `0.7` for a climate mean |
 | `--elevation` | Colour the land by height and shade its relief, with a key | off |
 | `--elevation-alpha ALPHA` | Opacity of the elevation layer (0–1) | `0.8` |
@@ -395,7 +402,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--config FILE` | Read settings from a TOML recipe file; the command line overrides it (see "Recipe Files") | — |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
-> One climate layer at a time: `--koppen`, `--trewartha`, `--temperature`, `--precipitation` and `--humidity` exclude each other.
+> One climate layer at a time: `--koppen`, `--trewartha`, `--temperature`, `--precipitation` and `--humidity` exclude each other. `--sea-temperature` colours the sea alongside any of them.
 
 `python ortho.py --help` lists the options in the same groups: Location, Imagery
 and output, Globe layout, Climate, Polar ice, Crops, Routes and areas, Recipes.
@@ -555,6 +562,8 @@ generate_orthographic_map(
     radius_km=None,        # optional: e.g. 2500 shows only that far from the centre (raise zoom to suit)
     wind=None,             # optional: prevailing winds for "year", "djf"…"son" or a month such as "july"
     temperature=None,      # optional: mean temperature for a period as for wind; or precipitation=, humidity=
+    temperature_over_sea=False,  # optional: with temperature, the air over the sea too
+    sea_temperature=None,  # optional: the sea's surface temperature for a period, e.g. "july"
     ice=False,             # optional: polar ice at its winter maximum
     crops=None,            # optional: e.g. ["wheat", "rice:#18b5a4"]
     elevation=False,       # optional: land coloured by height, hill-shaded
@@ -898,7 +907,8 @@ python ortho.py --config recipes/temperature_july.toml
   bands of 10 % from below 20 % (brown) to 90 % and above (blue).
 - **Land only.** CHELSA maps the land, so the sea is left to the base map, cut
   along Natural Earth's coast (the 1:10m coast from zoom 7) with its lakes left
-  out.
+  out. `--temperature-over-sea` and `--sea-temperature` colour the sea too (see
+  "Temperatures over the Sea").
 - **Data.** The CHELSA files are 1 km Cloud-Optimised GeoTIFFs; as for the
   Trewartha layer, only the ~15 km copy inside each is read, 2–5 MB per month
   and variable, downloaded the first time a map needs it and cached in
@@ -913,6 +923,50 @@ python ortho.py --config recipes/temperature_july.toml
   winds and routes. `--precipitation jja --wind jja` shows a monsoon's rain
   and the wind that brings it. The credit line is *Climate means: CHELSA
   v2.1, 1981–2010 (Karger et al. 2017), CC0*.
+
+## Temperatures over the Sea
+
+CHELSA maps the land only. Two options colour the sea and lakes too, in the
+same 5 °C bands as `--temperature`:
+
+```powershell
+python ortho.py --lat 20 --lon -40 --temperature july --temperature-over-sea
+python ortho.py --lat 20 --lon -40 --sea-temperature july
+python ortho.py --lat 20 --lon -40 --temperature july --sea-temperature july
+python ortho.py --lat 50 --lon 0 --koppen --sea-temperature january
+```
+
+- **The air over the sea.** `--temperature-over-sea` (`temperature_over_sea=True`
+  in the API, "Over the sea too" in the web app) carries `--temperature` out over
+  the sea: the mean air temperature 2 m above the surface over 1981–2010, CHELSA's
+  period, from the NCEP/NCAR Reanalysis (the winds' source). Land and sea are one
+  image, cut along one coast, under one key. The reanalysis grid is coarse, about
+  1.9° (~210 km), smoothed onto the map. Over the open sea, where temperatures
+  change slowly, that shows no blocks; along coasts each cell blends in some land,
+  so the air off a hot desert coast in summer, or off Siberia in winter, can come
+  out a band warmer or colder than the water nearby.
+- **The sea surface.** `--sea-temperature [PERIOD]` (`sea_temperature=` in the API,
+  "Sea surface temperature" in the web app) colours the sea by its mean surface
+  temperature over 1991–2020, from NOAA's OISST v2.1 at 0.25° (~28 km). Currents
+  show clearly: the warm Gulf Stream, the cold upwelling off Peru and north-west
+  Africa. It goes with any climate layer except `--temperature-over-sea`. With
+  `--temperature` over the same period the two share one image and one key ("Air
+  temperature on land (1981–2010) and sea surface temperature (1991–2020)"); over
+  another period, or beside another layer, it gets its own key. Its opacity is
+  `--climate-alpha` when given, else 0.7.
+- **Surface or air.** Over open water they agree to about a degree; the air is
+  typically ~1 °C cooler. Over sea ice they part: the sea surface cannot cool much
+  below −1.8 °C, where sea water freezes, while the air over the sea ice averages
+  about −17 °C in January. `--ice` draws the ice over either.
+- **Lakes.** Both colour lakes as well as the sea: the reanalysis has a value
+  everywhere, OISST only for the larger lakes (the Great Lakes, for one).
+- **Data.** Each is one file from NOAA PSL, downloaded the first time a map needs
+  it and cached in `~/.cache/ortho_tiles/sea/`: OISST's monthly means are ~46 MB,
+  the reanalysis's ~0.5 MB. OISST leaves a gap of a cell or two along the coasts,
+  filled from the nearest sea so the colours reach the coastline.
+- The credit lines are *Sea surface temperature: NOAA OISST v2.1, 1991–2020
+  means, NOAA PSL* and *Air temperature over the sea: NCEP/NCAR Reanalysis 1,
+  1981–2010 means, NOAA PSL*.
 
 ## Polar Ice
 
@@ -1295,7 +1349,8 @@ to the attribution block.
 | MODIS Terra Vegetation Indices monthly (NDVI, MOD13A3 v6.1, 1 km) | Didan, K., NASA LP DAAC | NASA open data, no restrictions | [doi:10.5067/MODIS/MOD13A3.061](https://doi.org/10.5067/MODIS/MOD13A3.061), via NASA GIBS |
 | Mapzen Terrain Tiles (Terrarium), from GMTED2010 and SRTM (USGS) and ETOPO1 (NOAA), used at zoom 4–5 for the elevation layer and the Trewartha highlands | Mapzen / Tilezen, AWS Open Data | Free to use; the sources must be credited ([attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | [registry.opendata.aws/terrain-tiles](https://registry.opendata.aws/terrain-tiles/) |
 | SoilGrids 2.0: most probable WRB Reference Soil Group, 250 m, used at 0.067° (~7 km); soil properties, 5 km aggregates, used at 0.05° | Poggio, L. et al. (2021), ISRIC World Soil Information | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.5194/soil-7-217-2021](https://doi.org/10.5194/soil-7-217-2021), [isric.org/explore/soilgrids](https://www.isric.org/explore/soilgrids) |
-| NCEP/NCAR Reanalysis 1, long-term monthly means 1991–2020 of the 10 m wind (u, v) and wind speed, T62 Gaussian grid (~1.9°) | Kalnay, E. et al. (1996); NOAA PSL | Public domain (US government); acknowledgement requested: "NCEP-NCAR Reanalysis 1 data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/1520-0477(1996)077<0437:TNYRP>2.0.CO;2](https://doi.org/10.1175/1520-0477(1996)077%3C0437:TNYRP%3E2.0.CO;2), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.derived.html) |
+| NCEP/NCAR Reanalysis 1, long-term monthly means 1991–2020 of the 10 m wind (u, v) and wind speed, and 1981–2010 of the 2 m air temperature (for `--temperature-over-sea`), T62 Gaussian grid (~1.9°) | Kalnay, E. et al. (1996); NOAA PSL | Public domain (US government); acknowledgement requested: "NCEP-NCAR Reanalysis 1 data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/1520-0477(1996)077<0437:TNYRP>2.0.CO;2](https://doi.org/10.1175/1520-0477(1996)077%3C0437:TNYRP%3E2.0.CO;2), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.derived.html) |
+| NOAA OI SST V2.1 High Resolution, long-term monthly means 1991–2020 of the sea surface temperature, 0.25° | Huang, B. et al. (2021); NOAA NCEI, via NOAA PSL | Public domain (US government); acknowledgement requested: "NOAA OI SST V2 High Resolution data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/JCLI-D-20-0166.1](https://doi.org/10.1175/JCLI-D-20-0166.1), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.noaa.oisst.v2.highres.html) |
 | Natural Earth (land / ocean fallback, Trewartha, climate mean and elevation land masks, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
@@ -1314,6 +1369,8 @@ the globe:
 | `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |
 | `--trewartha` overlay | *Climate data: CHELSA v2.1 (Karger et al. 2017), CC0; Trewartha classes computed*, plus the elevation credit |
 | `--temperature`, `--precipitation`, `--humidity` layers | *Climate means: CHELSA v2.1, 1981–2010 (Karger et al. 2017), CC0* |
+| `--temperature-over-sea` | *Air temperature over the sea: NCEP/NCAR Reanalysis 1, 1981–2010 means, NOAA PSL* |
+| `--sea-temperature` layer | *Sea surface temperature: NOAA OISST v2.1, 1991–2020 means, NOAA PSL* |
 | `--elevation` layer | *Elevation: Mapzen Terrain Tiles (AWS Open Data); GMTED2010 and SRTM courtesy of the USGS; ETOPO1, NOAA NCEI* |
 | `--landcover` layer | *Land cover: MODIS MCD12Q1 IGBP YYYY (NASA LP DAAC), via NASA GIBS* |
 | `--ndvi` layer | *NDVI: MODIS Terra monthly, Month YYYY (NASA), via NASA GIBS* |
@@ -1384,6 +1441,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [soil_properties.py](soil_properties.py): soil property overlay and key (SoilGrids 2.0, 5 km)
 - [wind.py](wind.py): prevailing-wind arrows and key (NCEP/NCAR Reanalysis 1991–2020 means)
 - [climate.py](climate.py): mean temperature, precipitation and humidity layers and key (CHELSA v2.1, 1981–2010)
+- [sea.py](sea.py): temperatures over the sea, the surface's (NOAA OISST v2.1) and the air's (NCEP/NCAR Reanalysis 1)
 - [ice.py](ice.py): polar ice overlay (NSIDC sea ice extent, Natural Earth land ice)
 - [crops.py](crops.py): crop-area overlay and key (CROPGRIDS, read from the remote archive)
 - [rotation.py](rotation.py): orthographic globes with any compass direction at the top

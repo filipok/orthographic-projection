@@ -113,6 +113,8 @@ class MapRequest(BaseModel):
     temperature: str | None = None
     precipitation: str | None = None
     humidity: str | None = None
+    temperature_over_sea: bool | None = None
+    sea_temperature: str | None = None
     koppen_alpha: float | None = None
     elevation: bool | None = None
     elevation_alpha: float | None = None

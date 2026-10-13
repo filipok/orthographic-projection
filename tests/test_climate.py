@@ -221,6 +221,45 @@ class TestDrawing:
         assert scales == ["10m"]
         assert image.get_array().shape[1] > 100                  # resampled well below the 60° cells
 
+    def _banded(self, monkeypatch, draw):
+        """Run *draw(ax)* with the west half of every grid on land; return the values coloured."""
+        coloured = []
+        real = climate.climate_rgba
+        monkeypatch.setattr(climate, "climate_rgba", lambda values, *args, **kwargs: (
+            coloured.append(values.copy()), real(values, *args, **kwargs))[1])
+        monkeypatch.setattr(climate, "land_mask", lambda shape, extent, centre, scale: (
+            np.arange(shape[1])[None, :].repeat(shape[0], 0) < shape[1] // 2))
+        fig = Figure(figsize=(4, 4))
+        ax = fig.add_subplot(projection=ccrs.Orthographic(10, 0))
+        ax.set_global()
+        draw(ax)
+        (values,) = coloured
+        west = np.arange(values.shape[1]) < values.shape[1] // 2
+        return values[:, west], values[:, ~west], ax
+
+    def test_land_and_sea_in_one_image_cut_by_one_coast(self, monkeypatch):
+        monkeypatch.setattr(climate, "load_climate", lambda variable, period, cache_dir=None: (
+            np.full((3, 6), 12.0, np.float32), GEO))
+        sea = (np.full((3, 6), 30.0, np.float32), GEO)
+        land, water, ax = self._banded(monkeypatch, lambda ax: climate.add_climate_overlay(
+            ax, TEMPERATURE, resolve_wind_period("july"), regrid_shape=200, sea=sea))
+        assert np.unique(land).tolist() == [12.0] and np.unique(water).tolist() == [30.0]
+        assert len(ax.get_images()) == 1
+
+    def test_sea_alone_leaves_the_land_clear(self, monkeypatch):
+        sea = (np.full((3, 6), 30.0, np.float32), GEO)
+        land, water, ax = self._banded(monkeypatch, lambda ax: climate.add_sea_overlay(
+            ax, sea, resolve_wind_period("july"), regrid_shape=200))
+        assert np.isnan(land).all() and np.unique(water).tolist() == [30.0]
+        assert ax.get_images()[0].get_zorder() == 5
+
+    def test_key_title_can_be_replaced(self):
+        fig = Figure(figsize=(8, 8))
+        ax = fig.add_subplot(projection=ccrs.Orthographic(0, 0))
+        ax.set_global()
+        key = climate.add_climate_legend(ax, TEMPERATURE, resolve_wind_period("july"), title="Sea, July")
+        assert key.get_title().get_text() == "Sea, July"
+
     def test_key(self):
         fig = Figure(figsize=(8, 8))
         ax = fig.add_subplot(projection=ccrs.Orthographic(0, 0))

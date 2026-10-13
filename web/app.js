@@ -94,6 +94,8 @@ function buildRequest() {
     req[climate] = $("period").value;
   }
   if (climate) req.koppen_alpha = changed("climate-alpha", climateAlphaDefault());
+  if (climate === "temperature" && $("temperature-over-sea").checked) req.temperature_over_sea = true;
+  else if ($("sea-temperature").value) req.sea_temperature = $("sea-temperature").value;
 
   if ($("elevation").checked) {
     req.elevation = true;

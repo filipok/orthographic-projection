@@ -64,7 +64,11 @@ from vegetation import (
 )
 from climate import (
     CLIMATE_ATTRIBUTION, CLIMATE_VARIABLES, ClimateDataError, add_climate_legend, add_climate_overlay,
-    resolve_climate_period,
+    add_sea_overlay, resolve_climate_period,
+)
+from sea import (
+    SEA_AIR_ATTRIBUTION, SEA_TEMPERATURE_ATTRIBUTION, SeaDataError, land_and_sea_legend_title, load_sea_air,
+    load_sea_temperature, resolve_sea_period, sea_legend_title,
 )
 from wind import (
     WIND_ATTRIBUTION, WindDataError, add_wind_legend, add_wind_overlay, resolve_wind_period,
@@ -648,6 +652,8 @@ def generate_orthographic_map(
     beside: tuple[float, float] | None = None,
     beside_name: str | None = None,
     beside_up: float | None = None,
+    temperature_over_sea: bool = False,
+    sea_temperature: str | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -783,6 +789,17 @@ def generate_orthographic_map(
         total or relative humidity (CHELSA v2.1, see :mod:`climate`) over a
         period given as for *wind*, with a key. One of the three at most, and
         not with a climate classification; *koppen_alpha* sets its opacity.
+    temperature_over_sea : bool
+        With *temperature*, colour the sea and lakes by the 1981–2010 mean air
+        temperature over them too (NCEP/NCAR Reanalysis 1, see :mod:`sea`),
+        in the same image and key as the land.
+    sea_temperature : str, optional
+        Colour the sea and lakes by their 1991–2020 mean surface temperature
+        (NOAA OISST v2.1, see :mod:`sea`) over a period given as for *wind*,
+        in the temperature bands, with a key. It goes with any climate layer;
+        with *temperature* over the same period the two share one image and
+        key. Not with *temperature_over_sea*. *koppen_alpha* sets its opacity
+        when given (default 0.7).
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -824,6 +841,14 @@ def generate_orthographic_map(
     climate_mean = resolve_climate_mean(temperature, precipitation, humidity)
     if climate_mean and (koppen or trewartha):
         raise ValueError("choose one climate layer: a classification or a climate mean")
+    sea_period = resolve_sea_period(sea_temperature) if sea_temperature is not None else None
+    if temperature_over_sea:
+        if climate_mean is None or climate_mean[0].key != "temperature":
+            raise ValueError("temperature_over_sea needs temperature")
+        if sea_period is not None:
+            raise ValueError("choose one layer for the sea: the air temperature over it or its surface temperature")
+    # The sea's own layer keeps the climate means' opacity unless one is given
+    sea_alpha = CLIMATE_MEAN_ALPHA if koppen_alpha is None else koppen_alpha
     if koppen_alpha is None:
         koppen_alpha = CLIMATE_MEAN_ALPHA if climate_mean else CLASSIFICATION_ALPHA
     if not math.isfinite(up):
@@ -979,6 +1004,30 @@ def generate_orthographic_map(
             add_trewartha_legend(near, x=key_x, classes=trewartha_codes or None)
             # Its highland group uses the terrain tiles' heights
             climate_credits = [TREWARTHA_ATTRIBUTION, ELEVATION_ATTRIBUTION]
+    # Temperatures over the sea: the air's, carrying the land's temperature out
+    # over it, or the sea surface's, which joins the land's temperature in one
+    # image and key when they share a period
+    sea_grid = None
+    sea_credit = None
+    if temperature_over_sea and climate_mean is not None:
+        logger.info("Adding the air temperature over the sea …")
+        try:
+            sea_grid = load_sea_air(climate_mean[1])
+        except (SeaDataError, OSError) as e:
+            logger.warning("Skipping the air temperature over the sea: %s", e)
+        else:
+            sea_credit = SEA_AIR_ATTRIBUTION
+    elif sea_period is not None:
+        logger.info("Adding the sea surface temperature for %s …", sea_period.label)
+        try:
+            sea_grid = load_sea_temperature(sea_period)
+        except (SeaDataError, OSError) as e:
+            logger.warning("Skipping the sea surface temperature: %s", e)
+        else:
+            sea_credit = SEA_TEMPERATURE_ATTRIBUTION
+    sea_with_land = (sea_grid is not None and climate_mean is not None and climate_mean[0].key == "temperature"
+                     and (temperature_over_sea or climate_mean[1] == sea_period))
+
     climate_mean_drawn = False
     if climate_mean is not None:
         variable, period = climate_mean
@@ -986,12 +1035,18 @@ def generate_orthographic_map(
         try:
             for ax in axes:
                 add_climate_overlay(ax, variable, period, alpha=koppen_alpha, regrid_shape=regrid_shape,
-                                    zoom=zoom)
+                                    zoom=zoom, sea=sea_grid if sea_with_land else None)
         except (ClimateDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
             logger.warning("Skipping %s: %s", variable.title.lower(), e)
+            sea_with_land = False                    # the sea is drawn on its own below
         else:
             climate_mean_drawn = True
+    sea_key_period = sea_period or (climate_mean[1] if climate_mean is not None else None)
+    if sea_grid is not None and not sea_with_land and sea_key_period is not None:
+        alpha = koppen_alpha if temperature_over_sea else sea_alpha
+        for ax in axes:
+            add_sea_overlay(ax, sea_grid, sea_key_period, alpha=alpha, regrid_shape=regrid_shape, zoom=zoom)
 
     # Step 5b2: Soil groups or a soil property (above the climate colours, below crops)
     soil_drawn = False
@@ -1134,7 +1189,12 @@ def generate_orthographic_map(
     # keys, under the climate key when that is drawn too
     keys = []
     if climate_mean_drawn and climate_mean is not None:
-        keys.append(add_climate_legend(near, *climate_mean, x=key_x))
+        joined_surface = sea_with_land and not temperature_over_sea
+        keys.append(add_climate_legend(near, *climate_mean, x=key_x,
+                                       title=land_and_sea_legend_title(climate_mean[1]) if joined_surface else None))
+    if sea_grid is not None and not sea_with_land and sea_key_period is not None:
+        keys.append(add_climate_legend(near, CLIMATE_VARIABLES["temperature"], sea_key_period, x=key_x,
+                                       title=sea_legend_title(sea_key_period) if sea_period else None))
     if relief is not None:
         keys.append(add_elevation_legend(near, x=key_x))
     if land_cover:
@@ -1160,6 +1220,8 @@ def generate_orthographic_map(
         credits.append(vegetation_credit)
     if climate_mean_drawn:
         climate_credits.append(CLIMATE_ATTRIBUTION)
+    if sea_credit:
+        climate_credits.append(sea_credit)
     for credit in climate_credits + ([ELEVATION_ATTRIBUTION] if relief is not None else []):
         if credit not in credits:
             credits.append(credit)
@@ -1739,7 +1801,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
         "Climate (Köppen-Geiger, Trewartha or CHELSA means)",
         "One climate layer at a time: a classification, or the 1981-2010 mean temperature, "
         "precipitation or humidity for a PERIOD: year (the default), a season (djf, mam, jja, son) "
-        "or a month (e.g. july or 7).")
+        "or a month (e.g. july or 7). --sea-temperature colours the sea alongside any of them.")
     system = climate.add_mutually_exclusive_group()
     for name, what in (("temperature", "mean air temperature"),
                        ("precipitation", "precipitation total"),
@@ -1752,6 +1814,21 @@ def build_cli_parser() -> argparse.ArgumentParser:
             metavar="PERIOD",
             help=f"Colour the land by its {what} over PERIOD (CHELSA v2.1, 2-5 MB per month, cached).",
         )
+    climate.add_argument(
+        "--temperature-over-sea",
+        action="store_true",
+        help="With --temperature, colour the sea and lakes by the air temperature over them too "
+             "(NCEP/NCAR Reanalysis 1, 1981-2010, a ~1.9° grid smoothed; one-time ~0.5 MB).",
+    )
+    climate.add_argument(
+        "--sea-temperature",
+        nargs="?",
+        const="year",
+        default=None,
+        metavar="PERIOD",
+        help="Colour the sea and lakes by their mean surface temperature over PERIOD (NOAA OISST v2.1, "
+             "1991-2020, 0.25°; one-time ~46 MB). Goes with any climate layer but --temperature-over-sea.",
+    )
     system.add_argument(
         "--koppen",
         action="store_true",
@@ -2322,6 +2399,13 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         raise ValueError("Choose one climate classification: Köppen-Geiger or Trewartha.")
     if (args.koppen or args.koppen_class or args.trewartha or args.trewartha_class) and climate_mean:
         raise ValueError("Choose one climate layer: a classification or a climate mean.")
+    if args.sea_temperature is not None:
+        resolve_sea_period(args.sea_temperature)
+    if args.temperature_over_sea:
+        if args.temperature is None:
+            raise ValueError("--temperature-over-sea needs --temperature.")
+        if args.sea_temperature is not None:
+            raise ValueError("Choose --temperature-over-sea or --sea-temperature, not both.")
 
     # Orientation: a bearing, or the direction toward a place
     up = args.up
@@ -2438,6 +2522,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         beside=beside_centre,
         beside_name=beside.name if beside is not None else None,
         beside_up=beside_up,
+        temperature_over_sea=args.temperature_over_sea,
+        sea_temperature=args.sea_temperature,
     ))
 
 
