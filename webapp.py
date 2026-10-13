@@ -102,6 +102,7 @@ class MapRequest(BaseModel):
     dpi: int | None = None
     radius: float | None = None
     both_hemispheres: bool | None = None
+    beside: str | None = None
     up: float | None = None
     up_toward: str | None = None
     circles_from: str | None = None

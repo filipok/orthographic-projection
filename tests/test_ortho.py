@@ -350,6 +350,10 @@ class TestBuildOutputFilename:
         result = ortho.build_output_filename("paris", "google satellite", 3)
         assert result == "orthographic_map_paris_google_satellite_z3.png"
 
+    def test_a_globe_beside_joins_the_places(self):
+        result = ortho.build_output_filename("lisbon", "osm", 3, beside_slug="tokyo")
+        assert result == "orthographic_map_lisbon_and_tokyo_osm_z3.png"
+
     def test_both_hemispheres_suffix(self):
         result = ortho.build_output_filename("lisbon", "osm", 3, both_hemispheres=True)
         assert result == "orthographic_map_lisbon_osm_z3_hemispheres.png"
@@ -464,6 +468,24 @@ class TestValidateRenderOptions:
         with pytest.raises(ValueError, match="with both hemispheres"):
             ortho.validate_render_options(dpi=ortho.MAX_DPI // 2 + 1, koppen_alpha=0.5, both_hemispheres=True)
         ortho.validate_render_options(dpi=ortho.MAX_DPI, koppen_alpha=0.5)
+
+    def test_a_globe_beside_halves_the_dpi_cap(self):
+        ortho.validate_render_options(dpi=ortho.MAX_DPI // 2, beside=(35.7, 139.7))
+        with pytest.raises(ValueError, match="with two globes"):
+            ortho.validate_render_options(dpi=ortho.MAX_DPI // 2 + 1, beside=(35.7, 139.7))
+
+    @pytest.mark.parametrize("kwargs, match", [
+        (dict(beside=(35.7, 139.7), both_hemispheres=True), "antipode or another place, not both"),
+        (dict(beside=(91.0, 0.0)), "beside must be a latitude"),
+    ])
+    def test_bad_globe_beside(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            ortho.validate_render_options(dpi=100, **kwargs)
+
+    def test_radius_zoom_with_a_globe_beside_follows_the_centre_nearer_the_equator(self):
+        # Zoom 8 is too fine for 2,500 km at 46°N alone (see above), not with a globe on the equator
+        ortho.validate_render_options(dpi=100, zoom=8, radius_km=2_500, lat=46, beside=(0.0, 0.0))
+        assert ortho.zoom_latitude(46, (-10.0, 0.0)) == -10 and ortho.zoom_latitude(46) == 46
 
     @pytest.mark.parametrize("alpha", [-0.1, 1.5])
     def test_elevation_alpha_range(self, alpha):
@@ -635,6 +657,10 @@ class TestCLIParser:
     def test_city_flag(self):
         args = self._parse(["--city", "nyc"])
         assert args.city == "nyc"
+
+    def test_beside_flag(self):
+        assert self._parse(["--city", "lisbon"]).beside is None
+        assert self._parse(["--city", "lisbon", "--beside", "Tokyo"]).beside == "Tokyo"
 
     def test_circles_from_flag(self):
         assert self._parse(["--city", "nyc"]).circles_from is None
@@ -946,7 +972,7 @@ class TestRunCLIValidation:
             output=None, output_dir=None, cache_dir=None,
             koppen=False, koppen_alpha=None, route=None, route_legend=False,
             both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
-            koppen_class=None, up=0.0, up_toward=None, circles_from=None, trewartha=False, trewartha_class=None,
+            koppen_class=None, up=0.0, up_toward=None, circles_from=None, beside=None, trewartha=False, trewartha_class=None,
             elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
@@ -1190,6 +1216,51 @@ class TestRunCLIValidation:
                 mock.patch.object(ortho, "configure_tile_cache"):
             ortho.run_cli(args)
         assert render.call_args.kwargs["circles_from"] == expected
+
+    def test_a_globe_beside_passed_to_renderer_and_named(self):
+        args = self._make_args(city="lisbon", beside="Tokyo")
+        with mock.patch.object(ortho, "configure_tile_cache"):
+            plan = ortho.prepare_render(args)
+        kwargs = plan.kwargs
+        assert plan.label == "Lisbon and Tokyo"
+        assert kwargs["city_name"] == "Lisbon" and kwargs["beside_name"] == "Tokyo"
+        assert kwargs["beside"] == (35.6762, 139.6503) and kwargs["beside_up"] is None
+        assert kwargs["output_filename"] == "orthographic_map_lisbon_and_tokyo_osm_z3.png"
+
+    def test_a_globe_beside_at_coordinates_is_unnamed(self):
+        with mock.patch.object(ortho, "configure_tile_cache"):
+            plan = ortho.prepare_render(self._make_args(city="lisbon", beside="-33.9,18.4"))
+        assert plan.kwargs["beside"] == (-33.9, 18.4) and plan.kwargs["beside_name"] is None
+        assert plan.label == "Lisbon and (-33.9, 18.4)"
+        assert plan.kwargs["output_filename"] == "orthographic_map_lisbon_and_custom_osm_z3.png"
+
+    def test_up_toward_turns_each_globe_from_its_own_centre(self):
+        args = self._make_args(city="lisbon", beside="tokyo", up_toward="new delhi")
+        with mock.patch.object(ortho, "configure_tile_cache"):
+            kwargs = ortho.prepare_render(args).kwargs
+        assert kwargs["up"] == pytest.approx(ortho.initial_bearing(38.7223, -9.1393, 28.6139, 77.2090))
+        assert kwargs["beside_up"] == pytest.approx(ortho.initial_bearing(35.6762, 139.6503, 28.6139, 77.2090))
+
+    def test_radius_beside_takes_the_zoom_of_the_centre_nearer_the_equator(self):
+        args = self._make_args(city="paris", beside="jakarta", radius=2_500.0, zoom=None)
+        with mock.patch.object(ortho, "configure_tile_cache"):
+            kwargs = ortho.prepare_render(args).kwargs
+        assert kwargs["zoom"] == ortho.zoom_for_radius(2_500, -6.2088) == 7     # Paris alone: 6
+        assert kwargs["output_filename"] == "orthographic_map_paris_and_jakarta_osm_z7_r2500km.png"
+
+    @pytest.mark.parametrize("overrides, message", [
+        (dict(beside="tokyo", both_hemispheres=True), "Choose --both-hemispheres or --beside, not both."),
+        (dict(beside="Atlantis"), "--beside: 'Atlantis' is not a known city"),
+        (dict(beside="tokyo", dpi=ortho.MAX_DPI), "with two globes"),
+    ])
+    def test_bad_globe_beside_exits_before_render(self, caplog, overrides, message):
+        args = self._make_args(city="lisbon", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"), \
+                pytest.raises(SystemExit):
+            ortho.run_cli(args)
+        render.assert_not_called()
+        assert message in caplog.text
 
     def test_circles_from_the_centre_by_default(self):
         with mock.patch.object(ortho, "configure_tile_cache"):
@@ -1706,6 +1777,56 @@ class TestGenerateOrthographicMapIntegration:
         # The far globe marks the antipode and labels its rings by distance from Lisbon
         assert any(t.get_text().strip() == "Antipode of Lisbon" for t in right.texts)
         assert {t.get_text().strip() for t in right.texts} >= {"17,500 km", "15,000 km"}
+
+    def test_a_globe_beside_draws_both_places(self, tmp_path):
+        """The second globe is centred on its own place, marked, and ringed from it."""
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "add_koppen_overlay") as overlay, \
+                mock.patch.object(ortho, "add_koppen_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(
+                lat=38.7223, lon=-9.1393, output_filename="m.png", zoom=1, dpi=20,
+                output_dir=str(tmp_path), city_name="Lisbon", koppen=True,
+                beside=(35.6762, 139.6503), beside_name="Tokyo",
+            )
+        assert os.path.exists(result)
+        right = attribution.call_args.args[0]
+        left, other = right.figure.axes
+        assert other is right and left.get_position().x1 < right.get_position().x0
+        assert right.projection.proj4_params["lat_0"] == pytest.approx(35.6762)
+        assert right.projection.proj4_params["lon_0"] == pytest.approx(139.6503)
+        assert overlay.call_count == 2
+        key.assert_called_once()
+        mid = (left.get_position().x0 + right.get_position().x1) / 2
+        x = key.call_args.kwargs["x"]
+        assert left.get_position().x0 + x * left.get_position().width == pytest.approx(mid)
+        for ax, name in ((left, "Lisbon"), (right, "Tokyo")):
+            texts = {t.get_text().strip() for t in ax.texts}
+            assert name in texts and {"2,500 km", "5,000 km"} <= texts
+        assert not any("Antipode" in t.get_text() for t in right.texts)
+
+    @pytest.mark.parametrize("beside_up, expected", [(None, 30), (90, 90)])
+    def test_a_globe_beside_turns_with_the_first_unless_told(self, tmp_path, beside_up, expected):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=38.7, lon=-9.1, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path),
+                up=30, beside=(35.7, 139.7), beside_up=beside_up,
+            )
+        left, right = attribution.call_args.args[0].figure.axes
+        assert left.projection.up == 30 and right.projection.up == expected
+
+    def test_a_radius_map_beside_shows_the_radius_on_both(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=38.7, lon=-9.1, output_filename="m.png", zoom=6, dpi=20, output_dir=str(tmp_path),
+                radius_km=2_500, beside=(35.7, 139.7),
+            )
+        left, right = attribution.call_args.args[0].figure.axes
+        for ax in (left, right):
+            half = ax.projection.x_limits[1] * np.sin(2_500_000 / ortho.EARTH_RADIUS_M)
+            assert ax.get_xlim() == pytest.approx((-half, half))
 
     def test_ice_drawn_on_every_globe_and_credited(self, tmp_path):
         layers = IceLayers(sea_ice=(), land_ice=(), years={"N": 2026, "S": 2026})

@@ -547,13 +547,28 @@ def resolve_climate_mean(
     return CLIMATE_VARIABLES[name], resolve_climate_period(name, spec)
 
 
+def zoom_latitude(lat: float, beside: tuple[float, float] | None = None) -> float:
+    """The latitude a radius map's zoom is chosen for: with a globe *beside*, the centre nearer the equator.
+
+    Tiles cover the most ground there, so it needs the finest zoom.
+    """
+    return lat if beside is None else min(lat, beside[0], key=abs)
+
+
 def validate_render_options(
     dpi: int, koppen_alpha: float | None = None, both_hemispheres: bool = False, ice_year: int | None = None,
     elevation_alpha: float = 0.8, soil_alpha: float = 0.6, vegetation_alpha: float = 0.7,
     land_cover_year: int | None = None, zoom: int | None = None, radius_km: float | None = None,
-    tile_provider: str = "osm", lat: float = 0.0,
+    tile_provider: str = "osm", lat: float = 0.0, beside: tuple[float, float] | None = None,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
+    if beside is not None:
+        if both_hemispheres:
+            raise ValueError("the second globe shows the antipode or another place, not both")
+        beside_lat, beside_lon = beside
+        if not (-90 <= beside_lat <= 90 and -180 <= beside_lon <= 180):
+            raise ValueError(f"beside must be a latitude (-90 to 90) and longitude (-180 to 180), got {beside}")
+    lat = zoom_latitude(lat, beside)
     if radius_km is not None:
         if not (math.isfinite(radius_km) and MIN_RADIUS_KM <= radius_km <= MAX_RADIUS_KM):
             raise ValueError(f"radius_km must be between {MIN_RADIUS_KM:,} and {MAX_RADIUS_KM:,}, got {radius_km}")
@@ -569,9 +584,9 @@ def validate_render_options(
             f"ice_year must be between {FIRST_ICE_YEAR} and this year, got {ice_year}"
         )
     # Two globes double the width, so halve the cap to keep the same pixel budget
-    max_dpi = MAX_DPI // 2 if both_hemispheres else MAX_DPI
+    max_dpi = MAX_DPI // 2 if both_hemispheres or beside is not None else MAX_DPI
     if not MIN_DPI <= dpi <= max_dpi:
-        layout = " with both hemispheres" if both_hemispheres else ""
+        layout = " with both hemispheres" if both_hemispheres else " with two globes" if beside is not None else ""
         raise ValueError(f"dpi must be between {MIN_DPI} and {max_dpi}{layout}, got {dpi}")
     if koppen_alpha is not None and not 0.0 <= koppen_alpha <= 1.0:
         raise ValueError(f"koppen_alpha must be between 0 and 1, got {koppen_alpha}")
@@ -630,6 +645,9 @@ def generate_orthographic_map(
     precipitation: str | None = None,
     humidity: str | None = None,
     circles_from: tuple[float, float] | None = None,
+    beside: tuple[float, float] | None = None,
+    beside_name: str | None = None,
+    beside_up: float | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -688,6 +706,15 @@ def generate_orthographic_map(
         When True, draw a second globe beside the first, centred on the
         antipode, so the whole Earth is shown. Its distance circles are
         measured from (*lat*, *lon*) too. Limits *dpi* to ``MAX_DPI // 2``.
+    beside : (float, float), optional
+        (lat, lon) of a second globe drawn beside the first instead of the
+        antipode, with every layer, its own distance circles and, with
+        *radius_km*, the same radius. Not with *both_hemispheres*. Limits
+        *dpi* to ``MAX_DPI // 2``.
+    beside_name : str, optional
+        Name to mark the second globe's centre with, as *city_name* does the first's.
+    beside_up : float, optional
+        Compass bearing at the top of the second globe (default: *up*).
     ice : bool
         When True, draw polar ice: sea ice at its winter maximum (NSIDC
         March extent in the Arctic, September in the Antarctic) plus
@@ -760,7 +787,7 @@ def generate_orthographic_map(
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
         finer *zoom* to match (see :func:`zoom_for_radius`). Not with
-        *both_hemispheres*.
+        *both_hemispheres*; with *beside*, both globes show this radius.
 
     Returns
     -------
@@ -772,7 +799,7 @@ def generate_orthographic_map(
         dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
         elevation_alpha=elevation_alpha, soil_alpha=soil_alpha, vegetation_alpha=vegetation_alpha,
         land_cover_year=land_cover_year, zoom=zoom, radius_km=radius_km, tile_provider=tile_provider,
-        lat=lat,
+        lat=lat, beside=beside,
     )
     wind_period = resolve_wind_period(wind) if wind is not None else None
     land_cover_codes = resolve_land_cover_classes(land_cover_classes or [])
@@ -802,6 +829,9 @@ def generate_orthographic_map(
     if not math.isfinite(up):
         raise ValueError(f"up must be a compass bearing in degrees, got {up}")
     up = normalise_bearing(up)
+    beside_up = up if beside_up is None else beside_up
+    if not math.isfinite(beside_up):
+        raise ValueError(f"beside_up must be a compass bearing in degrees, got {beside_up}")
 
     # Resolve output path and create its folder now, not after all the work
     if output_dir:
@@ -822,7 +852,8 @@ def generate_orthographic_map(
     )
 
     # Steps 2-4: One full-hemisphere Orthographic globe per centre: the
-    # requested point and, with both_hemispheres, its antipode beside it.
+    # requested point and, beside it, its antipode (both_hemispheres) or
+    # another place (beside).
     # The Figure is built directly rather than through pyplot, so it is never
     # registered in pyplot's global state and is freed even if rendering fails.
     # Each globe is (lat, lon, bearing at the top); a turned far globe keeps
@@ -834,6 +865,9 @@ def generate_orthographic_map(
         anti_lat, anti_lon = antipode(lat, lon)
         centres.append((anti_lat, anti_lon, far_side_up(lat, lon, up, anti_lat, anti_lon)))
         logger.info("Adding the opposite hemisphere, centred at lat=%.4f, lon=%.4f", anti_lat, anti_lon)
+    elif beside is not None:
+        centres.append((beside[0], beside[1], normalise_bearing(beside_up)))
+        logger.info("Adding a second globe, centred at lat=%.4f, lon=%.4f", *beside)
     fig = Figure(figsize=(20 * len(centres), 20))
     if radius_km is not None:
         logger.info("Showing %s km around the centre", f"{radius_km:,g}")
@@ -845,7 +879,7 @@ def generate_orthographic_map(
     far = axes[1] if both_hemispheres else None
 
     # Keys go under the middle of the row, given in the first globe's axes coordinates
-    if far is None:
+    if len(axes) == 1:
         key_x = 0.5
     else:
         first = near.get_position()
@@ -1027,16 +1061,21 @@ def generate_orthographic_map(
     for ax in axes:
         ax.gridlines(draw_labels=False, color='black', alpha=0.3, linestyle='--')
 
-    # Step 7: City marker & label, and the antipode on the far globe
-    if city_name:
-        near.plot(
-            lon, lat,
+    # Step 7: City markers & labels, and the antipode on the far globe
+    named = [(near, lat, lon, city_name)]
+    if beside is not None:
+        named.append((axes[1], beside[0], beside[1], beside_name))
+    for ax, place_lat, place_lon, name in named:
+        if not name:
+            continue
+        ax.plot(
+            place_lon, place_lat,
             marker="o", markersize=10, markeredgewidth=2,
             color="#e74c3c", markeredgecolor="white",
             transform=ccrs.PlateCarree(), zorder=10,
         )
-        near.text(
-            lon, lat, f"  {city_name}",
+        ax.text(
+            place_lon, place_lat, f"  {name}",
             transform=ccrs.PlateCarree(),
             fontsize=14, fontweight="bold", color="white",
             va="center", ha="left", zorder=10,
@@ -1060,18 +1099,24 @@ def generate_orthographic_map(
             path_effects=[pe.withStroke(linewidth=3, foreground="black")],
         )
 
-    # Step 7b: Concentric distance circles, all measured from the requested
-    # point or from *circles_from*: 2 500 and 5 000 km on its globe, or round
-    # steps across a radius map; 17 500 and 15 000 km on the far globe
+    # Step 7b: Concentric distance circles, measured from the requested point
+    # or from *circles_from*: 2 500 and 5 000 km on its globe, or round steps
+    # across a radius map; 17 500 and 15 000 km on the far globe. A globe
+    # beside the first gets its own, from its centre or *circles_from*.
+    ring_globes = [(near, lat, lon)]
+    if beside is not None:
+        ring_globes.append((axes[1], beside[0], beside[1]))
+    for ax, centre_lat, centre_lon in ring_globes:
+        ring_lat, ring_lon = circles_from if circles_from is not None else (centre_lat, centre_lon)
+        if radius_km is not None:
+            # The map reaches this far from the circles' centre at most
+            offset_km = Geodesic().inverse((centre_lon, centre_lat), (ring_lon, ring_lat))[0, 0] / 1_000
+            disc = ax.projection.x_limits[1] * math.sin(radius_km * 1_000 / EARTH_RADIUS_M)
+            _draw_distance_circles(ax, ring_lon, ring_lat, within=disc,
+                                   radii_km=ring_radii(min(radius_km + offset_km, 19_000)))
+        else:
+            _draw_distance_circles(ax, ring_lon, ring_lat)
     ring_lat, ring_lon = circles_from if circles_from is not None else (lat, lon)
-    if radius_km is not None:
-        # The map reaches this far from the circles' centre at most
-        offset_km = Geodesic().inverse((lon, lat), (ring_lon, ring_lat))[0, 0] / 1_000
-        disc = near.projection.x_limits[1] * math.sin(radius_km * 1_000 / EARTH_RADIUS_M)
-        _draw_distance_circles(near, ring_lon, ring_lat, radii_km=ring_radii(min(radius_km + offset_km, 19_000)),
-                               within=disc)
-    else:
-        _draw_distance_circles(near, ring_lon, ring_lat)
     if far is not None:
         _draw_distance_circles(far, ring_lon, ring_lat, radii_km=FAR_SIDE_RADII_KM)
     if circles_from is not None:
@@ -1403,9 +1448,11 @@ def prompt_for_zoom(default_zoom: int = 3, min_zoom: int = 1, max_zoom: int = 4)
 
 def build_output_filename(
     city_slug: str, tile_provider: str, zoom: int, both_hemispheres: bool = False, up: float = 0.0,
-    radius_km: float | None = None,
+    radius_km: float | None = None, beside_slug: str | None = None,
 ) -> str:
     """Build a descriptive output filename from the render parameters."""
+    if beside_slug is not None:
+        city_slug = f"{city_slug}_and_{beside_slug}"
     sanitized_provider = tile_provider.replace(" ", "_")
     suffix = "_hemispheres" if both_hemispheres else ""
     if radius_km is not None:
@@ -1464,6 +1511,24 @@ def resolve_place(place: str) -> tuple[float, float]:
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise ValueError(f"{place!r} is out of range (latitude -90 to 90, longitude -180 to 180)")
     return lat, lon
+
+
+class NamedPlace(NamedTuple):
+    """A place to centre a globe on: its name (``None`` for LAT,LON), file-name slug and label."""
+    lat: float
+    lon: float
+    name: str | None
+    slug: str
+    label: str
+
+
+def resolve_named_place(place: str) -> NamedPlace:
+    """:func:`resolve_place`, with the city's name and slug, or ``"custom"`` for LAT,LON."""
+    lat, lon = resolve_place(place)
+    name = next((k for k in MAJOR_METROPOLISES if k.lower() == place.strip().lower()), None)
+    if name is None:
+        return NamedPlace(lat, lon, None, "custom", f"({lat}, {lon})")
+    return NamedPlace(lat, lon, name, str(MAJOR_METROPOLISES[name]["slug"]), name)
 
 
 def prompt_for_radius() -> float | None:
@@ -1643,6 +1708,12 @@ def build_cli_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Draw a second globe centred on the antipode, showing the whole Earth "
              f"(max --dpi {MAX_DPI // 2}).",
+    )
+    layout.add_argument(
+        "--beside",
+        metavar="PLACE",
+        help="Draw a second globe beside the first, centred on PLACE, a city name or LAT,LON; "
+             f"with --radius, both show that radius (max --dpi {MAX_DPI // 2}).",
     )
     orientation = layout.add_mutually_exclusive_group()
     orientation.add_argument(
@@ -2205,6 +2276,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         lat, lon = args.lat, args.lon
         city_slug = "custom"
         city_label = f"({lat}, {lon})"
+        city_name = None
     elif args.city:
         # Find the city (case-insensitive match)
         city_name = next((k for k in MAJOR_METROPOLISES if k.lower() == args.city.lower()), None)
@@ -2271,16 +2343,33 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         except ValueError as e:
             raise ValueError(f"--circles-from: {e}") from e
 
+    # A second globe beside the first, turned toward --up-toward from its own centre
+    beside = None
+    beside_up = None
+    if args.beside:
+        if args.both_hemispheres:
+            raise ValueError("Choose --both-hemispheres or --beside, not both.")
+        try:
+            beside = resolve_named_place(args.beside)
+        except ValueError as e:
+            raise ValueError(f"--beside: {e}") from e
+        if args.up_toward:
+            beside_up = initial_bearing(beside.lat, beside.lon, target_lat, target_lon)
+            logger.info("Direction toward %s from %s: bearing %.1f°", args.up_toward, beside.label, beside_up)
+        city_label = f"{city_label} and {beside.label}"
+    beside_centre = (beside.lat, beside.lon) if beside is not None else None
+
     # Zoom: as given, or the default for the whole globe or the radius
     zoom = args.zoom
     if zoom is None:
-        zoom = DEFAULT_ZOOM if args.radius is None else zoom_for_radius(args.radius, lat, args.provider)
+        zoom = DEFAULT_ZOOM if args.radius is None else zoom_for_radius(
+            args.radius, zoom_latitude(lat, beside_centre), args.provider)
     try:
         validate_render_options(
             dpi=args.dpi, koppen_alpha=args.koppen_alpha, both_hemispheres=args.both_hemispheres,
             ice_year=args.ice_year, elevation_alpha=args.elevation_alpha, soil_alpha=args.soil_alpha,
             vegetation_alpha=args.vegetation_alpha, land_cover_year=args.landcover_year,
-            zoom=zoom, radius_km=args.radius, tile_provider=args.provider, lat=lat,
+            zoom=zoom, radius_km=args.radius, tile_provider=args.provider, lat=lat, beside=beside_centre,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -2302,6 +2391,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
     else:
         output_file = build_output_filename(
             city_slug, args.provider, zoom, args.both_hemispheres, up, args.radius,
+            beside.slug if beside is not None else None,
         )
         output_dir = args.output_dir
 
@@ -2313,7 +2403,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         zoom=zoom,
         dpi=args.dpi,
         output_dir=output_dir,
-        city_name=city_label if city_slug != "custom" else None,
+        city_name=city_name if city_slug != "custom" else None,
         koppen=args.koppen,
         koppen_alpha=args.koppen_alpha,
         routes=routes,
@@ -2345,6 +2435,9 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         radius_km=args.radius,
         up=up,
         circles_from=circles_from,
+        beside=beside_centre,
+        beside_name=beside.name if beside is not None else None,
+        beside_up=beside_up,
     ))
 
 

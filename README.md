@@ -114,7 +114,7 @@ The main script is [ortho.py](ortho.py).
 - City marker and label overlay on the globe for named locations
 - Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii, or around another place (`--circles-from`)
 - Optional zoomed-in map: only the area within a chosen distance of the centre (2,500 km by default), as a disc, with finer tiles
-- Optional second globe centred on the antipode, so one image shows the whole Earth
+- Optional second globe centred on the antipode, so one image shows the whole Earth, or on any other place, to compare two side by side
 - Optional Köppen-Geiger climate classification overlay with compact legend, for all classes or only chosen ones
 - Optional Trewartha climate classification overlay, computed from CHELSA v2.1 monthly climate and terrain heights (with a highland group), for all classes or only chosen ones
 - Optional elevation layer: land coloured by height and hill-shaded, from open terrain tiles, with a key
@@ -283,6 +283,9 @@ python ortho.py --city lisbon --provider google_satellite --route routes/portugu
 # The whole Earth: Shanghai's globe and its antipode side by side (see "Both Hemispheres")
 python ortho.py --city shanghai --both-hemispheres
 
+# Two places side by side: Lisbon's globe and Tokyo's (see "Two Places Side by Side")
+python ortho.py --city lisbon --beside tokyo
+
 # Polar ice at its latest winter maximum, or at a chosen year's (see "Polar Ice")
 python ortho.py --city moscow --ice
 python ortho.py --lat 90 --lon 0 --ice-year 2012
@@ -379,6 +382,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--route-legend` | Add a key below the globe naming each route next to its colour | off |
 | `--radius [KM]` | Zoom in: show only the area within KM of the centre, 100–10,000 (not with `--both-hemispheres`) | off (`2500` when given alone) |
 | `--both-hemispheres` | Draw a second globe centred on the antipode, showing the whole Earth; `--dpi` up to 600 | off |
+| `--beside PLACE` | Draw a second globe beside the first, centred on a city or `LAT,LON` (not with `--both-hemispheres`); `--dpi` up to 600 | — |
 | `--up BEARING` | Compass bearing to put at the top, in degrees clockwise from north | `0` |
 | `--up-toward PLACE` | Put the direction toward a city or `LAT,LON` at the top (instead of `--up`) | — |
 | `--circles-from PLACE` | Measure the distance circles from a city or `LAT,LON` instead of the map's centre, marked with a hollow ring | the centre |
@@ -474,7 +478,8 @@ orthographic_map_paris_osm_z3.png
 ```
 
 A radius map adds `_r<km>km`, both hemispheres `_hemispheres` and a turned
-globe `_up<bearing>`, e.g. `orthographic_map_tokyo_osm_z8_r800km.png`.
+globe `_up<bearing>`, e.g. `orthographic_map_tokyo_osm_z8_r800km.png`; a globe
+beside the first joins the two places, as in `orthographic_map_lisbon_and_tokyo_osm_z3.png`.
 
 ### Web App
 
@@ -539,6 +544,7 @@ generate_orthographic_map(
     routes=None,           # optional: list of Route objects, see "Route Overlays"
     route_legend=False,    # optional: add a key naming each route
     both_hemispheres=False,  # optional: add a globe centred on the antipode
+    beside=None,           # optional: (lat, lon) of a second globe instead, with beside_name="Tokyo" to label it
     radius_km=None,        # optional: e.g. 2500 shows only that far from the centre (raise zoom to suit)
     wind=None,             # optional: prevailing winds for "year", "djf"…"son" or a month such as "july"
     temperature=None,      # optional: mean temperature for a period as for wind; or precipitation=, humidity=
@@ -607,6 +613,8 @@ The New York sample above was rendered with
 - With `--both-hemispheres` the far globe turns to match: the point at the top
   of the near globe is also at the top of the far one, so the pair stays two
   halves of one Earth.
+- With `--beside`, `--up` turns both globes by the same bearing, and
+  `--up-toward` turns each toward the place from its own centre.
 - Turned globes are computed on a sphere of the Earth's mean radius rather than
   the WGS-84 ellipsoid, a difference far below a pixel at globe scale. North-up
   renders are unchanged.
@@ -639,6 +647,31 @@ python ortho.py --city lisbon --provider google_satellite --route routes/portugu
 - The image is twice as wide (about 9,600 px at 300 DPI), so `--dpi` is
   capped at 600 instead of 1,200 to keep the same memory budget. Google
   renders download tiles for both globes.
+
+## Two Places Side by Side
+
+`--beside PLACE` (a city or `LAT,LON`; `beside=(lat, lon)` in the API,
+`beside` in recipes, "Second globe beside it" in the web app) draws the second
+globe centred on any place instead of the antipode, to compare two parts of the
+world at the same scale:
+
+```powershell
+python ortho.py --city lisbon --beside tokyo
+python ortho.py --city lisbon --beside tokyo --radius 2500 --koppen
+```
+
+- Each globe is marked with its place's name (a `LAT,LON` place is left
+  unmarked, as the first globe's is) and gets its own distance circles, from
+  its centre or from `--circles-from`.
+- Every layer is drawn on both globes; each key is drawn once, centred under
+  the pair.
+- With `--radius`, both globes show that radius. The default zoom suits the
+  centre nearer the equator, where the tiles cover the most ground.
+- `--up` turns both globes by the same bearing; `--up-toward` turns each toward
+  the place from its own centre.
+- Auto-named files join the two places: `orthographic_map_lisbon_and_tokyo_osm_z3.png`.
+- As with both hemispheres, `--dpi` is capped at 600. It cannot be combined
+  with `--both-hemispheres`, and the interactive prompt does not offer it.
 
 ## Route Overlays
 
@@ -782,7 +815,8 @@ python ortho.py --config recipes/alps_radius.toml
   whole-globe maps too, with the usual 2,500 and 5,000 km rings.
 - The climate, soil, crop, ice, wind and route layers are drawn as usual; the
   climate and soil grids (7–15 km) look blocky on small radii.
-- It works with `--up` and `--up-toward`, but not with `--both-hemispheres`.
+- It works with `--up`, `--up-toward` and `--beside` (both globes show the
+  radius), but not with `--both-hemispheres`.
 - Auto-named files get an `_r<km>km` suffix, for example
   `orthographic_map_tokyo_osm_z8_r800km.png`.
 

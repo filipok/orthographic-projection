@@ -76,6 +76,7 @@ function buildRequest() {
   const view = radio("view");
   if (view === "hemispheres") req.both_hemispheres = true;
   if (view === "radius") req.radius = Number($("radius").value);
+  if (view !== "hemispheres" && $("beside").value.trim()) req.beside = $("beside").value.trim();
   if (radio("orient") === "bearing") {
     const up = Number($("up").value || 0);
     if (up) req.up = up;

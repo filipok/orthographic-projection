@@ -110,6 +110,12 @@ class TestMaps:
         assert renders[0]["circles_from"] == (51.5074, -0.1278)
         assert "--circles-from London" in status["command"]
 
+    def test_a_globe_beside(self, client, renders):
+        _, status = _render(client, city="Lisbon", beside="Tokyo")
+        assert renders[0]["beside"] == (35.6762, 139.6503) and renders[0]["beside_name"] == "Tokyo"
+        assert status["label"] == "Lisbon and Tokyo"
+        assert "--beside Tokyo" in status["command"]
+
     def test_coordinates(self, client, renders):
         _, status = _render(client, lat=-33.9, lon=18.4, up_toward="London")
         assert status["label"] == "(-33.9, 18.4)" and renders[0]["city_name"] is None
