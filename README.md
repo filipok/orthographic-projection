@@ -29,6 +29,12 @@ The main script is [ortho.py](ortho.py).
 *Both hemispheres: Lisbon's globe and, beside it, the globe centred on its antipode in the Tasman Sea, which shows Magellan's Pacific crossing and Elcano's return across the Indian Ocean (Google Satellite, zoom 3).*
 
 <p align="center">
+  <img src="sample_lisbon_tokyo.png" alt="Two globes side by side, centred on Lisbon and on Tokyo, showing only two Köppen-Geiger climates: the yellow Mediterranean climates around the Mediterranean, in California, central Chile, the Cape and southern Australia, and the pale green humid subtropical climate in the south-eastern United States, southern Brazil, southern China, Japan and eastern Australia" width="97%">
+</p>
+
+*Two places side by side: Lisbon and Tokyo, at nearly the same latitude (38.7° and 35.7°N), with only two Köppen-Geiger climates: Mediterranean (Cs, yellow) on the continents' west coasts, and humid subtropical (Cfa, pale green) on their east coasts (OSM, zoom 3).*
+
+<p align="center">
   <img src="sample_zheng_he_voyages.png" alt="Satellite map of the Indian Ocean within 5,500 km of southern India with the voyages of Zheng He: a red route from Nanjing down the Chinese coast past Champa, Java, Palembang, Malacca and Sumatra to Ceylon and Calicut; yellow on to Hormuz; green along Arabia to Aden and across to Mogadishu, Brava and Malindi; white squadrons to Siam, Bengal and Jeddah for Mecca; Köppen-Geiger deserts and steppes shaded over Arabia, Iran and Central Asia, dry-winter continental climates in northeast China and tundra and ice cap on the Tibetan Plateau; dashed circles 2,500, 5,000 and 7,500 km from Nanjing; and keys" width="60%">
 </p>
 
@@ -441,6 +447,7 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `london_koppen.toml` | London with the Köppen-Geiger climate overlay |
 | `portuguese_voyages.toml` | The Portuguese voyages of discovery, with a key |
 | `portuguese_hemispheres.toml` | The Portuguese voyages on both hemispheres |
+| `lisbon_tokyo.toml` | Lisbon and Tokyo side by side: Mediterranean climates on the west coasts, humid subtropical on the east |
 | `viking_routes.toml` | The Viking Age, with polar ice |
 | `zheng_he_voyages.toml` | The voyages of Zheng He's treasure fleets, a radius map of the Indian Ocean with the Köppen-Geiger B, Dw, E and EF (ice cap) climates |
 | `london_wheat.toml` | Where wheat is grown, centred on London |
@@ -658,6 +665,7 @@ world at the same scale:
 ```powershell
 python ortho.py --city lisbon --beside tokyo
 python ortho.py --city lisbon --beside tokyo --radius 2500 --koppen
+python ortho.py --config recipes/lisbon_tokyo.toml   # the Lisbon and Tokyo sample above
 ```
 
 - Each globe is marked with its place's name (a `LAT,LON` place is left
