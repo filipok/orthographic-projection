@@ -1,0 +1,9 @@
+# Madagascar's ecoregions, 1,200 km around the island: rainforest down the east,
+# dry deciduous forest in the west, spiny thickets in the south.
+lat = -19
+lon = 46.5
+provider = "osm_plain"
+radius = 1200
+ecoregions = true
+biome-alpha = 0.7
+output = "orthographic_map_madagascar_osm_plain_z8_r1200km_ecoregions.png"

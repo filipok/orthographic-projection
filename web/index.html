@@ -103,7 +103,7 @@
       </fieldset>
 
       <details>
-        <summary>Land: relief, vegetation, soil</summary>
+        <summary>Land: relief, vegetation, biomes, soil</summary>
         <label class="check"><input id="elevation" type="checkbox"> Elevation and relief shading</label>
         <label class="field slider" data-show="elevation" hidden><span>Opacity <output for="elevation-alpha"></output></span>
           <input id="elevation-alpha" type="range" min="0" max="1" step="0.05"></label>
@@ -124,6 +124,18 @@
         <label class="field slider" data-show="vegetation:landcover,ndvi" hidden>
           <span>Opacity <output for="vegetation-alpha"></output></span>
           <input id="vegetation-alpha" type="range" min="0" max="1" step="0.05"></label>
+
+        <label class="field"><span>Biomes (RESOLVE, ~150 MB once)</span>
+          <select id="biomes">
+            <option value="">None</option>
+            <option value="biomes">Biomes</option>
+            <option value="ecoregions">Ecoregions</option>
+          </select></label>
+        <label class="field" data-show="biomes:biomes,ecoregions" hidden><span>Only these biomes</span>
+          <input id="biome-classes" type="text" placeholder="e.g. temperate, mangroves"></label>
+        <label class="field slider" data-show="biomes:biomes,ecoregions" hidden>
+          <span>Opacity <output for="biome-alpha"></output></span>
+          <input id="biome-alpha" type="range" min="0" max="1" step="0.05"></label>
 
         <label class="field"><span>Soil (SoilGrids)</span>
           <select id="soil">

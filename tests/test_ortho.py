@@ -750,6 +750,13 @@ class TestCLIParser:
                             "--soil-alpha", "0.7"])
         assert args.soil and args.soil_class == ["CH", "Podzols"] and args.soil_alpha == 0.7
 
+    def test_biome_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert not args.biomes and not args.ecoregions and args.biome_class is None and args.biome_alpha == 0.6
+        args = self._parse(["--city", "nyc", "--ecoregions", "--biome-class", "temperate", "--biome-class", "14",
+                            "--biome-alpha", "0.5"])
+        assert args.ecoregions and args.biome_class == ["temperate", "14"] and args.biome_alpha == 0.5
+
     def test_soil_property_flags(self):
         args = self._parse(["--city", "nyc"])
         assert args.soil_property is None and args.soil_depth is None
@@ -984,6 +991,7 @@ class TestRunCLIValidation:
             elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
+            biomes=False, biome_class=None, ecoregions=False, biome_alpha=0.6,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1353,6 +1361,23 @@ class TestRunCLIValidation:
                 ortho.run_cli(args)
         render.assert_not_called()
 
+    def test_biomes_passed_to_renderer(self):
+        args = self._make_args(city="paris", ecoregions=True, biome_class=["mangroves"], biome_alpha=0.5)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert kwargs["ecoregions"] is True and kwargs["biomes"] is False
+        assert kwargs["biome_classes"] == ["mangroves"] and kwargs["biome_alpha"] == 0.5
+
+    @pytest.mark.parametrize("overrides", [{"biome_class": ["jungle"]}, {"biomes": True, "biome_alpha": 1.5}])
+    def test_bad_biome_options_exit_before_render(self, overrides):
+        args = self._make_args(city="paris", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render:
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+
     def test_soil_property_passed_to_renderer(self):
         args = self._make_args(city="paris", soil_property="clay", soil_depth="15-30cm")
         with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
@@ -1572,6 +1597,44 @@ class TestGenerateOrthographicMapIntegration:
         assert key.call_args.kwargs["classes"] == codes
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.SOIL_ATTRIBUTION]
 
+    @pytest.mark.parametrize("ecoregions", [False, True])
+    def test_biome_classes_imply_the_overlay_key_and_credit(self, tmp_path, ecoregions):
+        layer = object()
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_ecoregions", return_value=layer), \
+                mock.patch.object(ortho, "add_ecoregion_overlay") as overlay, \
+                mock.patch.object(ortho, "visible_ecoregions", return_value="visible") as visible, \
+                mock.patch.object(ortho, "add_biome_legend") as biome_key, \
+                mock.patch.object(ortho, "add_ecoregion_legend") as ecoregion_key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path),
+                biome_classes=["temperate"], ecoregions=ecoregions, biome_alpha=0.5, beside=(35.7, 139.7),
+            )
+        codes = ortho.resolve_biome_classes(["temperate"])
+        assert overlay.call_count == 2                                   # one per globe
+        assert overlay.call_args.args[1] is layer
+        assert overlay.call_args.kwargs == dict(alpha=0.5, regrid_shape=mock.ANY, classes=codes,
+                                                ecoregions=ecoregions)
+        assert len(visible.call_args.args[0]) == 2                      # the key counts both globes
+        key, unused = (ecoregion_key, biome_key) if ecoregions else (biome_key, ecoregion_key)
+        assert key.call_args.args[1:] == ("visible", layer) and key.call_args.kwargs["classes"] == codes
+        unused.assert_not_called()
+        credit = ortho.ECOREGION_ATTRIBUTION if ecoregions else ortho.BIOME_ATTRIBUTION
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], credit]
+
+    def test_biome_failure_still_saves_map_without_key_or_credit(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_ecoregions", side_effect=ortho.BiomeDataError("offline")), \
+                mock.patch.object(ortho, "add_biome_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path), biomes=True,
+            )
+        assert os.path.exists(result)
+        key.assert_not_called()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
     def test_soil_failure_still_saves_map_without_key_or_credit(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None),                 mock.patch.object(ortho, "add_soil_overlay", side_effect=ortho.SoilDataError("offline")),                 mock.patch.object(ortho, "add_soil_legend") as key,                 mock.patch.object(ortho, "_add_attribution") as attribution:
             result = ortho.generate_orthographic_map(
@@ -1662,6 +1725,16 @@ class TestGenerateOrthographicMapIntegration:
         ({"land_cover_year": 2000}, "land_cover_year"),
     ])
     def test_bad_vegetation_fails_before_any_work(self, tmp_path, kwargs, message):
+        with mock.patch.object(ortho, "create_tile_source") as create:
+            with pytest.raises(ValueError, match=message):
+                ortho.generate_orthographic_map(lat=0, lon=0, output_filename=str(tmp_path / "m.png"), **kwargs)
+        create.assert_not_called()
+
+    @pytest.mark.parametrize("kwargs, message", [
+        ({"biome_classes": ["jungle"]}, "Unknown biome"),
+        ({"biomes": True, "biome_alpha": -0.1}, "biome_alpha"),
+    ])
+    def test_bad_biome_options_fail_before_any_work(self, tmp_path, kwargs, message):
         with mock.patch.object(ortho, "create_tile_source") as create:
             with pytest.raises(ValueError, match=message):
                 ortho.generate_orthographic_map(lat=0, lon=0, output_filename=str(tmp_path / "m.png"), **kwargs)

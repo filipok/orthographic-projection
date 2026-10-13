@@ -117,6 +117,14 @@ function buildRequest() {
     req.ndvi = $("ndvi").value.trim() || "july";
   }
   if (vegetation) req.vegetation_alpha = changed("vegetation-alpha", options.alpha.vegetation);
+  const biomes = $("biomes").value;
+  if (biomes) {
+    const classes = list($("biome-classes").value);
+    if (classes.length) req.biome_class = classes;
+    if (biomes === "ecoregions") req.ecoregions = true;
+    else if (!classes.length) req.biomes = true;
+    req.biome_alpha = changed("biome-alpha", options.alpha.biome);
+  }
   const soil = $("soil").value;
   if (soil === "groups") {
     const classes = list($("soil-classes").value);
@@ -249,6 +257,10 @@ function fillForm(req) {
     $("ndvi").value = req.ndvi;
   }
   set("vegetation-alpha", req.vegetation_alpha);
+  if (req.ecoregions) $("biomes").value = "ecoregions";
+  else if (req.biomes || req.biome_class) $("biomes").value = "biomes";
+  $("biome-classes").value = (req.biome_class || []).join(", ");
+  set("biome-alpha", req.biome_alpha);
   if (req.soil || req.soil_class) {
     $("soil").value = "groups";
     $("soil-classes").value = (req.soil_class || []).join(", ");
@@ -606,6 +618,7 @@ async function init() {
   $("climate-alpha").value = options.alpha.classification;
   $("elevation-alpha").value = options.alpha.elevation;
   $("vegetation-alpha").value = options.alpha.vegetation;
+  $("biome-alpha").value = options.alpha.biome;
   $("soil-alpha").value = options.alpha.soil;
   $("crops").title = `${options.crops.length} crops, e.g. ${options.crops.slice(0, 8).join(", ")}…`;
   for (const el of document.querySelectorAll(".editable")) el.hidden = !options.editable;

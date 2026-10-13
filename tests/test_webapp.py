@@ -117,6 +117,13 @@ class TestMaps:
         _, status = _render(client, city="Lisbon", sea_temperature="jan")
         assert renders[1]["sea_temperature"] == "jan" and "--sea-temperature jan" in status["command"]
 
+    def test_biomes_and_ecoregions(self, client, renders):
+        _, status = _render(client, city="Lisbon", ecoregions=True, biome_class=["temperate", "rock"],
+                            biome_alpha=0.5)
+        assert renders[0]["ecoregions"] is True and renders[0]["biome_classes"] == ["temperate", "rock"]
+        assert renders[0]["biome_alpha"] == 0.5
+        assert "--biome-class temperate --biome-class rock --ecoregions --biome-alpha 0.5" in status["command"]
+
     def test_a_globe_beside(self, client, renders):
         _, status = _render(client, city="Lisbon", beside="Tokyo")
         assert renders[0]["beside"] == (35.6762, 139.6503) and renders[0]["beside_name"] == "Tokyo"

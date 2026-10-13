@@ -50,6 +50,10 @@ from rotation import (
 from elevation import (
     ELEVATION_ATTRIBUTION, RELIEF_ZOOM, TerrariumTiles, add_elevation_legend, relief_rgba,
 )
+from biomes import (
+    BIOME_ATTRIBUTION, ECOREGION_ATTRIBUTION, BiomeDataError, add_biome_legend, add_ecoregion_legend,
+    add_ecoregion_overlay, load_ecoregions, resolve_biome_classes, visible_ecoregions,
+)
 from soil import (
     SOIL_ATTRIBUTION, SoilDataError, add_soil_legend, add_soil_overlay, resolve_soil_classes,
 )
@@ -564,6 +568,7 @@ def validate_render_options(
     elevation_alpha: float = 0.8, soil_alpha: float = 0.6, vegetation_alpha: float = 0.7,
     land_cover_year: int | None = None, zoom: int | None = None, radius_km: float | None = None,
     tile_provider: str = "osm", lat: float = 0.0, beside: tuple[float, float] | None = None,
+    biome_alpha: float = 0.6,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -600,6 +605,8 @@ def validate_render_options(
         raise ValueError(f"soil_alpha must be between 0 and 1, got {soil_alpha}")
     if not 0.0 <= vegetation_alpha <= 1.0:
         raise ValueError(f"vegetation_alpha must be between 0 and 1, got {vegetation_alpha}")
+    if not 0.0 <= biome_alpha <= 1.0:
+        raise ValueError(f"biome_alpha must be between 0 and 1, got {biome_alpha}")
     if land_cover_year is not None and not FIRST_LAND_COVER_YEAR <= land_cover_year <= LATEST_LAND_COVER_YEAR:
         raise ValueError(f"land_cover_year must be between {FIRST_LAND_COVER_YEAR} and "
                          f"{LATEST_LAND_COVER_YEAR}, got {land_cover_year}")
@@ -643,6 +650,10 @@ def generate_orthographic_map(
     land_cover_year: int | None = None,
     ndvi: str | None = None,
     vegetation_alpha: float = 0.7,
+    biomes: bool = False,
+    biome_classes: Sequence[str] | None = None,
+    ecoregions: bool = False,
+    biome_alpha: float = 0.6,
     wind: str | None = None,
     radius_km: float | None = None,
     temperature: str | None = None,
@@ -780,6 +791,19 @@ def generate_orthographic_map(
         ``"2026-07"``, or a month name or number for its latest year.
     vegetation_alpha : float
         Opacity of the land cover or NDVI layer (0–1).
+    biomes : bool
+        When True, colour the land by its biome (RESOLVE Ecoregions 2017, see
+        :mod:`biomes`), above the vegetation and below the climate colours,
+        with a key naming the biomes on the map.
+    biome_classes : sequence of str, optional
+        Show only these biomes, by number or words from their names
+        (``"temperate"``, ``"forest"``, ``"mangroves"``, see
+        :func:`biomes.resolve_biome_classes`). Implies *biomes*.
+    ecoregions : bool
+        Colour each of the 846 ecoregions instead of their biomes (only those
+        of *biome_classes*, if given), with a key naming the largest on the map.
+    biome_alpha : float
+        Opacity of the biome or ecoregion layer (0–1).
     wind : str, optional
         Draw the prevailing winds (NCEP/NCAR 1991–2020 mean 10 m wind, see
         :mod:`wind`) for ``"year"``, a season (``"djf"``, ``"mam"``,
@@ -816,7 +840,7 @@ def generate_orthographic_map(
         dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
         elevation_alpha=elevation_alpha, soil_alpha=soil_alpha, vegetation_alpha=vegetation_alpha,
         land_cover_year=land_cover_year, zoom=zoom, radius_km=radius_km, tile_provider=tile_provider,
-        lat=lat, beside=beside,
+        lat=lat, beside=beside, biome_alpha=biome_alpha,
     )
     wind_period = resolve_wind_period(wind) if wind is not None else None
     land_cover_codes = resolve_land_cover_classes(land_cover_classes or [])
@@ -826,6 +850,8 @@ def generate_orthographic_map(
         raise ValueError("choose one vegetation layer: land cover or NDVI")
     soil_codes = resolve_soil_classes(soil_classes or [])
     soil = soil or bool(soil_codes)
+    biome_codes = resolve_biome_classes(biome_classes or [])
+    biomes = biomes or ecoregions or bool(biome_codes)
     prop, prop_depth = resolve_soil_property(soil_property, soil_depth) if soil_property else (None, None)
     if soil_depth and not soil_property:
         raise ValueError("soil_depth needs a soil_property")
@@ -976,6 +1002,21 @@ def generate_orthographic_map(
         for ax in axes:
             ax.add_image(vegetation, vegetation_zoom, regrid_shape=regrid_shape,
                          interpolation="nearest", zorder=2)
+
+    # Step 5a3: Biomes or ecoregions (above the vegetation, below the climate colours)
+    biome_layer = None
+    if biomes:
+        what = "ecoregions" if ecoregions else "biomes"
+        logger.info("Applying %s (alpha=%.2f) …", what, biome_alpha)
+        try:
+            biome_layer = load_ecoregions()
+            for ax in axes:
+                add_ecoregion_overlay(ax, biome_layer, alpha=biome_alpha, regrid_shape=regrid_shape,
+                                      classes=biome_codes or None, ecoregions=ecoregions)
+        except (BiomeDataError, OSError) as e:
+            # Missing data should not throw away the rest of the map
+            logger.warning("Skipping %s: %s", what, e)
+            biome_layer = None
 
     # Step 5b: Climate overlay, Köppen-Geiger or Trewartha (above tiles, below
     # gridlines), with one key; its credit lines are kept for step 7e
@@ -1202,6 +1243,10 @@ def generate_orthographic_map(
                                           classes=land_cover_codes or None, x=key_x))
     elif ndvi_month:
         keys.append(add_ndvi_legend(near, *ndvi_month, x=key_x))
+    if biome_layer is not None:
+        add_key = add_ecoregion_legend if ecoregions else add_biome_legend
+        keys.append(add_key(near, visible_ecoregions(axes, biome_layer), biome_layer, x=key_x,
+                            classes=biome_codes or None))
     if soil_drawn:
         keys.append(add_soil_legend(near, x=key_x, classes=soil_codes or None))
     if property_drawn and prop is not None and prop_depth is not None:
@@ -1218,6 +1263,8 @@ def generate_orthographic_map(
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
     if vegetation_credit:
         credits.append(vegetation_credit)
+    if biome_layer is not None:
+        credits.append(ECOREGION_ATTRIBUTION if ecoregions else BIOME_ATTRIBUTION)
     if climate_mean_drawn:
         climate_credits.append(CLIMATE_ATTRIBUTION)
     if sea_credit:
@@ -1919,6 +1966,35 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Opacity of the land cover or NDVI layer (0-1, default: 0.7).",
     )
 
+    eco = parser.add_argument_group("Biomes and ecoregions (RESOLVE Ecoregions 2017)")
+    eco.add_argument(
+        "--biomes",
+        action="store_true",
+        help="Colour the land by its biome (14 biomes and Rock & Ice; one-time download of ~150 MB), "
+             "with a key.",
+    )
+    eco.add_argument(
+        "--biome-class",
+        action="append",
+        default=None,
+        metavar="BIOME",
+        help="Show only this biome, by number (1-14) or words from its name (e.g. mangroves, "
+             "temperate, forest, rock); repeat for several. Implies --biomes.",
+    )
+    eco.add_argument(
+        "--ecoregions",
+        action="store_true",
+        help="Colour each of the 846 ecoregions instead of their biomes (with --biome-class, only "
+             "those biomes' ecoregions); the key names the largest on the map.",
+    )
+    eco.add_argument(
+        "--biome-alpha",
+        type=float,
+        default=0.6,
+        metavar="ALPHA",
+        help="Opacity of the biome or ecoregion layer (0-1, default: 0.6).",
+    )
+
     soils = parser.add_argument_group("Soil (SoilGrids)")
     soils.add_argument(
         "--soil",
@@ -2252,6 +2328,16 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             except ValueError as e:
                 print(f"{e}\n")
 
+    biome_input = input(
+        "Biomes (RESOLVE): [b]iomes, [e]coregions, or blank for none: "
+    ).strip().lower()
+    enable_biomes = biome_input in ("b", "biomes", "y", "yes")
+    enable_ecoregions = biome_input in ("e", "ecoregions")
+    biome_classes: list[str] = []
+    if enable_biomes or enable_ecoregions:
+        biome_classes = prompt_for_climate_classes(
+            resolve_biome_classes, "e.g. temperate, mangroves", what="Biomes")
+
     wind_period = None
     if input("Draw the prevailing winds? [y/N]: ").strip().lower() in ("y", "yes"):
         while True:
@@ -2315,6 +2401,9 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             land_cover=enable_land_cover,
             land_cover_classes=land_cover_classes,
             ndvi=ndvi_month,
+            biomes=enable_biomes,
+            biome_classes=biome_classes,
+            ecoregions=enable_ecoregions,
             wind=wind_period,
             radius_km=radius_km,
             **climate_means,
@@ -2381,6 +2470,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
+    resolve_biome_classes(args.biome_class or [])
     resolve_land_cover_classes(args.landcover_class or [])
     if args.ndvi:
         resolve_ndvi_month(args.ndvi)
@@ -2454,6 +2544,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             ice_year=args.ice_year, elevation_alpha=args.elevation_alpha, soil_alpha=args.soil_alpha,
             vegetation_alpha=args.vegetation_alpha, land_cover_year=args.landcover_year,
             zoom=zoom, radius_km=args.radius, tile_provider=args.provider, lat=lat, beside=beside_centre,
+            biome_alpha=args.biome_alpha,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -2512,6 +2603,10 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         land_cover_year=args.landcover_year,
         ndvi=args.ndvi,
         vegetation_alpha=args.vegetation_alpha,
+        biomes=args.biomes,
+        biome_classes=args.biome_class,
+        ecoregions=args.ecoregions,
+        biome_alpha=args.biome_alpha,
         wind=args.wind,
         temperature=args.temperature,
         precipitation=args.precipitation,

@@ -1,0 +1,7 @@
+# Africa's biomes: the Congo rainforest ringed by savannas, the Sahara and Namib,
+# and Mediterranean scrub at the Cape and along the Maghreb, on a plain map.
+lat = 5
+lon = 20
+provider = "osm_plain"
+biomes = true
+output = "orthographic_map_africa_osm_plain_z3_biomes.png"
