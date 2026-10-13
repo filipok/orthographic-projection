@@ -16,6 +16,11 @@ Settings come from the environment, so the same code runs locally or hosted:
 - ``ORTHO_WEB_MAX_DPI``: the largest DPI a request may ask for (default 300).
 - ``ORTHO_WEB_MAX_QUEUE``: how many maps may wait or render at once (default 10).
 - ``ORTHO_WEB_KEEP``: how many finished maps to keep (default 50).
+- ``ORTHO_WEB_RECIPES_DIR``, ``ORTHO_WEB_ROUTES_DIR``: the recipes and route
+  files the form loads and saves (default: the ``recipes`` and ``routes``
+  folders beside this file).
+- ``ORTHO_WEB_READ_ONLY``: ``1`` to offer recipes and routes without saving,
+  deleting or uploading any (for a server others can reach).
 """
 
 from __future__ import annotations
@@ -43,6 +48,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 import ortho
+import recipe_store
 from crops import CROP_NAMES
 from ice import FIRST_ICE_YEAR
 from soil_properties import DEPTHS as SOIL_DEPTHS, SOIL_PROPERTIES
@@ -50,7 +56,8 @@ from vegetation import FIRST_LAND_COVER_YEAR, LATEST_LAND_COVER_YEAR
 
 logger = logging.getLogger(__name__)
 
-WEB_DIR = Path(__file__).resolve().parent / "web"
+HERE = Path(__file__).resolve().parent
+WEB_DIR = HERE / "web"
 DEFAULT_WEB_DPI = 150
 
 PERIODS = [
@@ -73,6 +80,9 @@ class Settings:
     max_dpi: int = 300
     max_queue: int = 10
     keep: int = 50
+    recipes_dir: str = str(HERE / "recipes")
+    routes_dir: str = str(HERE / "routes")
+    read_only: bool = False
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -83,14 +93,17 @@ class Settings:
             max_dpi=int(env.get("ORTHO_WEB_MAX_DPI", 300)),
             max_queue=int(env.get("ORTHO_WEB_MAX_QUEUE", 10)),
             keep=int(env.get("ORTHO_WEB_KEEP", 50)),
+            recipes_dir=env.get("ORTHO_WEB_RECIPES_DIR") or str(HERE / "recipes"),
+            routes_dir=env.get("ORTHO_WEB_ROUTES_DIR") or str(HERE / "routes"),
+            read_only=env.get("ORTHO_WEB_READ_ONLY", "").strip().lower() in ("1", "true", "yes", "on"),
         )
 
 
 class MapRequest(BaseModel):
     """A map, in the CLI's options by their argparse names; anything left out takes the CLI's default.
 
-    Run-level options (output paths, the cache, recipes) are the server's, and
-    routes are not offered yet, since they need files.
+    Run-level options (output paths, the cache) are the server's. Routes are
+    named by their file in the server's routes folder.
     """
     model_config = ConfigDict(extra="forbid")
 
@@ -132,6 +145,8 @@ class MapRequest(BaseModel):
     ice: bool | None = None
     ice_year: int | None = None
     crop: list[str] | None = None
+    route: list[str] | None = None
+    route_legend: bool | None = None
 
     def given(self) -> dict[str, Any]:
         """The options set, without blanks: ``None``, ``""`` and empty lists."""
@@ -142,11 +157,19 @@ class MapRequest(BaseModel):
 _FLAGS = {"koppen_alpha": "--climate-alpha"}
 
 
-def cli_command(request: MapRequest, dpi: int) -> str:
+def _shown_path(path: str) -> str:
+    """*path* relative to this folder when it is inside it (as the command is run from here), else as is."""
+    relative = os.path.relpath(path, HERE)
+    return Path(path).as_posix() if relative.startswith("..") else Path(relative).as_posix()
+
+
+def cli_command(request: MapRequest, dpi: int, routes_dir: str = str(HERE / "routes")) -> str:
     """The ``ortho.py`` command line that draws the same map as *request*."""
     tokens = ["python", "ortho.py"]
     for name, value in {**request.given(), "dpi": dpi}.items():
         flag = _FLAGS.get(name, "--" + name.replace("_", "-"))
+        if name == "route":
+            value = [_shown_path(os.path.join(routes_dir, route)) for route in value]
         if value is True:
             tokens.append(flag)
         elif value is False:
@@ -175,6 +198,7 @@ def request_args(request: MapRequest, settings: Settings, output_dir: str) -> ar
     args = ortho.build_cli_parser().parse_args([])
     for name, value in given.items():
         setattr(args, name, value)
+    args.route = [recipe_store.route_path(settings.routes_dir, route) for route in given.get("route", [])]
     args.dpi = dpi
     args.output = None
     args.output_dir = output_dir
@@ -270,8 +294,8 @@ class MapQueue:
         job_dir = os.path.join(self.settings.output_dir, job_id)
         args = request_args(request, self.settings, job_dir)
         plan = ortho.prepare_render(args)
-        job = Job(job_id, plan.label, plan.kwargs["output_filename"], cli_command(request, args.dpi),
-                  plan.kwargs)
+        job = Job(job_id, plan.label, plan.kwargs["output_filename"],
+                  cli_command(request, args.dpi, self.settings.routes_dir), plan.kwargs)
         with self._lock:
             waiting = sum(j.status in ("queued", "running") for j in self._jobs.values())
             if waiting >= self.settings.max_queue:
@@ -352,7 +376,29 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "land_cover_years": [FIRST_LAND_COVER_YEAR, LATEST_LAND_COVER_YEAR],
         "first_ice_year": FIRST_ICE_YEAR,
         "crops": list(CROP_NAMES),
+        "editable": not settings.read_only,
     }
+
+
+class RecipeSave(BaseModel):
+    """A recipe to save: the form's map request and the description written above it."""
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = ""
+    request: MapRequest
+    overwrite: bool = False
+
+
+class RouteUpload(BaseModel):
+    """A GeoJSON file from the browser: its name and its text."""
+    model_config = ConfigDict(extra="forbid")
+
+    filename: str
+    content: str
+
+
+# The options a recipe can give the form, in the order a saved recipe lists them
+FORM_FIELDS = list(MapRequest.model_fields)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -398,6 +444,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def map_status(job_id: str) -> dict[str, Any]:
         job = find(job_id)
         return job.summary(queue.position(job))
+
+    def writable() -> None:
+        if settings.read_only:
+            raise HTTPException(403, "This server shows recipes and routes but does not change them.")
+
+    @app.get("/api/recipes")
+    def recipes() -> list[dict[str, str]]:
+        return recipe_store.list_recipes(settings.recipes_dir)
+
+    @app.get("/api/recipes/{name}")
+    def recipe(name: str) -> dict[str, Any]:
+        try:
+            return recipe_store.read_recipe(settings.recipes_dir, settings.routes_dir, name, FORM_FIELDS)
+        except recipe_store.RecipeNotFound as e:
+            raise HTTPException(404, str(e)) from None
+        except recipe_store.RecipeError as e:
+            raise HTTPException(400, str(e)) from None
+
+    @app.put("/api/recipes/{name}")
+    def save_recipe(name: str, body: RecipeSave) -> dict[str, str]:
+        writable()
+        try:
+            for route in body.request.given().get("route", []):
+                recipe_store.route_path(settings.routes_dir, route)
+            path = recipe_store.write_recipe(settings.recipes_dir, settings.routes_dir, name, body.description,
+                                             body.request.given(), FORM_FIELDS, overwrite=body.overwrite)
+        except recipe_store.RecipeExists as e:
+            raise HTTPException(409, str(e)) from None
+        except recipe_store.RecipeError as e:
+            raise HTTPException(400, str(e)) from None
+        return {"name": name, "file": _shown_path(str(path))}
+
+    @app.delete("/api/recipes/{name}", status_code=204)
+    def delete_recipe(name: str) -> None:
+        writable()
+        try:
+            recipe_store.delete_recipe(settings.recipes_dir, name)
+        except recipe_store.RecipeNotFound as e:
+            raise HTTPException(404, str(e)) from None
+        except recipe_store.RecipeError as e:
+            raise HTTPException(400, str(e)) from None
+
+    @app.get("/api/routes")
+    def routes() -> list[dict[str, Any]]:
+        return recipe_store.list_routes(settings.routes_dir)
+
+    @app.post("/api/routes", status_code=201)
+    def upload_route(body: RouteUpload) -> dict[str, Any]:
+        writable()
+        try:
+            return recipe_store.add_route_file(settings.routes_dir, body.filename, body.content)
+        except recipe_store.RecipeExists as e:
+            raise HTTPException(409, str(e)) from None
+        except recipe_store.RecipeError as e:
+            raise HTTPException(400, str(e)) from None
 
     @app.get("/api/maps/{job_id}/image")
     def map_image(job_id: str, download: bool = False) -> FileResponse:

@@ -215,3 +215,114 @@ class TestRequestArgs:
     def test_blank_values_are_left_out(self, settings):
         request = webapp.MapRequest(city="paris", up_toward="", crop=[], wind=None)
         assert request.given() == {"city": "paris"}
+
+
+LINE = ('{"type": "Feature", "properties": {"name": "A line"}, '
+        '"geometry": {"type": "LineString", "coordinates": [[0, 0], [10, 10]]}}')
+
+
+@pytest.fixture
+def store(tmp_path, monkeypatch):
+    """A client whose recipes and routes folders are its own: one recipe, one route file."""
+    recipes, routes = tmp_path / "recipes", tmp_path / "routes"
+    recipes.mkdir()
+    routes.mkdir()
+    (routes / "line.geojson").write_text(LINE, encoding="utf-8")
+    (recipes / "trip.toml").write_text('# A trip.\ncity = "lisbon"\nroute = ["../routes/line.geojson"]\n'
+                                       'route-legend = true\nwind = "jul"\noutput = "trip.png"\n', encoding="utf-8")
+
+    def make(read_only=False):
+        for name in ortho.API_KEY_ENVS:
+            monkeypatch.delenv(name, raising=False)
+        settings = webapp.Settings(output_dir=str(tmp_path / "maps"), cache_dir=str(tmp_path / "tiles"),
+                                   recipes_dir=str(recipes), routes_dir=str(routes), read_only=read_only)
+        return TestClient(webapp.create_app(settings))
+    return make, recipes, routes
+
+
+class TestRecipes:
+    def test_listed_and_read_into_a_request(self, store):
+        make, _, _ = store
+        with make() as client:
+            assert client.get("/api/options").json()["editable"] is True
+            assert client.get("/api/recipes").json() == [{"name": "trip", "description": "A trip."}]
+            recipe = client.get("/api/recipes/trip").json()
+        assert recipe["request"] == {"city": "Lisbon", "route": ["line.geojson"], "route_legend": True, "wind": "july"}
+        assert recipe["kept"] == ['output = "trip.png"']
+
+    @pytest.mark.parametrize("name, status", [("nothing", 404), ("Bad.Name", 400)])
+    def test_unknown_or_bad_names(self, store, name, status):
+        with store[0]() as client:
+            assert client.get(f"/api/recipes/{name}").status_code == status
+
+    def test_saved_new_then_overwritten(self, store):
+        make, recipes, _ = store
+        with make() as client:
+            body = {"description": "Mine.", "request": {"city": "Tokyo", "beside": "Lisbon", "dpi": 150}}
+            saved = client.put("/api/recipes/mine", json=body)
+            assert saved.status_code == 200 and saved.json()["name"] == "mine"
+            assert client.put("/api/recipes/mine", json=body).status_code == 409
+            body["request"]["ice"] = True
+            assert client.put("/api/recipes/mine", json={**body, "overwrite": True}).status_code == 200
+        assert (recipes / "mine.toml").read_text(encoding="utf-8") == (
+            '# Mine.\ncity = "Tokyo"\nbeside = "Lisbon"\nice = true\n')
+
+    def test_saving_keeps_what_the_form_leaves_alone(self, store):
+        make, recipes, _ = store
+        with make() as client:
+            request = client.get("/api/recipes/trip").json()["request"]
+            request["route"] = []
+            response = client.put("/api/recipes/trip", json={"request": request, "overwrite": True})
+        assert response.status_code == 200
+        assert (recipes / "trip.toml").read_text(encoding="utf-8") == (
+            'city = "Lisbon"\nwind = "july"\nroute-legend = true\noutput = "trip.png"\n')
+
+    @pytest.mark.parametrize("request_, status", [
+        ({"city": "Paris", "route": ["nothing.geojson"]}, 400),
+        ({"city": "Paris", "colour": "red"}, 422),                       # not an option
+    ])
+    def test_refused(self, store, request_, status):
+        with store[0]() as client:
+            assert client.put("/api/recipes/new", json={"request": request_}).status_code == status
+
+    def test_deleted(self, store):
+        make, recipes, _ = store
+        with make() as client:
+            assert client.delete("/api/recipes/trip").status_code == 204
+            assert client.delete("/api/recipes/trip").status_code == 404
+        assert not list(recipes.iterdir())
+
+    def test_a_read_only_server_changes_nothing(self, store):
+        make, recipes, routes = store
+        with make(read_only=True) as client:
+            assert client.get("/api/options").json()["editable"] is False
+            assert client.get("/api/recipes/trip").status_code == 200
+            assert client.put("/api/recipes/new", json={"request": {"city": "Paris"}}).status_code == 403
+            assert client.delete("/api/recipes/trip").status_code == 403
+            assert client.post("/api/routes", json={"filename": "x.geojson", "content": LINE}).status_code == 403
+        assert [p.name for p in recipes.iterdir()] == ["trip.toml"]
+        assert [p.name for p in routes.iterdir()] == ["line.geojson"]
+
+
+class TestRoutes:
+    def test_listed_and_uploaded(self, store):
+        make, _, routes = store
+        with make() as client:
+            assert client.get("/api/routes").json() == [{"name": "line.geojson", "routes": ["A line"]}]
+            added = client.post("/api/routes", json={"filename": "My Line.json", "content": LINE})
+            assert added.status_code == 201 and added.json() == {"name": "my_line.geojson", "routes": ["A line"]}
+            assert client.post("/api/routes", json={"filename": "my_line.geojson", "content": LINE}).status_code == 409
+            bad = client.post("/api/routes", json={"filename": "bad.geojson", "content": "{"})
+            assert bad.status_code == 400 and "bad.geojson: invalid JSON" in bad.json()["detail"]
+        assert sorted(p.name for p in routes.iterdir()) == ["line.geojson", "my_line.geojson"]
+
+    def test_a_map_with_routes(self, client, renders):
+        _, status = _render(client, city="Lisbon", route=["gibraltar_ascension_falklands.geojson"], route_legend=True)
+        assert [route.name for route in renders[0]["routes"]] == ["Gibraltar - Ascension - Falklands"]
+        assert renders[0]["route_legend"] is True
+        assert "--route routes/gibraltar_ascension_falklands.geojson --route-legend" in status["command"]
+
+    @pytest.mark.parametrize("route", ["nothing.geojson", "../recipes/viking_routes.toml"])
+    def test_a_map_with_an_unknown_route_is_refused(self, client, route):
+        response = client.post("/api/maps", json={"city": "Lisbon", "route": [route]})
+        assert response.status_code == 400 and "no route file" in response.json()["detail"]

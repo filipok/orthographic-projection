@@ -1,14 +1,19 @@
 "use strict";
 
 // The form for webapp.py: builds a map request in the CLI's option names, queues it and
-// follows it until the map is drawn.
+// follows it until the map is drawn. Recipes fill the form, and the form saves them.
 
 const $ = (id) => document.getElementById(id);
 const form = $("map-form");
 const STORAGE_KEY = "ortho-web-form";
 const MEANS = ["temperature", "precipitation", "humidity"];
+const RECIPE_NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 let options = null;
 let polling = null;
+let defaults = null;      // the form as it first loads, which a recipe starts from
+let recipes = [];         // [{name, description}]
+let routeFiles = [];      // [{name, routes, error?}]
+let loadedRecipe = "";    // the recipe the form was last loaded from or saved as
 
 function option(value, label) {
   const el = document.createElement("option");
@@ -39,6 +44,7 @@ function sync() {
   $("climate-classes").placeholder = $("climate").value === "trewartha" ? "e.g. Do, C" : "e.g. Cfb, Cs";
   fillZoom();
   for (const out of form.querySelectorAll("output")) out.value = Number($(out.htmlFor).value).toFixed(2);
+  $("recipe-delete").disabled = !$("recipe").value;
 }
 
 function fillZoom() {
@@ -129,24 +135,28 @@ function buildRequest() {
   }
   const crops = list($("crops").value);
   if (crops.length) req.crop = crops;
+  const routes = selectedRoutes();
+  if (routes.length) {
+    req.route = routes;
+    if ($("route-legend").checked) req.route_legend = true;
+  }
   return req;
 }
 
-// --- Remembering the form in this browser -------------------------------------------------
+// --- The form's state: remembered in this browser, and the base a recipe starts from ----
 
-function saveForm() {
+function formState() {
   const state = {};
   for (const el of form.elements) {
     if (el.type === "radio") { if (el.checked) state[`radio:${el.name}`] = el.value; }
-    else if (el.id) state[el.id] = el.type === "checkbox" ? el.checked : el.value;
+    else if (el.id && !["file", "button", "submit", "fieldset"].includes(el.type)) {
+      state[el.id] = el.type === "checkbox" ? el.checked : el.value;
+    }
   }
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* storage may be blocked */ }
+  return state;
 }
 
-function restoreForm() {
-  let state = null;
-  try { state = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { /* ignore */ }
-  if (!state) return;
+function applyState(state) {
   for (const [key, value] of Object.entries(state)) {
     if (!key.startsWith("radio:")) continue;
     const el = form.querySelector(`input[name="${key.slice(6)}"][value="${CSS.escape(value)}"]`);
@@ -157,10 +167,302 @@ function restoreForm() {
     if (!key.startsWith("radio:") && $(key)) {
       const el = $(key);
       if (el.type === "checkbox") el.checked = Boolean(value);
+      else if (el.type === "file") continue;
       else if (el.tagName !== "SELECT" || [...el.options].some((o) => o.value === value)) el.value = value;
     }
   }
+  renderRoutes();
 }
+
+function saveForm() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(formState())); } catch { /* storage may be blocked */ }
+}
+
+function restoreForm() {
+  let state = null;
+  try { state = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { /* ignore */ }
+  if (state) applyState(state);
+}
+
+// --- Filling the form from a map request (a recipe's) ------------------------------------
+
+// Sets a select's value if it offers it; returns whether it did
+function choose(id, value) {
+  const el = $(id);
+  const text = value === undefined || value === null ? "" : String(value);
+  if (![...el.options].some((o) => o.value === text)) return false;
+  el.value = text;
+  return true;
+}
+
+// The form as *req* describes it, from the form's first state; returns what it could not show
+function fillForm(req) {
+  applyState(defaults);
+  const missing = [];
+  const set = (id, value) => { if (value !== undefined && value !== null) $(id).value = value; };
+  const pick = (id, value, what) => { if (!choose(id, value)) missing.push(`${what} ${value}`); };
+  const check = (name, value) => { form.querySelector(`input[name="${name}"][value="${value}"]`).checked = true; };
+
+  if (req.lat !== undefined || req.lon !== undefined) {
+    check("place", "coords");
+    set("lat", req.lat);
+    set("lon", req.lon);
+  } else if (req.city) {
+    check("place", "city");
+    pick("city", req.city, "city");
+  }
+  if (req.provider) pick("provider", req.provider, "base map");
+  if (req.both_hemispheres) check("view", "hemispheres");
+  else if (req.radius) { check("view", "radius"); set("radius", req.radius); }
+  else check("view", "globe");
+  set("beside", req.beside);
+  fillZoom();
+  if (req.zoom) pick("zoom", req.zoom, "zoom");
+  if (req.dpi) set("dpi", Math.min(req.dpi, options.dpi.max));
+  if (req.up_toward) { check("orient", "toward"); set("up-toward", req.up_toward); }
+  else { check("orient", "bearing"); set("up", req.up ?? 0); }
+  set("circles-from", req.circles_from);
+
+  let climate = "";
+  for (const name of ["koppen", "trewartha"]) {
+    if (req[name] || req[`${name}_class`]) {
+      climate = name;
+      $("climate-classes").value = (req[`${name}_class`] || []).join(", ");
+    }
+  }
+  for (const name of MEANS) {
+    if (req[name]) { climate = name; pick("period", req[name], "period"); }
+  }
+  $("climate").value = climate;
+  $("climate-alpha").value = req.koppen_alpha ?? climateAlphaDefault();
+  $("temperature-over-sea").checked = Boolean(req.temperature_over_sea);
+  if (req.sea_temperature) pick("sea-temperature", req.sea_temperature, "sea temperature period");
+
+  $("elevation").checked = Boolean(req.elevation);
+  set("elevation-alpha", req.elevation_alpha);
+  if (req.landcover || req.landcover_class || req.landcover_year) {
+    $("vegetation").value = "landcover";
+    $("landcover-classes").value = (req.landcover_class || []).join(", ");
+    if (req.landcover_year) pick("landcover-year", req.landcover_year, "land cover year");
+  } else if (req.ndvi) {
+    $("vegetation").value = "ndvi";
+    $("ndvi").value = req.ndvi;
+  }
+  set("vegetation-alpha", req.vegetation_alpha);
+  if (req.soil || req.soil_class) {
+    $("soil").value = "groups";
+    $("soil-classes").value = (req.soil_class || []).join(", ");
+  } else if (req.soil_property) {
+    $("soil").value = "property";
+    pick("soil-property", req.soil_property, "soil property");
+    if (req.soil_depth) pick("soil-depth", req.soil_depth, "soil depth");
+  }
+  set("soil-alpha", req.soil_alpha);
+
+  if (req.wind) pick("wind", req.wind, "wind period");
+  $("ice").checked = Boolean(req.ice || req.ice_year);
+  set("ice-year", req.ice_year);
+  $("crops").value = (req.crop || []).join(", ");
+  const routes = req.route || [];
+  for (const name of routes) {
+    if (!routeFiles.some((f) => f.name === name)) missing.push(`route file ${name}`);
+  }
+  setRoutes(routes.filter((name) => routeFiles.some((f) => f.name === name)));
+  $("route-legend").checked = Boolean(req.route_legend);
+  if (routes.length) $("routes-box").open = true;
+  sync();
+  return missing;
+}
+
+// --- Routes: chosen from the routes folder, or uploaded into it --------------------------
+
+function selectedRoutes() {
+  try { return JSON.parse($("routes").value) || []; } catch { return []; }
+}
+
+function setRoutes(names) {
+  $("routes").value = JSON.stringify(names);
+  renderRoutes();
+}
+
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+function renderRoutes() {
+  const chosen = selectedRoutes();
+  $("route-list").replaceChildren(...chosen.map((name) => {
+    const file = routeFiles.find((f) => f.name === name);
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.className = "route-name";
+    label.textContent = name;
+    const detail = document.createElement("span");
+    detail.className = "route-detail";
+    if (!file || file.error) {
+      detail.classList.add("error");
+      detail.textContent = file ? "unreadable" : "missing";
+      detail.title = file ? file.error : "";
+    } else {
+      detail.textContent = plural(file.routes.length, "route");
+      detail.title = file.routes.join("\n");
+    }
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "link";
+    remove.dataset.remove = name;
+    remove.textContent = "Remove";
+    remove.setAttribute("aria-label", `Remove ${name}`);
+    li.append(label, detail, remove);
+    return li;
+  }));
+  $("route-list").hidden = chosen.length === 0;
+  const offered = routeFiles.filter((f) => !chosen.includes(f.name) && !f.error);
+  $("route-add").replaceChildren(
+    option("", offered.length ? (chosen.length ? "Add another…" : "Add a route file…") : "No other route files"),
+    ...offered.map((f) => {
+      const el = option(f.name, `${f.name} (${plural(f.routes.length, "route")})`);
+      el.title = f.routes.join("\n");
+      return el;
+    }),
+  );
+}
+
+function routeStatus(message, isError = false) {
+  $("route-status").textContent = message;
+  $("route-status").classList.toggle("error", isError);
+  $("route-status").hidden = !message;
+}
+
+async function loadRouteFiles() {
+  routeFiles = await getJSON("/api/routes");
+  renderRoutes();
+}
+
+$("route-add").addEventListener("change", () => {
+  const name = $("route-add").value;
+  if (name) setRoutes([...selectedRoutes(), name]);
+  saveForm();
+});
+
+$("route-list").addEventListener("click", (event) => {
+  const name = event.target.dataset && event.target.dataset.remove;
+  if (!name) return;
+  setRoutes(selectedRoutes().filter((n) => n !== name));
+  saveForm();
+});
+
+$("route-upload").addEventListener("change", async () => {
+  const file = $("route-upload").files[0];
+  if (!file) return;
+  routeStatus(`Uploading ${file.name}…`);
+  try {
+    const added = await getJSON("/api/routes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: file.name, content: await file.text() }),
+    });
+    await loadRouteFiles();
+    setRoutes([...selectedRoutes(), added.name]);
+    saveForm();
+    routeStatus(`Saved routes/${added.name} (${plural(added.routes.length, "route")}) and added it to the map.`);
+  } catch (e) {
+    routeStatus(e.message, true);
+  }
+  $("route-upload").value = "";
+});
+
+// --- Recipes: load one into the form, save the form as one, delete one -------------------
+
+async function getJSON(url, init) {
+  const response = await fetch(url, init);
+  const body = response.status === 204 ? null : await response.json().catch(() => null);
+  if (!response.ok) throw new Error(errorText(body, response.status));
+  return body;
+}
+
+function recipeStatus(message, isError = false) {
+  $("recipe-status").textContent = message;
+  $("recipe-status").classList.toggle("error", isError);
+  $("recipe-status").hidden = !message;
+}
+
+async function loadRecipes(selected = "") {
+  recipes = await getJSON("/api/recipes");
+  $("recipe").replaceChildren(option("", "None: start from the form"), ...recipes.map((r) => {
+    const el = option(r.name);
+    el.title = r.description;
+    return el;
+  }));
+  choose("recipe", selected);
+  sync();
+}
+
+$("recipe").addEventListener("change", async () => {
+  const name = $("recipe").value;
+  recipeStatus("");
+  if (!name) { loadedRecipe = ""; return; }
+  try {
+    const recipe = await getJSON(`/api/recipes/${encodeURIComponent(name)}`);
+    const missing = fillForm(recipe.request);
+    $("recipe").value = recipe.name;
+    $("recipe-name").value = recipe.name;
+    $("recipe-description").value = recipe.description;
+    loadedRecipe = recipe.name;
+    const notes = [];
+    if (missing.length) notes.push(`Not offered here, so left out: ${missing.join(", ")}.`);
+    if (recipe.kept.length) notes.push(`Kept as they are when saved: ${recipe.kept.join("; ")}.`);
+    recipeStatus(notes.join(" "), missing.length > 0);
+    sync();
+    saveForm();
+  } catch (e) {
+    recipeStatus(e.message, true);
+  }
+});
+
+async function saveRecipe() {
+  const name = $("recipe-name").value.trim();
+  if (!RECIPE_NAME.test(name)) {
+    recipeStatus("Name the recipe with lower-case letters, digits, '_' and '-', e.g. my_monsoon.", true);
+    $("recipe-name").focus();
+    return;
+  }
+  if (!form.reportValidity()) return;
+  const exists = recipes.some((r) => r.name === name);
+  if (exists && name !== loadedRecipe && !confirm(`Replace the recipe "${name}"?`)) return;
+  try {
+    const saved = await getJSON(`/api/recipes/${encodeURIComponent(name)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: $("recipe-description").value, request: buildRequest(), overwrite: exists }),
+    });
+    loadedRecipe = name;
+    await loadRecipes(name);
+    saveForm();
+    recipeStatus(`Saved ${saved.file}.`);
+  } catch (e) {
+    recipeStatus(e.message, true);
+  }
+}
+
+$("recipe-save").addEventListener("click", saveRecipe);
+$("recipe-name").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") { event.preventDefault(); saveRecipe(); }
+});
+
+$("recipe-delete").addEventListener("click", async () => {
+  const name = $("recipe").value;
+  if (!name || !confirm(`Delete recipes/${name}.toml?`)) return;
+  try {
+    await getJSON(`/api/recipes/${encodeURIComponent(name)}`, { method: "DELETE" });
+    if (loadedRecipe === name) loadedRecipe = "";
+    await loadRecipes("");
+    saveForm();
+    recipeStatus(`Deleted recipes/${name}.toml.`);
+  } catch (e) {
+    recipeStatus(e.message, true);
+  }
+});
 
 // --- Rendering and following a map ------------------------------------------------------
 
@@ -306,8 +608,12 @@ async function init() {
   $("vegetation-alpha").value = options.alpha.vegetation;
   $("soil-alpha").value = options.alpha.soil;
   $("crops").title = `${options.crops.length} crops, e.g. ${options.crops.slice(0, 8).join(", ")}…`;
+  for (const el of document.querySelectorAll(".editable")) el.hidden = !options.editable;
+  await Promise.all([loadRouteFiles(), loadRecipes()]);
   fillZoom();
+  defaults = formState();
   restoreForm();
+  loadedRecipe = $("recipe").value;
   sync();
 }
 

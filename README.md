@@ -509,14 +509,28 @@ press **Render map**. The map appears when it is drawn, with a PNG download and
 the `ortho.py` command line that draws the same map. The page remembers your
 last settings in the browser.
 
+- **Recipes.** The Recipe panel at the top loads any recipe from `recipes/` into
+  the form, so its layers and routes can be changed, added or removed there.
+  **Save** writes the form back as a recipe under the name given (a new name
+  makes a new recipe, an existing one asks before it is replaced), with the
+  description as its opening comment; **Delete** removes the recipe chosen. A
+  saved recipe draws the same map with `--config`. What the form does not set is
+  kept from the file as it was (`output`, `dpi`, routes outside `routes/`);
+  comments after an option are not. Route paths are written relative to the
+  recipe, as the bundled ones are.
+- **Routes.** The Routes panel lists the GeoJSON files in `routes/` with the
+  routes in each; add any of them to the map, remove them, and turn on the key
+  naming each route. **Upload** checks a GeoJSON file of your own (as
+  `--route` would, up to 5 MB) and saves it into `routes/` under a tidied name
+  (`Silk Road.json` becomes `silk_road.geojson`), so recipes can use it.
+
 - **Same checks as the CLI.** A request is checked by the same code as a command
   line (`ortho.prepare_render`), so a bad class name or period is refused with
   the CLI's message before any tiles are fetched. The CLI is unchanged.
 - **One map at a time.** Maps are drawn one after another on a worker thread.
   A request waits in a queue (10 at most) and the page shows its place in it.
-- **Limits.** Maps default to 150 dpi and may go up to 300. Route files are not
-  offered yet. Google tiles are offered only when an API key is set (see
-  "Google tiles").
+- **Limits.** Maps default to 150 dpi and may go up to 300. Google tiles are
+  offered only when an API key is set (see "Google tiles").
 - **Files.** Maps are written to a folder in the system's temporary directory,
   and the latest 50 are kept. The tile and data caches are the CLI's, so data
   downloaded by either is reused by the other.
@@ -525,6 +539,10 @@ last settings in the browser.
   (`{"city": "Lisbon", "temperature": "july"}`) and returns a map id;
   `GET /api/maps/{id}` gives its status; `GET /api/maps/{id}/image` gives the
   PNG (`?download=1` to save it); `GET /api/options` lists the choices.
+  `GET /api/recipes` and `GET`, `PUT` and `DELETE /api/recipes/{name}` list,
+  read, save and delete recipes; `GET /api/routes` lists the route files and
+  `POST /api/routes` adds one. Routes in a map request are named by their file
+  in `routes/` (`{"route": ["viking_trade.geojson"], "route_legend": true}`).
 - **Settings.** The server listens on `127.0.0.1` only (this computer), so no one
   else can reach it. Change that with `--host` and `--port`, or with these
   environment variables, which also suit a hosted server:
@@ -538,6 +556,9 @@ last settings in the browser.
 | `ORTHO_WEB_MAX_DPI` | Largest dpi a request may ask for | `300` |
 | `ORTHO_WEB_MAX_QUEUE` | Maps that may wait or render at once | `10` |
 | `ORTHO_WEB_KEEP` | Finished maps kept | `50` |
+| `ORTHO_WEB_RECIPES_DIR` | The recipes the form loads and saves | `recipes/` beside `webapp.py` |
+| `ORTHO_WEB_ROUTES_DIR` | The route files the form offers and uploads into | `routes/` beside `webapp.py` |
+| `ORTHO_WEB_READ_ONLY` | `1` to offer recipes and routes without saving, deleting or uploading any; set it on a server others can reach | off |
 
 ## Programmatic Use
 
@@ -1440,6 +1461,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)
 - [soil_properties.py](soil_properties.py): soil property overlay and key (SoilGrids 2.0, 5 km)
 - [wind.py](wind.py): prevailing-wind arrows and key (NCEP/NCAR Reanalysis 1991–2020 means)
+- [recipe_store.py](recipe_store.py): recipes and route files for the web app: read into the form, written back, uploaded
 - [climate.py](climate.py): mean temperature, precipitation and humidity layers and key (CHELSA v2.1, 1981–2010)
 - [sea.py](sea.py): temperatures over the sea, the surface's (NOAA OISST v2.1) and the air's (NCEP/NCAR Reanalysis 1)
 - [ice.py](ice.py): polar ice overlay (NSIDC sea ice extent, Natural Earth land ice)

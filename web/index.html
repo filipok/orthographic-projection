@@ -15,6 +15,21 @@
   <main class="layout">
     <form id="map-form" class="controls" novalidate>
       <fieldset>
+        <legend>Recipe</legend>
+        <label class="field"><span>Start from a recipe</span>
+          <select id="recipe"><option value="">None: start from the form</option></select></label>
+        <label class="field"><span>Description</span>
+          <textarea id="recipe-description" rows="2" placeholder="What the map shows; saved as the recipe's comment"></textarea></label>
+        <div class="recipe-save editable">
+          <label class="field"><span>Save as, in recipes/</span>
+            <input id="recipe-name" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. my_monsoon"></label>
+          <button type="button" id="recipe-save" class="button">Save</button>
+          <button type="button" id="recipe-delete" class="button danger">Delete</button>
+        </div>
+        <p id="recipe-status" class="hint" role="status" hidden></p>
+      </fieldset>
+
+      <fieldset>
         <legend>Place</legend>
         <div class="segmented" role="radiogroup" aria-label="Place">
           <label><input type="radio" name="place" value="city" checked> City</label>
@@ -136,6 +151,18 @@
           <input id="ice-year" type="number" step="1"></label>
         <label class="field"><span>Crops (CROPGRIDS), separated by commas</span>
           <input id="crops" type="text" placeholder="e.g. wheat, rice, maize"></label>
+      </details>
+
+      <details id="routes-box">
+        <summary>Routes and areas (GeoJSON)</summary>
+        <ul id="route-list" class="route-list" hidden></ul>
+        <label class="field"><span>Route files in routes/</span>
+          <select id="route-add"></select></label>
+        <label class="field editable"><span>Upload a GeoJSON file into routes/</span>
+          <input id="route-upload" type="file" accept=".geojson,.json,application/geo+json,application/json"></label>
+        <p id="route-status" class="hint" role="status" hidden></p>
+        <label class="check"><input id="route-legend" type="checkbox"> Key naming each route</label>
+        <input id="routes" type="hidden" value="[]">
       </details>
 
       <fieldset>

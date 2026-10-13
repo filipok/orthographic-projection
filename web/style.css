@@ -117,7 +117,7 @@ summary:hover { color: var(--ink); }
 
 .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.7rem; }
 
-input[type="text"], input[type="number"], select {
+input[type="text"], input[type="number"], select, textarea {
   width: 100%;
   min-width: 0;
   padding: 0.45rem 0.55rem;
@@ -128,8 +128,10 @@ input[type="text"], input[type="number"], select {
   font: inherit;
 }
 
-input:focus-visible, select:focus-visible, button:focus-visible, .button:focus-visible,
-summary:focus-visible {
+textarea { resize: vertical; line-height: 1.4; }
+
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible,
+.button:focus-visible, summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
@@ -198,7 +200,33 @@ button, .button {
   font-size: 0.85rem;
 }
 
+.button:disabled { opacity: 0.5; cursor: not-allowed; }
+.button:disabled:hover { border-color: var(--line); }
+.danger { color: var(--error); }
+
 .error { margin: 0; color: var(--error); font-size: 0.92rem; }
+
+/* --- Recipes and routes -------------------------------------------------- */
+
+.recipe-save { display: grid; grid-template-columns: 1fr auto auto; gap: 0.5rem; align-items: end; }
+.recipe-save .button { padding-block: 0.55rem; }
+
+.hint { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.hint.error { color: var(--error); }
+
+.route-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+.route-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0.25rem 0.35rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+}
+.route-list .route-name { flex: 1; min-width: 0; font-family: var(--mono); font-size: 0.85rem; overflow-wrap: anywhere; }
+.route-list .route-detail { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.route-list .route-detail.error { color: var(--error); }
 
 /* --- Preview ------------------------------------------------------------ */
 
