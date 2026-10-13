@@ -1,8 +1,0 @@
-# Lisbon and Tokyo side by side, at nearly the same latitude (38.7°N and 35.7°N): the
-# Mediterranean dry-summer climates (Cs) of the continents' west coasts, and the humid
-# subtropical climate (Cfa) of their east coasts.
-city = "lisbon"
-beside = "tokyo"
-koppen-class = ["Cs", "Cfa"]
-climate-alpha = 0.7                 # stronger than 0.45, so the two climates stand apart
-output = "orthographic_map_lisbon_and_tokyo_osm_z3_cs_cfa.png"
