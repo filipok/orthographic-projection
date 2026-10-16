@@ -35,7 +35,7 @@ import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 
-from biomes import NODATA, _download, _key, _swatch, burn
+from biomes import NODATA, _download, _key, _swatch, burn, on_globe
 
 logger = logging.getLogger(__name__)
 
@@ -212,15 +212,6 @@ def add_holt_realm_overlay(ax: GeoAxes, holt: HoltMap, alpha: float = 0.6, regri
     logger.info("Zoogeographic realm overlay rendered (alpha=%.2f).", alpha)
 
 
-def _on_globe(ax: GeoAxes, lon: float, lat: float, margin: float = 0.9) -> bool:
-    """True if (*lon*, *lat*) shows on *ax*, within *margin* of the disc's radius (clear of the rim)."""
-    x, y = ax.projection.transform_point(lon, lat, ccrs.PlateCarree())
-    if not (np.isfinite(x) and np.isfinite(y)):
-        return False
-    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
-    return ((2 * x - x0 - x1) / (x1 - x0)) ** 2 + ((2 * y - y0 - y1) / (y1 - y0)) ** 2 <= margin ** 2
-
-
 def label_point(ax: GeoAxes, region: Region) -> tuple[float, float] | None:
     """Where to name *region* on *ax*: inside its largest part that shows, as (lon, lat), or ``None``.
 
@@ -234,7 +225,7 @@ def label_point(ax: GeoAxes, region: Region) -> tuple[float, float] | None:
             break
         point = part.representative_point()
         lon = (point.x + REGION_CENTRAL_LONGITUDE + 180) % 360 - 180
-        if _on_globe(ax, lon, point.y):
+        if on_globe(ax, lon, point.y):
             return lon, point.y
     return None
 

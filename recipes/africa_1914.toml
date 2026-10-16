@@ -1,0 +1,7 @@
+# Africa on the eve of the First World War: the borders of 1 July 1914 from CShapes 2.0,
+# each colony in a lighter shade of its ruler's colour.
+lat = 5
+lon = 20
+provider = "osm_plain"
+borders = "1914-07-01"
+output = "orthographic_map_africa_osm_plain_z3_borders_1914.png"

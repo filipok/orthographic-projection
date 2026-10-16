@@ -1,0 +1,7 @@
+# The world's states in 1500, from Cliopatria, with the Portuguese voyages of discovery
+# drawn over them, on a plain map.
+city = "lisbon"
+provider = "osm_plain"
+borders = 1500
+route = ["../routes/portuguese_explorers.geojson"]
+output = "orthographic_map_lisbon_osm_plain_z3_borders_1500.png"

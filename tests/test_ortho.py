@@ -763,6 +763,15 @@ class TestCLIParser:
         with pytest.raises(SystemExit):
             self._parse(["--city", "nyc", "--realms", "sclater"])
 
+    def test_borders_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert args.borders is None and args.borders_source == "auto" and args.borders_alpha == 0.55
+        args = self._parse(["--city", "nyc", "--borders", "-500", "--borders-source", "cliopatria",
+                            "--borders-alpha", "0.4"])
+        assert args.borders == "-500" and args.borders_source == "cliopatria" and args.borders_alpha == 0.4
+        with pytest.raises(SystemExit):
+            self._parse(["--city", "nyc", "--borders", "1500", "--borders-source", "wikipedia"])
+
     def test_soil_property_flags(self):
         args = self._parse(["--city", "nyc"])
         assert args.soil_property is None and args.soil_depth is None
@@ -998,6 +1007,7 @@ class TestRunCLIValidation:
             soil_property=None, soil_depth=None,
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
             biomes=False, biome_class=None, ecoregions=False, realms=None, realm_regions=False, biome_alpha=0.6,
+            borders=None, borders_source="auto", borders_alpha=0.55,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1387,6 +1397,28 @@ class TestRunCLIValidation:
                 ortho.run_cli(args)
         render.assert_not_called()
 
+    def test_borders_passed_to_renderer(self):
+        args = self._make_args(city="paris", borders="1914-08-01", borders_source="cshapes", borders_alpha=0.4)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert kwargs["borders"] == "1914-08-01" and kwargs["borders_source"] == "cshapes"
+        assert kwargs["borders_alpha"] == 0.4
+
+    @pytest.mark.parametrize("overrides, message", [
+        ({"borders": "soon"}, "Not a year"),
+        ({"borders": "1500", "borders_source": "cshapes"}, "CShapes 2.0 covers 1886 to 2019"),
+        ({"borders": "1500", "borders_alpha": 1.5}, "borders_alpha"),
+    ])
+    def test_bad_borders_exit_before_render(self, caplog, overrides, message):
+        args = self._make_args(city="paris", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render:
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+        assert message in caplog.text
+
     def test_soil_property_passed_to_renderer(self):
         args = self._make_args(city="paris", soil_property="clay", soil_depth="15-30cm")
         with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
@@ -1675,6 +1707,38 @@ class TestGenerateOrthographicMapIntegration:
         key.assert_not_called()
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
 
+    @pytest.mark.parametrize("when, source, chosen", [("1500", "auto", "cliopatria"),
+                                                      ("1914-08-01", "auto", "cshapes")])
+    def test_borders_drawn_with_key_and_credit(self, tmp_path, when, source, chosen):
+        polities = [mock.Mock()]
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_polities", return_value=polities) as load, \
+                mock.patch.object(ortho, "colour_groups", return_value={"g": (1, 2, 3)}), \
+                mock.patch.object(ortho, "draw_borders", return_value={0: 5}) as draw, \
+                mock.patch.object(ortho, "add_borders_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path),
+                borders=when, borders_source=source, borders_alpha=0.4, beside=(35.7, 139.7),
+            )
+        assert load.call_args.args == (ortho.parse_when(when), chosen)
+        assert draw.call_count == 2 and draw.call_args.kwargs["alpha"] == 0.4      # one per globe
+        assert key.call_args.args[1] is polities and key.call_args.args[2] == [{0: 5}, {0: 5}]
+        assert key.call_args.args[4:] == (ortho.parse_when(when), chosen)
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.borders_attribution(chosen)]
+
+    def test_borders_failure_still_saves_map_without_key_or_credit(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_polities", side_effect=ortho.BordersError("offline")), \
+                mock.patch.object(ortho, "add_borders_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path), borders=1500,
+            )
+        assert os.path.exists(result)
+        key.assert_not_called()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
     def test_biome_failure_still_saves_map_without_key_or_credit(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
                 mock.patch.object(ortho, "load_ecoregions", side_effect=ortho.BiomeDataError("offline")), \
@@ -1788,6 +1852,8 @@ class TestGenerateOrthographicMapIntegration:
         ({"ecoregions": True, "realms": "wwf"}, "ecoregions or realms"),
         ({"realms": "holt", "biome_classes": ["forest"]}, "not split by biome"),
         ({"realms": "sclater"}, "realms must be"),
+        ({"borders": "4000 BC"}, "Cliopatria covers"),
+        ({"borders": "1500", "borders_alpha": 2.0}, "borders_alpha"),
     ])
     def test_bad_biome_options_fail_before_any_work(self, tmp_path, kwargs, message):
         with mock.patch.object(ortho, "create_tile_source") as create:

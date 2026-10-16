@@ -55,6 +55,10 @@ from biomes import (
     add_ecoregion_legend, add_ecoregion_overlay, add_realm_legend, load_ecoregions, resolve_biome_classes,
     visible_ecoregions, visible_values,
 )
+from borders import (
+    SOURCES as BORDER_SOURCES, BordersError, add_borders_legend, attribution as borders_attribution,
+    choose_source as choose_borders_source, colour_groups, draw_borders, load_polities, parse_when,
+)
 from zoogeography import (
     HOLT_ATTRIBUTION, HoltDataError, add_holt_realm_legend, add_holt_realm_overlay, draw_holt_regions, load_holt,
 )
@@ -572,7 +576,7 @@ def validate_render_options(
     elevation_alpha: float = 0.8, soil_alpha: float = 0.6, vegetation_alpha: float = 0.7,
     land_cover_year: int | None = None, zoom: int | None = None, radius_km: float | None = None,
     tile_provider: str = "osm", lat: float = 0.0, beside: tuple[float, float] | None = None,
-    biome_alpha: float = 0.6,
+    biome_alpha: float = 0.6, borders_alpha: float = 0.55,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -611,6 +615,8 @@ def validate_render_options(
         raise ValueError(f"vegetation_alpha must be between 0 and 1, got {vegetation_alpha}")
     if not 0.0 <= biome_alpha <= 1.0:
         raise ValueError(f"biome_alpha must be between 0 and 1, got {biome_alpha}")
+    if not 0.0 <= borders_alpha <= 1.0:
+        raise ValueError(f"borders_alpha must be between 0 and 1, got {borders_alpha}")
     if land_cover_year is not None and not FIRST_LAND_COVER_YEAR <= land_cover_year <= LATEST_LAND_COVER_YEAR:
         raise ValueError(f"land_cover_year must be between {FIRST_LAND_COVER_YEAR} and "
                          f"{LATEST_LAND_COVER_YEAR}, got {land_cover_year}")
@@ -671,6 +677,9 @@ def generate_orthographic_map(
     beside_up: float | None = None,
     temperature_over_sea: bool = False,
     sea_temperature: str | None = None,
+    borders: str | int | None = None,
+    borders_source: str = "auto",
+    borders_alpha: float = 0.55,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -840,6 +849,17 @@ def generate_orthographic_map(
         with *temperature* over the same period the two share one image and
         key. Not with *temperature_over_sea*. *koppen_alpha* sets its opacity
         when given (default 0.7).
+    borders : str or int, optional
+        Draw the states of a moment in history, filled in colours that differ
+        from their neighbours', outlined and named, with a key: a year
+        (``1500``, ``-500`` or ``"500 BC"``) or, from 1886, a date
+        (``"1914-08-01"``), see :func:`borders.parse_when`.
+    borders_source : str
+        ``"cliopatria"`` (3400 BCE-2024, states and empires), ``"cshapes"``
+        (1886-2019, states and their colonies, to the day) or ``"auto"``
+        (CShapes in its years, Cliopatria otherwise).
+    borders_alpha : float
+        Opacity of the borders' fill (0–1).
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -856,7 +876,7 @@ def generate_orthographic_map(
         dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
         elevation_alpha=elevation_alpha, soil_alpha=soil_alpha, vegetation_alpha=vegetation_alpha,
         land_cover_year=land_cover_year, zoom=zoom, radius_km=radius_km, tile_provider=tile_provider,
-        lat=lat, beside=beside, biome_alpha=biome_alpha,
+        lat=lat, beside=beside, biome_alpha=biome_alpha, borders_alpha=borders_alpha,
     )
     wind_period = resolve_wind_period(wind) if wind is not None else None
     land_cover_codes = resolve_land_cover_classes(land_cover_classes or [])
@@ -884,6 +904,8 @@ def generate_orthographic_map(
     if soil and prop:
         raise ValueError("choose one soil layer: soil groups or a soil property")
     resolve_crops(crops or [])  # unknown names and bad colours fail before any download
+    border_when = parse_when(borders) if borders is not None and borders != "" else None
+    border_source = choose_borders_source(border_when, borders_source) if border_when else None
     koppen_codes = resolve_koppen_classes(koppen_classes or [])
     koppen = koppen or bool(koppen_codes)
     trewartha_codes = resolve_trewartha_classes(trewartha_classes or [])
@@ -1159,6 +1181,21 @@ def generate_orthographic_map(
         else:
             soil_drawn = True
 
+    # Step 5b3: Historical borders (above the soil, below crops, ice and routes)
+    polities = None
+    border_colours: dict[str, tuple[int, int, int]] = {}
+    border_counts: list[dict[int, int]] = []
+    if border_when is not None and border_source is not None:
+        logger.info("Drawing the borders of %s (%s, alpha=%.2f) …", border_when.label, border_source, borders_alpha)
+        try:
+            polities = load_polities(border_when, border_source)
+            border_colours = colour_groups(polities) if polities else {}
+            border_counts = [draw_borders(ax, polities, border_colours, alpha=borders_alpha) for ax in axes]
+        except (BordersError, OSError) as e:
+            # Missing data should not throw away the rest of the map
+            logger.warning("Skipping the borders: %s", e)
+            polities = None
+
     # Step 5c: Crop areas (above climate colours, below ice)
     crop_layer = None
     if crops:
@@ -1300,6 +1337,9 @@ def generate_orthographic_map(
         keys.append(add_soil_legend(near, x=key_x, classes=soil_codes or None))
     if property_drawn and prop is not None and prop_depth is not None:
         keys.append(add_soil_property_legend(near, prop, prop_depth, x=key_x))
+    if polities and border_when is not None and border_source is not None:
+        keys.append(add_borders_legend(near, polities, border_counts, border_colours, border_when, border_source,
+                                       x=key_x))
     if crop_layer is not None:
         keys.append(add_crop_legend(near, crop_layer, x=key_x))
     if wind_drawn and wind_period is not None:
@@ -1328,6 +1368,8 @@ def generate_orthographic_map(
         credits.append(SOIL_ATTRIBUTION)
     if property_drawn:
         credits.append(SOIL_PROPERTY_ATTRIBUTION)
+    if polities is not None and border_source is not None:
+        credits.append(borders_attribution(border_source))
     if crop_layer is not None:
         credits.append(CROP_ATTRIBUTION)
     if ice_attribution:
@@ -2100,6 +2142,29 @@ def build_cli_parser() -> argparse.ArgumentParser:
              + " (default: 0-5cm; carbon-stock is 0-30cm only).",
     )
 
+    history = parser.add_argument_group("Historical borders (Cliopatria, CShapes 2.0)")
+    history.add_argument(
+        "--borders",
+        metavar="WHEN",
+        help="Draw the states of a moment in history, outlined, named and coloured apart from their "
+             "neighbours: a year (1500, -500 or '500 BC') or, from 1886, a date (1914-08-01).",
+    )
+    history.add_argument(
+        "--borders-source",
+        choices=list(BORDER_SOURCES),
+        default="auto",
+        help="cliopatria (3400 BCE-2024: states and empires; one-time download of ~46 MB), cshapes "
+             "(1886-2019: states and their colonies, to the day; ~4 MB) or auto (CShapes in its years, "
+             "Cliopatria otherwise; the default).",
+    )
+    history.add_argument(
+        "--borders-alpha",
+        type=float,
+        default=0.55,
+        metavar="ALPHA",
+        help="Opacity of the borders' fill (0-1, default: 0.55).",
+    )
+
     winds = parser.add_argument_group("Winds (NCEP/NCAR Reanalysis)")
     winds.add_argument(
         "--wind",
@@ -2435,6 +2500,19 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
     elif soil_input in ("p", "property"):
         soil_property = prompt_for_selection("Soil property", list(SOIL_PROPERTIES))
 
+    borders_when = None
+    while True:
+        raw = input("Historical borders: a year (1500, 500 BC) or a date (1914-08-01), or blank for none: ").strip()
+        if not raw:
+            break
+        try:
+            choose_borders_source(parse_when(raw))
+        except ValueError as e:
+            print(f"{e}\n")
+            continue
+        borders_when = raw
+        break
+
     enable_ice = input(
         "Add polar ice at its winter maximum? [y/N]: "
     ).strip().lower() in ("y", "yes")
@@ -2464,6 +2542,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             both_hemispheres=both_hemispheres,
             ice=enable_ice,
             crops=crops,
+            borders=borders_when,
             koppen_classes=koppen_classes,
             trewartha=enable_trewartha,
             trewartha_classes=trewartha_classes,
@@ -2542,6 +2621,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
 
     # Check crop and climate class names now, before any tiles or data are fetched
     resolve_crops(args.crop or [])
+    if args.borders:
+        choose_borders_source(parse_when(args.borders), args.borders_source)
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
@@ -2623,7 +2704,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             ice_year=args.ice_year, elevation_alpha=args.elevation_alpha, soil_alpha=args.soil_alpha,
             vegetation_alpha=args.vegetation_alpha, land_cover_year=args.landcover_year,
             zoom=zoom, radius_km=args.radius, tile_provider=args.provider, lat=lat, beside=beside_centre,
-            biome_alpha=args.biome_alpha,
+            biome_alpha=args.biome_alpha, borders_alpha=args.borders_alpha,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -2667,6 +2748,9 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         ice=args.ice or args.ice_year is not None,
         ice_year=args.ice_year,
         crops=args.crop,
+        borders=args.borders,
+        borders_source=args.borders_source,
+        borders_alpha=args.borders_alpha,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,

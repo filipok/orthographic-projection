@@ -81,6 +81,14 @@ The main script is [ortho.py](ortho.py).
 *Right: Madagascar's ecoregions within 1,200 km: rainforest down the east, dry forest in the west, spiny thickets in the south (plain OSM, zoom 8, RESOLVE Ecoregions 2017).*
 
 <p align="center">
+  <img src="sample_borders_1500.png" alt="Globe centred on Lisbon on a plain map with the states of 1500 in muted colours, outlined and named: the Crown of Castile, the Kingdom of France, the Holy Roman Empire, the House of Jagiellon, the Grand Principality of Moscow, the Kalmar Union, the Ottoman Empire, the Mamluk Sultanate, Aq Qoyunlu, the Timurid Empire, the Kazakh Khanate and the Khanate of Sibir, the Wattasid dynasty, the Songhai and Mali Empires; with the Portuguese voyages of discovery drawn over them, down the African coast, round the Cape to India and across to Brazil, and a key naming the largest states" width="48%">
+  <img src="sample_africa_1914.png" alt="Globe centred on Africa on a plain map with the borders of 1 July 1914: the colonies of France, Britain, Germany, Belgium, Portugal and Italy each in a lighter shade of its ruler's colour, Ethiopia and Liberia independent, the Ottoman Empire, Persia, Russia and the states of Europe, with a key naming the largest" width="48%">
+</p>
+
+*Left: The states of 1500 with the Portuguese voyages of discovery, centred on Lisbon (plain OSM, zoom 3, Cliopatria).*<br>
+*Right: Africa on 1 July 1914, each colony in a lighter shade of its ruler's colour (plain OSM, zoom 3, CShapes 2.0).*
+
+<p align="center">
   <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
 </p>
 
@@ -134,6 +142,7 @@ The main script is [ortho.py](ortho.py).
 - Optional elevation layer: land coloured by height and hill-shaded, from open terrain tiles, with a key
 - Optional vegetation layer: MODIS land cover (17 IGBP classes, any year 2001–2024, all or chosen classes) or monthly NDVI greenness
 - Optional biome layer: the 14 biomes of RESOLVE Ecoregions 2017, its 846 ecoregions with a key naming the largest on the map, or biogeographic realms (WWF's eight, or the 11 zoogeographic realms and 20 regions of Holt et al.'s update of Wallace's map), for all or only chosen biomes
+- Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
 - Optional prevailing winds for the year, a season or a month: arrows of the 1991–2020 mean surface wind, coloured by how steady it is
@@ -208,7 +217,7 @@ Sahara, the Gobi, the Atacama) are already plain land in OSM. It shares the
 ## Requirements
 
 - Python 3.12 or newer (developed on 3.14)
-- Internet access for downloading map tiles (and, once each, the Köppen, Trewartha, elevation, vegetation, biome, zoogeographic realm, soil, sea ice and crop data)
+- Internet access for downloading map tiles (and, once each, the Köppen, Trewartha, elevation, vegetation, biome, zoogeographic realm, border, soil, sea ice and crop data)
 
 `requirements.txt` lists minimum versions, not pins. The versions this was developed and tested with:
 
@@ -269,10 +278,11 @@ You will be prompted to choose:
 10. An optional biome layer: biomes, ecoregions, WWF's realms or Holt's zoogeographic realms, and which biomes (blank for all); then whether to outline Holt's 20 regions (see "Biomes, Ecoregions and Realms")
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
-13. Whether to add polar ice at its winter maximum (see "Polar Ice")
-14. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
-15. An optional GeoJSON route file to overlay (leave blank to skip)
-16. Whether to add a key naming each route (asked only when a route file is loaded)
+13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
+14. Whether to add polar ice at its winter maximum (see "Polar Ice")
+15. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
+16. An optional GeoJSON route file to overlay (leave blank to skip)
+17. Whether to add a key naming each route (asked only when a route file is loaded)
 
 ### CLI Mode
 
@@ -327,6 +337,11 @@ python ortho.py --lat 10 --lon 20 --landcover
 python ortho.py --lat 50 --lon -95 --landcover-class forest --landcover-class cropland
 python ortho.py --lat 35 --lon 30 --ndvi january
 python ortho.py --lat 35 --lon 30 --ndvi 2026-07
+
+# The states of a year or a day: 1500, the Roman world in 117, Africa on 1 July 1914 (see "Historical Borders")
+python ortho.py --city Lisbon --borders 1500
+python ortho.py --lat 40 --lon 20 --borders 117 --radius 3000
+python ortho.py --lat 5 --lon 20 --borders 1914-07-01
 
 # Biomes, all or some, the ecoregions within 1,200 km of Madagascar, or the realms (see "Biomes, Ecoregions and Realms")
 python ortho.py --lat 5 --lon 20 --biomes
@@ -412,6 +427,9 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--wind [PERIOD]` | Draw the prevailing winds (1991–2020 mean 10 m wind) for `year`, a season (`djf`, `mam`, `jja`, `son`) or a month (`july`, `7`) | off (`year` when given alone) |
 | `--ice` | Draw sea ice at its winter maximum and polar land ice | off |
 | `--ice-year YEAR` | Year of the sea ice maxima, 1979 on; implies `--ice` | latest published |
+| `--borders WHEN` | Draw the states of a year (`1500`, `-500`, `500 BC`) or, from 1886, a day (`1914-08-01`), filled, outlined and named, with a key | — |
+| `--borders-source SOURCE` | `cliopatria` (3400 BCE–2024), `cshapes` (1886–2019, with colonies) or `auto` (CShapes in its years, Cliopatria otherwise) | `auto` |
+| `--borders-alpha ALPHA` | Opacity of the borders' fill (0–1) | `0.55` |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
@@ -429,7 +447,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
-Winds, Polar ice, Crops, Routes and areas, Recipes.
+Historical borders, Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -491,6 +509,8 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `topsoil_ph.toml` | Topsoil pH across Africa, Europe and western Asia |
 | `africa_biomes.toml` | Africa's biomes, on a plain map |
 | `madagascar_ecoregions.toml` | Madagascar's ecoregions, 1,200 km around the island |
+| `borders_1500_voyages.toml` | The states of 1500 with the Portuguese voyages of discovery |
+| `africa_1914.toml` | Africa's borders on 1 July 1914 |
 | `north_america_landcover.toml` | MODIS land cover 2024, forests and croplands, centred on North America |
 | `ndvi_january.toml`, `ndvi_july.toml` | Vegetation greenness in January and July 2026 (the two halves of the NDVI sample) |
 | `alps_radius.toml` | 2,500 km around the Alps, with elevation |
@@ -1015,6 +1035,62 @@ python ortho.py --lat 50 --lon 0 --koppen --sea-temperature january
   means, NOAA PSL* and *Air temperature over the sea: NCEP/NCAR Reanalysis 1,
   1981–2010 means, NOAA PSL*.
 
+## Historical Borders
+
+`--borders WHEN` (`borders=` in the API, or the interactive prompt) draws the
+states of a moment in history: filled in muted colours that differ from their
+neighbours', outlined, and named where there is room, with a key naming the
+largest on the map. Give a year (`1500`; `-500`, `500 BC` or `500 BCE` before
+the common era) or, for CShapes, a day (`1914-08-01`). A year alone means 1 July
+of it.
+
+```powershell
+python ortho.py --city Lisbon --provider osm_plain --borders 1500 --route routes/portuguese_explorers.geojson
+python ortho.py --lat 40 --lon 20 --borders 117 --radius 3000
+python ortho.py --lat 5 --lon 20 --provider osm_plain --borders 1914-07-01
+python ortho.py --lat 50 --lon 15 --borders 1938 --borders-source cliopatria
+```
+
+The samples above are `python ortho.py --config recipes/borders_1500_voyages.toml`
+and `python ortho.py --config recipes/africa_1914.toml`. Borders go well with
+the routes: the voyages over the states they sailed past.
+
+Two sources, chosen by `--borders-source` (default `auto`: CShapes for 1886–2019,
+Cliopatria otherwise):
+
+- **[Cliopatria](https://github.com/Seshat-Global-History-Databank/cliopatria)**
+  (Seshat Global History Databank, v0.2.1, CC BY 4.0): over 1,600 states and
+  empires from 3400 BCE to 2024, each with the years its borders held. An
+  empire's parts share its colour (British Raj, British Africa and the British
+  Colonial Empire are all the British Empire's), and the key names the empire.
+  Coverage follows the historians' sources: it is dense for Eurasia and North
+  Africa and thin elsewhere before the colonial era, so in 1500 much of
+  sub-Saharan Africa and the Americas has no states drawn. Snapshots are taken
+  every few decades, not every year. The download is ~46 MB once (cached as
+  ~14 MB).
+- **[CShapes 2.0](https://icr.ethz.ch/data/cshapes/)** (ETH Zurich): the
+  independent states and their colonies, protectorates, mandates and occupied
+  lands from 1886 to 2019, to the day the borders changed. Each dependency is
+  drawn in a lighter shade of its ruler's colour, so 1914's empires read at a
+  glance. Territories carry their CShapes name throughout, which is usually the
+  present one (*Zimbabwe (Rhodesia)*, *Mali*), and border changes under
+  10,000 km² are not recorded. It is read from the copy in the `cshapes` R
+  package on CRAN (~4 MB), the only one that records each territory's status
+  and ruler.
+
+- **Names** are placed in the middle of what shows of each state, larger for
+  bigger states; a state covering less than 0.2% of the map is not named, nor is
+  one whose name would overlap another's or cross the globe's edge. The key
+  lists the 10 largest states or empires on the map in their colours.
+- **Layering.** The borders are drawn over the climate, biome and soil colours
+  and under crops, ice, winds and routes; `--borders-alpha` sets their opacity
+  (default 0.55). The plain map (`osm_plain`) keeps the base map's own borders
+  and labels quiet underneath.
+- **Licences.** Cliopatria is CC BY 4.0. CShapes 2.0 states no licence of its
+  own (the article describing it is CC BY-NC 4.0; the R package that carries the
+  data is GPL ≥ 2). Neither is shipped here: each is downloaded on first use, and
+  every map carries the credit line.
+
 ## Polar Ice
 
 `--ice` (`ice=True` in the API, or the interactive prompt) draws the ice at both
@@ -1499,6 +1575,8 @@ to the attribution block.
 | NCEP/NCAR Reanalysis 1, long-term monthly means 1991–2020 of the 10 m wind (u, v) and wind speed, and 1981–2010 of the 2 m air temperature (for `--temperature-over-sea`), T62 Gaussian grid (~1.9°) | Kalnay, E. et al. (1996); NOAA PSL | Public domain (US government); acknowledgement requested: "NCEP-NCAR Reanalysis 1 data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/1520-0477(1996)077<0437:TNYRP>2.0.CO;2](https://doi.org/10.1175/1520-0477(1996)077%3C0437:TNYRP%3E2.0.CO;2), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.derived.html) |
 | NOAA OI SST V2.1 High Resolution, long-term monthly means 1991–2020 of the sea surface temperature, 0.25° | Huang, B. et al. (2021); NOAA NCEI, via NOAA PSL | Public domain (US government); acknowledgement requested: "NOAA OI SST V2 High Resolution data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/JCLI-D-20-0166.1](https://doi.org/10.1175/JCLI-D-20-0166.1), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.noaa.oisst.v2.highres.html) |
 | Natural Earth (land / ocean fallback, Trewartha, climate mean and elevation land masks, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
+| Cliopatria v0.2.1: borders of over 1,600 states and empires, 3400 BCE–2024 | Bennett, J. S. et al. (2025), Seshat Global History Databank | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-025-04516-9](https://doi.org/10.1038/s41597-025-04516-9), [github.com/Seshat-Global-History-Databank/cliopatria](https://github.com/Seshat-Global-History-Databank/cliopatria) |
+| CShapes 2.0: borders of states and dependent territories, 1886–2019 (Gleditsch & Ward system), from the `cshapes` R package | Schvitz, G. et al. (2022), ETH Zurich | No data licence stated; the article is CC BY-NC 4.0 and the R package GPL ≥ 2. Downloaded by each user, not shipped | [doi:10.1177/00220027211013563](https://doi.org/10.1177/00220027211013563), [icr.ethz.ch/data/cshapes](https://icr.ethz.ch/data/cshapes/) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
 | OpenStreetMap tiles | OpenStreetMap contributors | Data [ODbL](https://www.openstreetmap.org/copyright); attribution required by the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) | [openstreetmap.org](https://www.openstreetmap.org/) |
@@ -1529,6 +1607,8 @@ the globe:
 | `--soil-property` overlay | *Soil properties: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
 | `--wind` layer | *Winds: NCEP/NCAR Reanalysis 1, 1991–2020 means, NOAA PSL* |
 | `--ice` overlay | *Sea ice: NSIDC Sea Ice Index v4, extent March YYYY (Arctic) and September YYYY (Antarctic)* |
+| `--borders` (Cliopatria) | *Borders: Cliopatria v0.2.1, Seshat Global History Databank (Bennett et al. 2025), CC BY 4.0* |
+| `--borders` (CShapes) | *Borders: CShapes 2.0 (Schvitz et al. 2022), ETH Zurich* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
 Keep this block (or credit the same sources elsewhere) when you share or publish
@@ -1589,6 +1669,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [elevation.py](elevation.py): elevation layer and heights from the Mapzen terrain tiles
 - [vegetation.py](vegetation.py): MODIS land cover and NDVI layers and keys (NASA GIBS tiles)
 - [biomes.py](biomes.py): biome, ecoregion and realm layer and keys (RESOLVE Ecoregions 2017, rasterised from its shapefile)
+- [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)
 - [soil_properties.py](soil_properties.py): soil property overlay and key (SoilGrids 2.0, 5 km)

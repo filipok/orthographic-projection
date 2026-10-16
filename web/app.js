@@ -147,6 +147,12 @@ function buildRequest() {
   }
   const crops = list($("crops").value);
   if (crops.length) req.crop = crops;
+  const borders = $("borders").value.trim();
+  if (borders) {
+    req.borders = borders;
+    if ($("borders-source").value !== "auto") req.borders_source = $("borders-source").value;
+    req.borders_alpha = changed("borders-alpha", options.alpha.borders);
+  }
   const routes = selectedRoutes();
   if (routes.length) {
     req.route = routes;
@@ -282,6 +288,9 @@ function fillForm(req) {
   $("ice").checked = Boolean(req.ice || req.ice_year);
   set("ice-year", req.ice_year);
   $("crops").value = (req.crop || []).join(", ");
+  $("borders").value = req.borders ?? "";
+  if (req.borders_source) pick("borders-source", req.borders_source, "borders source");
+  set("borders-alpha", req.borders_alpha);
   const routes = req.route || [];
   for (const name of routes) {
     if (!routeFiles.some((f) => f.name === name)) missing.push(`route file ${name}`);
@@ -626,6 +635,7 @@ async function init() {
   $("elevation-alpha").value = options.alpha.elevation;
   $("vegetation-alpha").value = options.alpha.vegetation;
   $("biome-alpha").value = options.alpha.biome;
+  $("borders-alpha").value = options.alpha.borders;
   $("soil-alpha").value = options.alpha.soil;
   $("crops").title = `${options.crops.length} crops, e.g. ${options.crops.slice(0, 8).join(", ")}…`;
   for (const el of document.querySelectorAll(".editable")) el.hidden = !options.editable;

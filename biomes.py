@@ -359,27 +359,44 @@ def add_ecoregion_overlay(ax: GeoAxes, layer: Ecoregions, alpha: float = 0.6, re
     logger.info("%s overlay rendered (alpha=%.2f).", by.capitalize(), alpha)
 
 
+def visible_points(ax: GeoAxes, samples: int = 300) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Points spread evenly over the globe on *ax* as drawn: ``(lon, lat, x, y)``.
+
+    *x*, *y* are in the axes' projection. The globe, or a radius map's disc,
+    is the circle inside the frame, so what is foreshortened near the rim gets
+    fewer points, as it looks.
+    """
+    steps = (np.arange(samples) + 0.5) / samples
+    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+    gx, gy = np.meshgrid(x0 + steps * (x1 - x0), y0 + steps * (y1 - y0))
+    inside = (2 * gx - x0 - x1) ** 2 / (x1 - x0) ** 2 + (2 * gy - y0 - y1) ** 2 / (y1 - y0) ** 2 <= 1
+    x, y = gx[inside], gy[inside]
+    lonlat = ccrs.PlateCarree().transform_points(ax.projection, x, y)
+    ok = np.isfinite(lonlat[:, 0]) & np.isfinite(lonlat[:, 1])
+    return lonlat[ok, 0], lonlat[ok, 1], x[ok], y[ok]
+
+
+def on_globe(ax: GeoAxes, lon: float, lat: float, margin: float = 0.9) -> bool:
+    """True if (*lon*, *lat*) shows on *ax*, within *margin* of the disc's radius (clear of the rim)."""
+    x, y = ax.projection.transform_point(lon, lat, ccrs.PlateCarree())
+    if not (np.isfinite(x) and np.isfinite(y)):
+        return False
+    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+    return ((2 * x - x0 - x1) / (x1 - x0)) ** 2 + ((2 * y - y0 - y1) / (y1 - y0)) ** 2 <= margin ** 2
+
+
 def visible_values(axes: Iterable[GeoAxes], grid: np.ndarray, samples: int = 300) -> Counter[int]:
-    """How much of the globes on *axes* each value of *grid* covers, in sample points.
+    """How much of the globes on *axes* each value of *grid* covers, in sample points (see :func:`visible_points`).
 
     *grid* is global, north to south from 90°N and west to east from 180°W;
-    :data:`NODATA` is not counted. Points are spread evenly over each globe's
-    disc as drawn, so what is foreshortened near the rim counts for less, as
-    it looks.
+    :data:`NODATA` is not counted.
     """
     cells = grid.shape[1] // 360
     counts: Counter[int] = Counter()
-    steps = (np.arange(samples) + 0.5) / samples
     for ax in axes:
-        (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
-        gx, gy = np.meshgrid(x0 + steps * (x1 - x0), y0 + steps * (y1 - y0))
-        # The globe, or a radius map's disc, is the circle inside the frame
-        inside = (2 * gx - x0 - x1) ** 2 / (x1 - x0) ** 2 + (2 * gy - y0 - y1) ** 2 / (y1 - y0) ** 2 <= 1
-        lonlat = ccrs.PlateCarree().transform_points(ax.projection, gx[inside], gy[inside])
-        lon, lat = lonlat[:, 0], lonlat[:, 1]
-        ok = np.isfinite(lon) & np.isfinite(lat)
-        col = np.clip(((lon[ok] + 180) * cells).astype(int), 0, grid.shape[1] - 1)
-        row = np.clip(((90 - lat[ok]) * cells).astype(int), 0, grid.shape[0] - 1)
+        lon, lat, _, _ = visible_points(ax, samples)
+        col = np.clip(((lon + 180) * cells).astype(int), 0, grid.shape[1] - 1)
+        row = np.clip(((90 - lat) * cells).astype(int), 0, grid.shape[0] - 1)
         values, n = np.unique(grid[row, col], return_counts=True)
         counts.update({int(v): int(c) for v, c in zip(values, n) if v != NODATA})
     return counts

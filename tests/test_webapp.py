@@ -129,6 +129,13 @@ class TestMaps:
         assert renders[2]["realms"] == "holt" and renders[2]["realm_regions"] is True
         assert "--realms holt --realm-regions" in status["command"]
 
+    def test_borders(self, client, renders):
+        _, status = _render(client, city="Lisbon", borders="1500", borders_alpha=0.4)
+        assert renders[0]["borders"] == "1500" and renders[0]["borders_alpha"] == 0.4
+        assert "--borders 1500 --borders-alpha 0.4" in status["command"]
+        _, status = _render(client, city="Lisbon", borders="-500")
+        assert "--borders -500" in status["command"]
+
     def test_a_globe_beside(self, client, renders):
         _, status = _render(client, city="Lisbon", beside="Tokyo")
         assert renders[0]["beside"] == (35.6762, 139.6503) and renders[0]["beside_name"] == "Tokyo"

@@ -151,6 +151,9 @@ class MapRequest(BaseModel):
     ice: bool | None = None
     ice_year: int | None = None
     crop: list[str] | None = None
+    borders: str | None = None
+    borders_source: str | None = None
+    borders_alpha: float | None = None
     route: list[str] | None = None
     route_legend: bool | None = None
 
@@ -375,7 +378,7 @@ def map_options(settings: Settings) -> dict[str, Any]:
                  "radius_max": ortho.MAX_RADIUS_ZOOM},
         "radius": {"default": ortho.DEFAULT_RADIUS_KM, "min": ortho.MIN_RADIUS_KM, "max": ortho.MAX_RADIUS_KM},
         "alpha": {"classification": ortho.CLASSIFICATION_ALPHA, "climate_mean": ortho.CLIMATE_MEAN_ALPHA,
-                  "elevation": 0.8, "vegetation": 0.7, "biome": 0.6, "soil": 0.6},
+                  "elevation": 0.8, "vegetation": 0.7, "biome": 0.6, "soil": 0.6, "borders": 0.55},
         "periods": PERIODS,
         "soil_properties": {name: prop.title for name, prop in SOIL_PROPERTIES.items()},
         "soil_depths": list(SOIL_DEPTHS),

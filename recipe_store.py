@@ -166,6 +166,8 @@ def read_recipe(recipes_dir: str, routes_dir: str, name: str, fields: Collection
                 value = resolve_wind_period(value, kind=dest.replace("_", " ")).key
             except ValueError as e:
                 raise RecipeError(f"{path.name}: {e}") from None
+        if dest == "borders" and isinstance(value, int):
+            value = str(value)                              # a year, written as a number
         if dest == "city" and isinstance(value, str):
             value = next((city for city in ortho.MAJOR_METROPOLISES if city.lower() == value.lower()), value)
         request[dest] = value

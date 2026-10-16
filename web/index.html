@@ -168,6 +168,20 @@
           <input id="crops" type="text" placeholder="e.g. wheat, rice, maize"></label>
       </details>
 
+      <details>
+        <summary>History: borders</summary>
+        <label class="field"><span>Borders of a year or a date</span>
+          <input id="borders" type="text" placeholder="e.g. 1500, 500 BC, 1914-08-01"></label>
+        <label class="field" data-show="borders" hidden><span>Source</span>
+          <select id="borders-source">
+            <option value="auto">Auto: CShapes for 1886–2019, Cliopatria otherwise</option>
+            <option value="cliopatria">Cliopatria: states and empires, 3400 BCE–2024</option>
+            <option value="cshapes">CShapes 2.0: states and colonies, 1886–2019</option>
+          </select></label>
+        <label class="field slider" data-show="borders" hidden><span>Opacity <output for="borders-alpha"></output></span>
+          <input id="borders-alpha" type="range" min="0" max="1" step="0.05"></label>
+      </details>
+
       <details id="routes-box">
         <summary>Routes and areas (GeoJSON)</summary>
         <ul id="route-list" class="route-list" hidden></ul>

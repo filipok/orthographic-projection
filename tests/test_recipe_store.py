@@ -21,7 +21,8 @@ FIELDS = [
     "humidity", "temperature_over_sea", "sea_temperature", "koppen_alpha", "elevation", "elevation_alpha",
     "landcover", "landcover_class", "landcover_year", "ndvi", "vegetation_alpha", "biomes", "biome_class",
     "ecoregions", "realms", "realm_regions", "biome_alpha", "soil", "soil_class",
-    "soil_alpha", "soil_property", "soil_depth", "wind", "ice", "ice_year", "crop", "route", "route_legend",
+    "soil_alpha", "soil_property", "soil_depth", "wind", "ice", "ice_year", "crop", "borders", "borders_source",
+    "borders_alpha", "route", "route_legend",
 ]
 
 LINE = {"type": "Feature", "properties": {"name": "A line"},
@@ -69,6 +70,10 @@ class TestReadRecipe:
         _recipe(dirs, "p", f'lat = 1\nlon = 2\nwind = "{spec}"\nsea-temperature = "{spec}"\n')
         request = recipe_store.read_recipe(*dirs, "p", FIELDS)["request"]
         assert request["wind"] == request["sea_temperature"] == key
+
+    def test_a_year_written_as_a_number(self, dirs):
+        _recipe(dirs, "y", 'lat = 1\nlon = 2\nborders = -500\n')
+        assert recipe_store.read_recipe(*dirs, "y", FIELDS)["request"]["borders"] == "-500"
 
     @pytest.mark.parametrize("text, match", [
         ('cty = "paris"\n', "unknown option 'cty'"),
