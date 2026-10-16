@@ -22,7 +22,9 @@ FIELDS = [
     "landcover", "landcover_class", "landcover_year", "ndvi", "vegetation_alpha", "biomes", "biome_class",
     "ecoregions", "realms", "realm_regions", "biome_alpha", "soil", "soil_class",
     "soil_alpha", "soil_property", "soil_depth", "wind", "ice", "ice_year", "crop", "borders", "borders_source",
-    "borders_alpha", "route", "route_legend",
+    "borders_alpha", "ocean_depth", "ice_age", "currents", "plates", "earthquakes", "volcanoes", "rivers", "basins",
+    "basins_alpha", "cyclones", "time_zones", "permafrost", "permafrost_alpha", "population", "population_alpha",
+    "livestock", "livestock_alpha", "route", "route_legend",
 ]
 
 LINE = {"type": "Feature", "properties": {"name": "A line"},

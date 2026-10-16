@@ -181,8 +181,9 @@ class GibsTiles(cimgt.GoogleWTS):
     def __init__(self, layer: str, matrix: str, time: str, cache_dir: str | None = None,
                  timeout: float = 30, use_cache: bool = True) -> None:
         # The time goes into the URL and the cache path, so only a plain date is accepted
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", time):
-            raise ValueError(f"GIBS time must be YYYY-MM-DD, got {time!r}")
+        # ("default" for layers without times, such as each year's population)
+        if time != "default" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", time):
+            raise ValueError(f"GIBS time must be YYYY-MM-DD or default, got {time!r}")
         super().__init__(desired_tile_form="RGBA", user_agent="ortho/1.0")
         self.use_cache = use_cache
         self.layer, self.matrix, self.time = layer, matrix, time

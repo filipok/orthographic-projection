@@ -14,7 +14,9 @@ They never change, so the cache never expires.
 
 The relief layer colours land by height in classic atlas bands (layer
 tints) and shades it with light from the north-west; the sea is left to
-the base map. :func:`elevation_grid` samples the heights onto a latitude /
+the base map. The ocean layer colours the sea floor by depth the same way,
+and can show the coast of the last ice age: at its peak, about 21,000 years
+ago, the sea stood some 120 m lower, so the shallow shelves were dry land. :func:`elevation_grid` samples the heights onto a latitude /
 longitude grid, which :mod:`trewartha` uses for its highland group.
 """
 
@@ -61,6 +63,22 @@ ELEVATION_BANDS: list[tuple[float, str, tuple[int, int, int]]] = [
     (4000, "4,000", (186, 170, 166)),
     (5000, "5,000 m", (240, 240, 240)),
 ]
+
+# Depth tints, shallowest first: (depth in m where the band starts, key label, (R, G, B))
+DEPTH_BANDS: list[tuple[float, str, tuple[int, int, int]]] = [
+    (0, "0", (200, 230, 243)),
+    (200, "200", (162, 209, 233)),
+    (1000, "1,000", (124, 186, 221)),
+    (2000, "2,000", (92, 160, 206)),
+    (3000, "3,000", (66, 134, 189)),
+    (4000, "4,000", (46, 108, 169)),
+    (5000, "5,000", (32, 84, 147)),
+    (6000, "6,000 m", (21, 60, 119)),
+]
+# Sea level at the Last Glacial Maximum, about 21,000 years ago (estimates run from about -120 to -134 m)
+ICE_AGE_SEA_LEVEL = -120.0
+ICE_AGE_LAND_RGB = (221, 205, 160)        # the shelves that were dry land
+ICE_AGE_COAST_RGB = (110, 80, 40)         # their coastline
 
 _EARTH_RADIUS = 6378137.0                  # Web Mercator sphere, m
 _MERCATOR_MAX_LAT = 85.0511287798066
@@ -228,12 +246,14 @@ def land_and_lakes(
 def land_raster(
     shape: tuple[int, int], extent: tuple[float, float, float, float],
     natural_earth: Callable[..., str] = shapereader.natural_earth, scale: str = "50m",
+    lakes_are_land: bool = False,
 ) -> np.ndarray:
     """True where a Web Mercator raster (rows south to north) is on land.
 
     Natural Earth land minus its lakes at *scale* (1:50m, or 1:10m for close
     views), so land below sea level, like the Caspian Depression or the Dutch
     polders, still counts as land, while the lakes are left to the base map.
+    With *lakes_are_land*, lakes count as land too, so what is left is the sea.
     """
     land, lakes = land_and_lakes(scale, natural_earth)
     rows, cols = shape
@@ -259,7 +279,7 @@ def land_raster(
             for hole in polygon.interiors:
                 draw.polygon(pixels(hole, shift), fill=0)
     for shift, view in views:
-        for lake in lakes:
+        for lake in [] if lakes_are_land else lakes:
             if lake.intersects(view):
                 draw.polygon(pixels(lake.exterior, shift), fill=0)
     return np.asarray(image, dtype=bool)[::-1]
@@ -358,6 +378,88 @@ def relief_rgba(mosaic: np.ndarray, extent: tuple[float, float, float, float], a
     out[..., :3] = rgb.astype(np.uint8)
     out[..., 3] = np.where(land, round(alpha * 255), 0)
     return out
+
+
+def ocean_rgba(mosaic: np.ndarray, extent: tuple[float, float, float, float], alpha: float = 0.8,
+               depth: bool = True, ice_age: bool = False, sea: np.ndarray | None = None,
+               zoom: int = RELIEF_ZOOM) -> np.ndarray:
+    """Colour the sea in a merged Terrarium mosaic; land, lakes and missing tiles are clear.
+
+    With *depth*, the sea floor is coloured by depth (:data:`DEPTH_BANDS`)
+    and shaded. With *ice_age*, the sea shallower than
+    :data:`ICE_AGE_SEA_LEVEL` is drawn as the dry land it was, inside a
+    coastline. *sea* defaults to what :func:`land_raster` leaves, lakes
+    counted as land (the Caspian lies below sea level but was never the sea).
+    """
+    height = decode_terrarium(mosaic[..., :3])
+    if sea is None:
+        sea = ~land_raster(mosaic.shape[:2], extent, scale="10m" if zoom >= _FINE_COAST_ZOOM else "50m",
+                           lakes_are_land=True)
+    sea = sea & (mosaic[..., 3] > 0)
+    out = np.zeros(mosaic.shape[:2] + (4,), np.uint8)
+    opaque = round(alpha * 255)
+    if depth:
+        bounds = np.array([band[0] for band in DEPTH_BANDS[1:]])
+        colours = np.array([band[2] for band in DEPTH_BANDS], np.float32)
+        rgb = colours[np.digitize(-np.minimum(height, 0), bounds)]
+        # The sea floor is gentler than the land: shade it with more exaggeration
+        shade = hillshade(np.minimum(height, 0), extent, vertical_exaggeration=4 * shade_exaggeration(zoom))
+        factor = np.clip(1 + 0.6 * (shade - math.sin(math.radians(45))), 0.6, 1.25)
+        out[..., :3] = np.clip(rgb * factor[..., None], 0, 255).astype(np.uint8)
+        out[..., 3] = np.where(sea, opaque, 0)
+    if ice_age:
+        dry = sea & (height > ICE_AGE_SEA_LEVEL)
+        # The coast: dry cells next to the sea of the time, two cells wide so it survives resampling
+        wet = sea & ~dry
+        near_wet = np.zeros_like(wet)
+        padded = np.pad(wet, 2)                                  # no wrapping round the mosaic's edges
+        rows, cols = wet.shape
+        for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0), (0, 2), (0, -2), (2, 0), (-2, 0)):
+            near_wet |= padded[2 + dy:2 + dy + rows, 2 + dx:2 + dx + cols]
+        coast = dry & near_wet
+        out[dry, :3] = ICE_AGE_LAND_RGB
+        out[dry, 3] = opaque
+        out[coast, :3] = ICE_AGE_COAST_RGB
+        out[coast, 3] = max(opaque, 200)
+    return out
+
+
+def add_ocean_legend(ax: GeoAxes, depth: bool = True, ice_age: bool = False,
+                     y: float = -0.01, x: float = 0.5) -> Legend:
+    """A key to the ocean layer: the depth bands, and the ice-age land and coast."""
+    handles: list[Any] = []
+    labels: list[str] = []
+    if depth:
+        for _, label, (r, g, b) in DEPTH_BANDS:
+            handles.append(mpatches.Patch(facecolor=(r / 255, g / 255, b / 255), edgecolor="#333333", linewidth=0.6))
+            labels.append(label)
+    if ice_age:
+        r, g, b = ICE_AGE_LAND_RGB
+        cr, cg, cb = ICE_AGE_COAST_RGB
+        handles.append(mpatches.Patch(facecolor=(r / 255, g / 255, b / 255),
+                                      edgecolor=(cr / 255, cg / 255, cb / 255), linewidth=1.5))
+        labels.append(f"Dry land in the last ice age (sea {-ICE_AGE_SEA_LEVEL:.0f} m lower)")
+    title = ("Ocean depth (each colour from the depth shown)" if depth
+             else "The last ice age, about 21,000 years ago")
+    legend = Legend(
+        ax, handles, labels,
+        loc="upper center",
+        bbox_to_anchor=(x, y),
+        ncol=len(DEPTH_BANDS) if depth else 1,              # with both, the ice-age entry on a row of its own
+        fontsize=11,
+        title=title,
+        title_fontsize=10,
+        frameon=True,
+        fancybox=True,
+        framealpha=0.85,
+        edgecolor="#444444",
+        handlelength=1.6,
+        columnspacing=1.2,
+        borderpad=0.7,
+    )
+    legend.set_clip_on(False)
+    ax.add_artist(legend)
+    return legend
 
 
 def add_elevation_legend(ax: GeoAxes, y: float = -0.01, x: float = 0.5) -> Legend:

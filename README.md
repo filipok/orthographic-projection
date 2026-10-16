@@ -89,6 +89,30 @@ The main script is [ortho.py](ortho.py).
 *Right: Africa on 1 July 1914, each colony in a lighter shade of its ruler's colour (plain OSM, zoom 3, CShapes 2.0).*
 
 <p align="center">
+  <img src="sample_ice_age_north_sea.png" alt="A disc 2,500 km around the North Sea with the sea floor coloured by depth, from pale shelves to the deep blue Atlantic and Norwegian Sea, and the land the last ice age left dry in sand: Doggerland joining Britain to the continent, the English Channel, the northern Adriatic and the Sea of Azov" width="48%">
+  <img src="sample_ring_of_fire.png" alt="Globe centred on the western Pacific with the plate boundaries, red spreading ridges, blue subduction zones and green transform faults, the earthquakes of magnitude 6 and more since 1900 in orange, yellow and purple by depth, deep ones behind every trench, and red triangles for volcanoes that have erupted since 1900, along Japan, the Philippines, Indonesia and New Zealand" width="48%">
+</p>
+
+*Left: The North Sea in the last ice age: Doggerland, with the sea floor by depth (plain OSM, radius 2,500 km).*<br>
+*Right: The Ring of Fire: plate boundaries, earthquakes since 1900 by depth, and volcanoes (plain OSM, zoom 3).*
+
+<p align="center">
+  <img src="sample_atlantic_currents.png" alt="Globe centred on the Atlantic with the ocean surface currents as arrows, warm red ones in the Gulf Stream and North Atlantic Drift, cold blue ones in the Labrador, Canary, Benguela and Humboldt currents, and the hurricane tracks since 1980 coloured by category, sweeping west across the tropical Atlantic and curving north" width="48%">
+  <img src="sample_africa_basins.png" alt="Globe centred on Africa with the river basins coloured and named, the Congo, Nile, Niger, Zambezi, Orange, Volta and Limpopo, the Sahara and Arabia's basins of inland drainage in grey, and the rivers in blue" width="48%">
+</p>
+
+*Left: The Atlantic's surface currents, warm and cold, with the hurricane tracks since 1980 (plain OSM, zoom 3).*<br>
+*Right: Africa's river basins and rivers, inland drainage in grey (plain OSM, zoom 3, HydroBASINS).*
+
+<p align="center">
+  <img src="sample_asia_population.png" alt="Globe centred on the Bay of Bengal with population density in 2020, from pale yellow under 1 person per km² across Siberia, Tibet and Australia to deep red over 1,000 along the Ganges plain, eastern China, Java and the Nile" width="48%">
+  <img src="sample_india_cattle.png" alt="Globe centred on India with the density of cattle in 2015, darkest across India and Bangladesh, the Ethiopian highlands and East Africa, lighter across China and Europe, and none in the deserts" width="48%">
+</p>
+
+*Left: Population density in 2020 (plain OSM, zoom 3, GPWv4).*<br>
+*Right: Cattle per km², 2015 (plain OSM, zoom 3, Gridded Livestock of the World).*
+
+<p align="center">
   <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
 </p>
 
@@ -142,6 +166,12 @@ The main script is [ortho.py](ortho.py).
 - Optional elevation layer: land coloured by height and hill-shaded, from open terrain tiles, with a key
 - Optional vegetation layer: MODIS land cover (17 IGBP classes, any year 2001–2024, all or chosen classes) or monthly NDVI greenness
 - Optional biome layer: the 14 biomes of RESOLVE Ecoregions 2017, its 846 ecoregions with a key naming the largest on the map, or biogeographic realms (WWF's eight, or the 11 zoogeographic realms and 20 regions of Holt et al.'s update of Wallace's map), for all or only chosen biomes
+- Optional ocean layers: the sea floor coloured by depth, and the coast of the last ice age, when the sea stood 120 m lower
+- Optional plate tectonics: plate boundaries by kind, earthquakes since 1900 by depth and magnitude, and volcanoes
+- Optional ocean surface currents, warm and cold, from drifting buoys
+- Optional rivers, and river basins coloured and named, inland drainage in grey
+- Optional tropical cyclone tracks by Saffir-Simpson category, time zones, and Northern Hemisphere permafrost
+- Optional population density (2000–2020) and livestock density (cattle, sheep, goats, pigs, chickens and more)
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
@@ -217,7 +247,7 @@ Sahara, the Gobi, the Atacama) are already plain land in OSM. It shares the
 ## Requirements
 
 - Python 3.12 or newer (developed on 3.14)
-- Internet access for downloading map tiles (and, once each, the Köppen, Trewartha, elevation, vegetation, biome, zoogeographic realm, border, soil, sea ice and crop data)
+- Internet access for downloading map tiles (and, once each, the data of each layer used)
 
 `requirements.txt` lists minimum versions, not pins. The versions this was developed and tested with:
 
@@ -279,10 +309,11 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. Whether to add polar ice at its winter maximum (see "Polar Ice")
-15. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
-16. An optional GeoJSON route file to overlay (leave blank to skip)
-17. Whether to add a key naming each route (asked only when a route file is loaded)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `livestock:cattle` … (blank for none)
+15. Whether to add polar ice at its winter maximum (see "Polar Ice")
+16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
+17. An optional GeoJSON route file to overlay (leave blank to skip)
+18. Whether to add a key naming each route (asked only when a route file is loaded)
 
 ### CLI Mode
 
@@ -337,6 +368,21 @@ python ortho.py --lat 10 --lon 20 --landcover
 python ortho.py --lat 50 --lon -95 --landcover-class forest --landcover-class cropland
 python ortho.py --lat 35 --lon 30 --ndvi january
 python ortho.py --lat 35 --lon 30 --ndvi 2026-07
+
+# The sea floor by depth, and the last ice age's coast (see "Ocean Depth and the Ice Age Coast")
+python ortho.py --lat 55 --lon 3 --radius 2500 --ocean-depth --ice-age
+
+# Plate boundaries, earthquakes since 1900 and volcanoes (see "Plate Tectonics")
+python ortho.py --lat 10 --lon 150 --plates --earthquakes --volcanoes
+
+# Ocean currents with hurricane tracks; rivers and basins (see "Ocean Currents", "Rivers and Basins")
+python ortho.py --lat 25 --lon -50 --currents --cyclones
+python ortho.py --lat 0 --lon 20 --rivers --basins
+
+# Permafrost and time zones; population; livestock (see the sections of the same names)
+python ortho.py --lat 75 --lon 90 --permafrost --time-zones
+python ortho.py --lat 25 --lon 90 --population 2020
+python ortho.py --lat -30 --lon 145 --livestock sheep
 
 # The states of a year or a day: 1500, the Roman world in 117, Africa on 1 July 1914 (see "Historical Borders")
 python ortho.py --city Lisbon --borders 1500
@@ -430,6 +476,23 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--borders WHEN` | Draw the states of a year (`1500`, `-500`, `500 BC`) or, from 1886, a day (`1914-08-01`), filled, outlined and named, with a key | — |
 | `--borders-source SOURCE` | `cliopatria` (3400 BCE–2024), `cshapes` (1886–2019, with colonies) or `auto` (CShapes in its years, Cliopatria otherwise) | `auto` |
 | `--borders-alpha ALPHA` | Opacity of the borders' fill (0–1) | `0.55` |
+| `--ocean-depth` | Colour the sea floor by depth and shade it, with a key (opacity: `--elevation-alpha`) | off |
+| `--ice-age` | Draw the land the last ice age left dry (sea ~120 m lower) and its coast | off |
+| `--plates` | Draw the plate boundaries by kind and name the large plates | off |
+| `--earthquakes [MAGNITUDE]` | Draw the earthquakes since 1900 of at least MAGNITUDE (5–9), sized by magnitude, coloured by depth | off (`6` when given alone) |
+| `--volcanoes` | Draw the Holocene volcanoes, red if erupted since 1900 | off |
+| `--currents` | Draw the mean ocean surface currents, coloured warm or cold for their latitude | off |
+| `--rivers` | Draw the main rivers and name the greatest | off |
+| `--basins` | Colour the river basins of 100,000 km² or more, named, inland drainage in grey | off |
+| `--basins-alpha ALPHA` | Opacity of the river basins (0–1) | `0.5` |
+| `--cyclones [SINCE]` | Draw the tropical cyclone tracks from the year SINCE (1980 on), by Saffir-Simpson category | off (`1980` when given alone) |
+| `--time-zones` | Shade and label the standard-time zones | off |
+| `--permafrost` | Colour the Northern Hemisphere's permafrost zones | off |
+| `--permafrost-alpha ALPHA` | Opacity of the permafrost (0–1) | `0.7` |
+| `--population [YEAR]` | Colour the land by population density in 2000, 2005, 2010, 2015 or 2020 | off (`2020` when given alone) |
+| `--population-alpha ALPHA` | Opacity of the population density (0–1) | `0.7` |
+| `--livestock ANIMAL` | Colour the land by the density of `cattle`, `buffaloes`, `horses`, `sheep`, `goats`, `pigs`, `chickens` or `ducks` in 2015 | — |
+| `--livestock-alpha ALPHA` | Opacity of the livestock density (0–1) | `0.7` |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
@@ -447,7 +510,8 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
-Historical borders, Winds, Polar ice, Crops, Routes and areas, Recipes.
+Historical borders, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
+Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -511,6 +575,12 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `madagascar_ecoregions.toml` | Madagascar's ecoregions, 1,200 km around the island |
 | `borders_1500_voyages.toml` | The states of 1500 with the Portuguese voyages of discovery |
 | `africa_1914.toml` | Africa's borders on 1 July 1914 |
+| `ice_age_north_sea.toml` | The North Sea in the last ice age, with the sea floor by depth |
+| `ring_of_fire.toml` | Plate boundaries, earthquakes and volcanoes of the western Pacific |
+| `atlantic_currents_hurricanes.toml` | The Atlantic's currents and hurricane tracks |
+| `africa_river_basins.toml` | Africa's river basins and rivers |
+| `asia_population.toml` | Population density in 2020, centred on the Bay of Bengal |
+| `india_cattle.toml` | Cattle per km² in 2015, centred on India |
 | `north_america_landcover.toml` | MODIS land cover 2024, forests and croplands, centred on North America |
 | `ndvi_january.toml`, `ndvi_july.toml` | Vegetation greenness in January and July 2026 (the two halves of the NDVI sample) |
 | `alps_radius.toml` | 2,500 km around the Alps, with elevation |
@@ -1091,6 +1161,148 @@ Cliopatria otherwise):
   data is GPL ≥ 2). Neither is shipped here: each is downloaded on first use, and
   every map carries the credit line.
 
+## Ocean Depth and the Ice Age Coast
+
+`--ocean-depth` (`ocean_depth=True`) colours the sea floor by depth in eight
+bands, from the pale continental shelves to the trenches below 6,000 m, and
+shades it, so ridges, seamounts and canyons stand out. `--ice-age`
+(`ice_age=True`) draws the land the last ice age left dry: at its peak, about
+21,000 years ago, so much water was locked in ice sheets that the sea stood some
+120 m lower (estimates run to 134 m). Doggerland joined Britain to Europe, Beringia
+joined Asia to America, Sundaland joined Borneo, Sumatra and Java to Asia. The two
+go together or alone.
+
+```powershell
+python ortho.py --lat 55 --lon 3 --radius 2500 --ocean-depth --ice-age
+python ortho.py --lat 0 --lon 115 --ice-age
+```
+
+The sample above is `python ortho.py --config recipes/ice_age_north_sea.toml`.
+
+- **Data.** The same Terrarium terrain tiles as `--elevation`, whose sea
+  heights come from ETOPO1 (NOAA). Lakes are left out, so the Caspian, below sea
+  level, is not mistaken for dry sea floor.
+- **Not shown:** the ice sheets themselves. The northern shelves (the Baltic,
+  Hudson Bay, the Barents Sea) lay under ice at the time, not dry land, though
+  they are drawn as dry. `--elevation-alpha` sets the opacity.
+
+## Plate Tectonics
+
+Three layers, alone or together, with one key:
+
+- `--plates`: the plate boundaries of Bird's PB2002 model, coloured by kind:
+  spreading ridges and rifts, where plates move apart (red); subduction zones and
+  collisions, where they meet (blue); transform faults, where they slide past
+  (green). The large plates are named.
+- `--earthquakes [MAGNITUDE]`: the earthquakes since 1900 of at least MAGNITUDE
+  (default 6, from 5 to 9) from the USGS catalogue, sized by magnitude and
+  coloured by depth: shallow (0–70 km), intermediate (70–300 km) and deep
+  (300–700 km). The deep ones trace the plates sinking behind each trench.
+- `--volcanoes`: the volcanoes active in the last 11,700 years (Smithsonian Global
+  Volcanism Program), red where they have erupted since 1900.
+
+```powershell
+python ortho.py --lat 10 --lon 150 --plates --earthquakes --volcanoes
+python ortho.py --lat 40 --lon 30 --earthquakes 5
+```
+
+The sample above is `python ortho.py --config recipes/ring_of_fire.toml`. The
+earthquake and volcano lists are fetched again after 30 days, and an older copy
+is used when the services cannot be reached. Magnitude 5 and over is about
+110,000 earthquakes, downloaded in a dozen parts the first time.
+
+## Ocean Currents
+
+`--currents` draws the mean surface currents as arrows, from the NOAA Global
+Drifter Program's climatology (Laurindo et al. 2017): the tracks of thousands of
+drifting buoys since 1979, averaged to 1° cells. Arrow length grows with the
+square root of speed, so slow currents show beside fast ones. The colour tells
+warm currents from cold: the water's temperature against the average of its
+latitude around the world, so the Gulf Stream and the Kuroshio are warm, and the
+Labrador, Canary, Benguela, Humboldt and California currents cold.
+
+```powershell
+python ortho.py --lat 25 --lon -50 --currents
+```
+
+The 51 MB climatology is downloaded once and reduced to under 1 MB. The sample
+above (with `--cyclones`) is `python ortho.py --config recipes/atlantic_currents_hurricanes.toml`.
+
+## Rivers and Basins
+
+`--rivers` draws Natural Earth's main rivers, wider the more important, and names
+the longest on the map, each once, in English (the Danube, not the Donau; the
+White Nile for its stretches with other names), leaving delta branches unnamed. `--basins` colours the river basins of 100,000 km² or more, the
+land each great river drains, in colours that differ from their neighbours',
+named and with a key; basins draining to an inland sink (the Okavango, Lake Chad,
+the Aral Sea, the Dead Sea) are grey.
+
+```powershell
+python ortho.py --lat 0 --lon 20 --rivers --basins
+python ortho.py --lat 50 --lon -95 --basins --basins-alpha 0.4
+```
+
+- **Data.** HydroBASINS level 4 (Lehner & Grill 2013, HydroSHEDS), nine regional
+  files of ~55 MB once, merged into the ~190 basins of that size (cached ~5 MB).
+  HydroBASINS has no names, so each basin takes the name of the main Natural
+  Earth river at its mouth, with about 30 corrections where that rule picks a
+  headwater or tributary (Jinsha for the Yangtze, Beaver for the Churchill), a
+  delta branch, or a name in another language (Huang for the Yellow River); the
+  great inland basins are named after their sinks (Lake Eyre, Lake Chad, the
+  Tarim, the Okavango). HydroSHEDS counts the Caspian as sea, so the Volga
+  basin is not grey; the coastal strips between the large basins are left blank.
+
+The sample above is `python ortho.py --config recipes/africa_river_basins.toml`.
+
+## Cyclones, Time Zones and Permafrost
+
+- `--cyclones [SINCE]` draws the tracks of the tropical cyclones (hurricanes,
+  typhoons, cyclones) from the year SINCE (default 1980) in IBTrACS, from
+  tropical storm strength up, each step coloured by its Saffir-Simpson category.
+  The tracks since 1980, ~22 MB, are downloaded once.
+- `--time-zones` shades the standard-time zones in turn (half-hour zones in a
+  third shade), outlines them and labels each with its offset from UTC; daylight
+  saving time is not shown (Natural Earth).
+- `--permafrost` colours the Northern Hemisphere's permafrost (Obu et al. 2019,
+  2000–2016) by how continuous it is: continuous, discontinuous, sporadic and
+  isolated patches; `--permafrost-alpha` sets its opacity. ~13 MB once.
+
+```powershell
+python ortho.py --lat 20 --lon 130 --cyclones 2000
+python ortho.py --lat 75 --lon 90 --permafrost --time-zones
+```
+
+## Population Density
+
+`--population [YEAR]` colours the land by people per km² in 2000, 2005, 2010,
+2015 or 2020 (default 2020), from NASA's Gridded Population of the World (GPWv4,
+CIESIN), in nine bands from under 1 to 1,000 and more. The tiles come from NASA
+GIBS like the vegetation layer, at zoom 5 (finer on a radius map, up to zoom 7);
+their colours are turned back into densities and redrawn in the bands of the key.
+`--population-alpha` sets the opacity.
+
+```powershell
+python ortho.py --lat 25 --lon 90 --population
+python ortho.py --lat 50 --lon 10 --radius 1500 --population 2000
+```
+
+The sample above is `python ortho.py --config recipes/asia_population.toml`.
+
+## Livestock
+
+`--livestock ANIMAL` colours the land by the head of one kind of livestock per
+km² in 2015: `cattle`, `buffaloes`, `horses`, `sheep`, `goats`, `pigs`, `chickens`
+or `ducks` (Gridded Livestock of the World v4, FAO). Mammals are drawn in bands
+from 1 to 250 and more per km², poultry from 10 to 2,500 and more. Each animal's
+map, ~10 MB, is downloaded once; `--livestock-alpha` sets the opacity.
+
+```powershell
+python ortho.py --lat 20 --lon 75 --livestock cattle
+python ortho.py --lat -30 --lon 145 --livestock sheep
+```
+
+The sample above is `python ortho.py --config recipes/india_cattle.toml`.
+
 ## Polar Ice
 
 `--ice` (`ice=True` in the API, or the interactive prompt) draws the ice at both
@@ -1575,6 +1787,16 @@ to the attribution block.
 | NCEP/NCAR Reanalysis 1, long-term monthly means 1991–2020 of the 10 m wind (u, v) and wind speed, and 1981–2010 of the 2 m air temperature (for `--temperature-over-sea`), T62 Gaussian grid (~1.9°) | Kalnay, E. et al. (1996); NOAA PSL | Public domain (US government); acknowledgement requested: "NCEP-NCAR Reanalysis 1 data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/1520-0477(1996)077<0437:TNYRP>2.0.CO;2](https://doi.org/10.1175/1520-0477(1996)077%3C0437:TNYRP%3E2.0.CO;2), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.derived.html) |
 | NOAA OI SST V2.1 High Resolution, long-term monthly means 1991–2020 of the sea surface temperature, 0.25° | Huang, B. et al. (2021); NOAA NCEI, via NOAA PSL | Public domain (US government); acknowledgement requested: "NOAA OI SST V2 High Resolution data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/JCLI-D-20-0166.1](https://doi.org/10.1175/JCLI-D-20-0166.1), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.noaa.oisst.v2.highres.html) |
 | Natural Earth (land / ocean fallback, Trewartha, climate mean and elevation land masks, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
+| PB2002 plate boundaries, converted by Hugo Ahlenius (Nordpil) | Bird, P. (2003) | [ODC-By 1.0](https://opendatacommons.org/licenses/by/1-0/) | [doi:10.1029/2001GC000252](https://doi.org/10.1029/2001GC000252), [github.com/fraxen/tectonicplates](https://github.com/fraxen/tectonicplates) |
+| ANSS Comprehensive Earthquake Catalog (ComCat), 1900 on | U.S. Geological Survey | Public domain (US government) | [earthquake.usgs.gov](https://earthquake.usgs.gov/fdsnws/event/1/) |
+| Volcanoes of the World v5, Holocene volcanoes | Global Volcanism Program (2025), Smithsonian Institution | Free to use with citation | [doi:10.5479/si.GVP.VOTW5-2025.5.3](https://doi.org/10.5479/si.GVP.VOTW5-2025.5.3) |
+| Global Drifter Program near-surface velocity climatology, annual means at 0.25°, used at 1° | Laurindo, L. C. et al. (2017), NOAA AOML | Public domain (US government) | [doi:10.1016/j.dsr.2017.04.009](https://doi.org/10.1016/j.dsr.2017.04.009) |
+| HydroBASINS level 4 (HydroSHEDS) | Lehner, B. & Grill, G. (2013), WWF | Free for scientific, educational and commercial use, with citation ([licence](https://www.hydrosheds.org/products/hydrobasins)) | [doi:10.1002/hyp.9740](https://doi.org/10.1002/hyp.9740) |
+| Natural Earth 1:10m rivers and time zones | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
+| IBTrACS v04r01, tropical cyclone tracks since 1980 | Knapp, K. R. et al. (2010), NOAA NCEI | Public domain (US government) | [doi:10.1175/2009BAMS2755.1](https://doi.org/10.1175/2009BAMS2755.1) |
+| Northern Hemisphere permafrost zones, 2000–2016, 1 km, used at 5 km | Obu, J. et al. (2019), ESA Permafrost CCI / University of Oslo | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1016/j.earscirev.2019.04.023](https://doi.org/10.1016/j.earscirev.2019.04.023), data on [PANGAEA](https://doi.org/10.1594/PANGAEA.888600) |
+| Gridded Population of the World v4.11, population density 2000–2020, via NASA GIBS | CIESIN (2018), NASA SEDAC | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.7927/H49C6VHW](https://doi.org/10.7927/H49C6VHW) |
+| Gridded Livestock of the World v4, 2015, 5 arc-minutes | Gilbert, M. et al., FAO | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Harvard Dataverse, e.g. cattle [doi:10.7910/DVN/LHBICE](https://doi.org/10.7910/DVN/LHBICE) |
 | Cliopatria v0.2.1: borders of over 1,600 states and empires, 3400 BCE–2024 | Bennett, J. S. et al. (2025), Seshat Global History Databank | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-025-04516-9](https://doi.org/10.1038/s41597-025-04516-9), [github.com/Seshat-Global-History-Databank/cliopatria](https://github.com/Seshat-Global-History-Databank/cliopatria) |
 | CShapes 2.0: borders of states and dependent territories, 1886–2019 (Gleditsch & Ward system), from the `cshapes` R package | Schvitz, G. et al. (2022), ETH Zurich | No data licence stated; the article is CC BY-NC 4.0 and the R package GPL ≥ 2. Downloaded by each user, not shipped | [doi:10.1177/00220027211013563](https://doi.org/10.1177/00220027211013563), [icr.ethz.ch/data/cshapes](https://icr.ethz.ch/data/cshapes/) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
@@ -1609,6 +1831,18 @@ the globe:
 | `--ice` overlay | *Sea ice: NSIDC Sea Ice Index v4, extent March YYYY (Arctic) and September YYYY (Antarctic)* |
 | `--borders` (Cliopatria) | *Borders: Cliopatria v0.2.1, Seshat Global History Databank (Bennett et al. 2025), CC BY 4.0* |
 | `--borders` (CShapes) | *Borders: CShapes 2.0 (Schvitz et al. 2022), ETH Zurich* |
+| `--ocean-depth`, `--ice-age` | the elevation credit above |
+| `--plates` | *Plate boundaries: Bird (2003), PB2002, converted by Ahlenius (Nordpil), ODC-By* |
+| `--earthquakes` | *Earthquakes: USGS ANSS Comprehensive Catalog (ComCat)* |
+| `--volcanoes` | *Volcanoes: Global Volcanism Program, Volcanoes of the World v5, Smithsonian Institution* |
+| `--currents` | *Ocean currents: NOAA Global Drifter Program climatology (Laurindo et al. 2017), NOAA AOML* |
+| `--rivers` | *Rivers: Natural Earth* |
+| `--basins` | *River basins: HydroBASINS (Lehner & Grill 2013), HydroSHEDS / WWF* |
+| `--cyclones` | *Cyclone tracks: IBTrACS v04r01 (Knapp et al. 2010), NOAA NCEI* |
+| `--time-zones` | *Time zones: Natural Earth* |
+| `--permafrost` | *Permafrost: Obu et al. (2019), ESA Permafrost CCI / University of Oslo, CC BY 4.0* |
+| `--population` | *Population density: GPWv4.11 YEAR (CIESIN 2018), NASA SEDAC, via NASA GIBS, CC BY 4.0* |
+| `--livestock` | *Livestock: Gridded Livestock of the World v4, 2015 (FAO), CC0* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
 Keep this block (or credit the same sources elsewhere) when you share or publish
@@ -1669,6 +1903,14 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [elevation.py](elevation.py): elevation layer and heights from the Mapzen terrain tiles
 - [vegetation.py](vegetation.py): MODIS land cover and NDVI layers and keys (NASA GIBS tiles)
 - [biomes.py](biomes.py): biome, ecoregion and realm layer and keys (RESOLVE Ecoregions 2017, rasterised from its shapefile)
+- [tectonics.py](tectonics.py): plate boundaries, earthquakes and volcanoes, and their key
+- [currents.py](currents.py): ocean surface current arrows, warm and cold, and their key
+- [hydrology.py](hydrology.py): rivers, and river basins merged from HydroBASINS and named
+- [cyclones.py](cyclones.py): tropical cyclone tracks by Saffir-Simpson category
+- [timezones.py](timezones.py): standard-time zones, shaded and labelled
+- [permafrost.py](permafrost.py): Northern Hemisphere permafrost zones
+- [population.py](population.py): population density from GPWv4 tiles (NASA GIBS), in classed bands
+- [livestock.py](livestock.py): livestock density from Gridded Livestock of the World
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)

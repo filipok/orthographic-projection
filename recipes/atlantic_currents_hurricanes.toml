@@ -1,0 +1,7 @@
+# The Atlantic's surface currents, warm and cold, with the hurricane tracks since 1980.
+lat = 25
+lon = -50
+provider = "osm_plain"
+currents = true
+cyclones = 1980
+output = "orthographic_map_atlantic_osm_plain_z3_currents_hurricanes.png"

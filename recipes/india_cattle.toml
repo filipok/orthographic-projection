@@ -1,0 +1,6 @@
+# Where the cattle are, 2015, centred on India.
+lat = 20
+lon = 75
+provider = "osm_plain"
+livestock = "cattle"
+output = "orthographic_map_india_osm_plain_z3_cattle.png"

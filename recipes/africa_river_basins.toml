@@ -1,0 +1,7 @@
+# Africa's great river basins and rivers, the Sahara's inland drainage in grey.
+lat = 0
+lon = 20
+provider = "osm_plain"
+rivers = true
+basins = true
+output = "orthographic_map_africa_osm_plain_z3_basins.png"

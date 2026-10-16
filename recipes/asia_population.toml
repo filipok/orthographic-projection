@@ -1,0 +1,6 @@
+# Population density in 2020, centred on the Bay of Bengal.
+lat = 25
+lon = 90
+provider = "osm_plain"
+population = 2020
+output = "orthographic_map_asia_osm_plain_z3_population_2020.png"

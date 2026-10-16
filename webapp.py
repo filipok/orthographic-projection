@@ -154,6 +154,23 @@ class MapRequest(BaseModel):
     borders: str | None = None
     borders_source: str | None = None
     borders_alpha: float | None = None
+    ocean_depth: bool | None = None
+    ice_age: bool | None = None
+    currents: bool | None = None
+    plates: bool | None = None
+    earthquakes: float | None = None
+    volcanoes: bool | None = None
+    rivers: bool | None = None
+    basins: bool | None = None
+    basins_alpha: float | None = None
+    cyclones: int | None = None
+    time_zones: bool | None = None
+    permafrost: bool | None = None
+    permafrost_alpha: float | None = None
+    population: int | None = None
+    population_alpha: float | None = None
+    livestock: str | None = None
+    livestock_alpha: float | None = None
     route: list[str] | None = None
     route_legend: bool | None = None
 
@@ -378,12 +395,17 @@ def map_options(settings: Settings) -> dict[str, Any]:
                  "radius_max": ortho.MAX_RADIUS_ZOOM},
         "radius": {"default": ortho.DEFAULT_RADIUS_KM, "min": ortho.MIN_RADIUS_KM, "max": ortho.MAX_RADIUS_KM},
         "alpha": {"classification": ortho.CLASSIFICATION_ALPHA, "climate_mean": ortho.CLIMATE_MEAN_ALPHA,
-                  "elevation": 0.8, "vegetation": 0.7, "biome": 0.6, "soil": 0.6, "borders": 0.55},
+                  "elevation": 0.8, "vegetation": 0.7, "biome": 0.6, "soil": 0.6, "borders": 0.55,
+                  "basins": 0.5, "permafrost": 0.7, "population": 0.7, "livestock": 0.7},
         "periods": PERIODS,
         "soil_properties": {name: prop.title for name, prop in SOIL_PROPERTIES.items()},
         "soil_depths": list(SOIL_DEPTHS),
         "land_cover_years": [FIRST_LAND_COVER_YEAR, LATEST_LAND_COVER_YEAR],
         "first_ice_year": FIRST_ICE_YEAR,
+        "population_years": list(ortho.POPULATION_YEARS),
+        "livestock": list(ortho.LIVESTOCK_SPECIES),
+        "first_cyclone_year": ortho.FIRST_CYCLONE_YEAR,
+        "earthquakes": {"default": ortho.DEFAULT_MIN_MAGNITUDE, "min": ortho.MIN_MAGNITUDE, "max": ortho.MAX_MAGNITUDE},
         "crops": list(CROP_NAMES),
         "editable": not settings.read_only,
     }

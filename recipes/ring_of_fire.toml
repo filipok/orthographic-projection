@@ -1,0 +1,9 @@
+# The western Pacific's Ring of Fire: plate boundaries, the earthquakes of magnitude 6
+# and more since 1900 by depth, and the volcanoes.
+lat = 10
+lon = 150
+provider = "osm_plain"
+plates = true
+earthquakes = 6
+volcanoes = true
+output = "orthographic_map_pacific_osm_plain_z3_ring_of_fire.png"

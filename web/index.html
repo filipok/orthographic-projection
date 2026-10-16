@@ -169,6 +169,41 @@
       </details>
 
       <details>
+        <summary>Earth: oceans, tectonics, rivers, hazards</summary>
+        <label class="check"><input id="ocean-depth" type="checkbox"> Ocean depth</label>
+        <label class="check"><input id="ice-age" type="checkbox"> Coast of the last ice age (sea 120 m lower)</label>
+        <label class="check"><input id="currents" type="checkbox"> Ocean currents, warm and cold (~51 MB once)</label>
+        <label class="check"><input id="plates" type="checkbox"> Plate boundaries</label>
+        <label class="check"><input id="earthquakes" type="checkbox"> Earthquakes since 1900</label>
+        <label class="field" data-show="earthquakes" hidden><span>Smallest magnitude</span>
+          <input id="earthquake-magnitude" type="number" step="0.5"></label>
+        <label class="check"><input id="volcanoes" type="checkbox"> Volcanoes</label>
+        <label class="check"><input id="rivers" type="checkbox"> Rivers</label>
+        <label class="check"><input id="basins" type="checkbox"> River basins (~55 MB once)</label>
+        <label class="field slider" data-show="basins" hidden><span>Opacity <output for="basins-alpha"></output></span>
+          <input id="basins-alpha" type="range" min="0" max="1" step="0.05"></label>
+        <label class="check"><input id="cyclones" type="checkbox"> Tropical cyclone tracks</label>
+        <label class="field" data-show="cyclones" hidden><span>From the year</span>
+          <input id="cyclones-since" type="number" step="1"></label>
+        <label class="check"><input id="time-zones" type="checkbox"> Time zones</label>
+        <label class="check"><input id="permafrost" type="checkbox"> Permafrost</label>
+        <label class="field slider" data-show="permafrost" hidden><span>Opacity <output for="permafrost-alpha"></output></span>
+          <input id="permafrost-alpha" type="range" min="0" max="1" step="0.05"></label>
+      </details>
+
+      <details>
+        <summary>People and livestock</summary>
+        <label class="field"><span>Population density (GPWv4)</span>
+          <select id="population"><option value="">None</option></select></label>
+        <label class="field slider" data-show="population" hidden><span>Opacity <output for="population-alpha"></output></span>
+          <input id="population-alpha" type="range" min="0" max="1" step="0.05"></label>
+        <label class="field"><span>Livestock, 2015 (GLW4, ~10 MB each)</span>
+          <select id="livestock"><option value="">None</option></select></label>
+        <label class="field slider" data-show="livestock" hidden><span>Opacity <output for="livestock-alpha"></output></span>
+          <input id="livestock-alpha" type="range" min="0" max="1" step="0.05"></label>
+      </details>
+
+      <details>
         <summary>History: borders</summary>
         <label class="field"><span>Borders of a year or a date</span>
           <input id="borders" type="text" placeholder="e.g. 1500, 500 BC, 1914-08-01"></label>

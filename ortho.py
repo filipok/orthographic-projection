@@ -48,8 +48,38 @@ from rotation import (
     EARTH_RADIUS_M, far_side_up, globe_projection, initial_bearing, normalise_bearing,
 )
 from elevation import (
-    ELEVATION_ATTRIBUTION, RELIEF_ZOOM, TerrariumTiles, add_elevation_legend, relief_rgba,
+    ELEVATION_ATTRIBUTION, RELIEF_ZOOM, TerrariumTiles, add_elevation_legend, add_ocean_legend, ocean_rgba,
+    relief_rgba,
 )
+from currents import (
+    CURRENTS_ATTRIBUTION, CurrentsDataError, add_currents_legend, add_currents_overlay, load_currents,
+)
+from cyclones import (
+    CYCLONES_ATTRIBUTION, FIRST_YEAR as FIRST_CYCLONE_YEAR, CycloneDataError, add_cyclones_legend, draw_tracks,
+    load_tracks,
+)
+from hydrology import (
+    BASINS_ATTRIBUTION, RIVERS_ATTRIBUTION, HydrologyDataError, add_basins_legend, basin_colours, draw_basins,
+    draw_rivers, load_basins, load_rivers,
+)
+from livestock import (
+    LIVESTOCK_ATTRIBUTION, SPECIES as LIVESTOCK_SPECIES, LivestockDataError, add_livestock_legend,
+    add_livestock_overlay, load_livestock, resolve_species,
+)
+from permafrost import (
+    PERMAFROST_ATTRIBUTION, PermafrostDataError, add_permafrost_legend, add_permafrost_overlay, load_permafrost,
+)
+from population import (
+    LATEST_YEAR as LATEST_POPULATION_YEAR, POPULATION_ZOOM, YEARS as POPULATION_YEARS, PopulationDataError,
+    add_population_legend, load_colormap, population_attribution, population_rgba, population_tiles,
+    resolve_population_year,
+)
+from tectonics import (
+    DEFAULT_MIN_MAGNITUDE, MAX_MAGNITUDE, MIN_MAGNITUDE, TectonicsDataError, add_tectonics_legend,
+    credits as tectonics_credits, draw_plates, draw_quakes, draw_volcanoes, load_plates, load_quakes,
+    load_volcanoes,
+)
+from timezones import TIMEZONES_ATTRIBUTION, TimeZoneDataError, draw_time_zones, load_time_zones
 from biomes import (
     BIOME_ATTRIBUTION, ECOREGION_ATTRIBUTION, REALM_ATTRIBUTION, BiomeDataError, add_biome_legend,
     add_ecoregion_legend, add_ecoregion_overlay, add_realm_legend, load_ecoregions, resolve_biome_classes,
@@ -576,7 +606,9 @@ def validate_render_options(
     elevation_alpha: float = 0.8, soil_alpha: float = 0.6, vegetation_alpha: float = 0.7,
     land_cover_year: int | None = None, zoom: int | None = None, radius_km: float | None = None,
     tile_provider: str = "osm", lat: float = 0.0, beside: tuple[float, float] | None = None,
-    biome_alpha: float = 0.6, borders_alpha: float = 0.55,
+    biome_alpha: float = 0.6, borders_alpha: float = 0.55, basins_alpha: float = 0.5,
+    permafrost_alpha: float = 0.7, population_alpha: float = 0.7, livestock_alpha: float = 0.7,
+    earthquakes: float | None = None, cyclones: int | None = None,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -617,6 +649,16 @@ def validate_render_options(
         raise ValueError(f"biome_alpha must be between 0 and 1, got {biome_alpha}")
     if not 0.0 <= borders_alpha <= 1.0:
         raise ValueError(f"borders_alpha must be between 0 and 1, got {borders_alpha}")
+    for name, value in (("basins_alpha", basins_alpha), ("permafrost_alpha", permafrost_alpha),
+                        ("population_alpha", population_alpha), ("livestock_alpha", livestock_alpha)):
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be between 0 and 1, got {value}")
+    if earthquakes is not None and not MIN_MAGNITUDE <= earthquakes <= MAX_MAGNITUDE:
+        raise ValueError(f"earthquakes must be a magnitude from {MIN_MAGNITUDE:g} to {MAX_MAGNITUDE:g}, "
+                         f"got {earthquakes:g}")
+    if cyclones is not None and not FIRST_CYCLONE_YEAR <= cyclones <= time.localtime().tm_year:
+        raise ValueError(f"cyclones must start from a year between {FIRST_CYCLONE_YEAR} and this year, "
+                         f"got {cyclones}")
     if land_cover_year is not None and not FIRST_LAND_COVER_YEAR <= land_cover_year <= LATEST_LAND_COVER_YEAR:
         raise ValueError(f"land_cover_year must be between {FIRST_LAND_COVER_YEAR} and "
                          f"{LATEST_LAND_COVER_YEAR}, got {land_cover_year}")
@@ -680,6 +722,23 @@ def generate_orthographic_map(
     borders: str | int | None = None,
     borders_source: str = "auto",
     borders_alpha: float = 0.55,
+    ocean_depth: bool = False,
+    ice_age: bool = False,
+    plates: bool = False,
+    earthquakes: float | None = None,
+    volcanoes: bool = False,
+    currents: bool = False,
+    rivers: bool = False,
+    basins: bool = False,
+    basins_alpha: float = 0.5,
+    cyclones: int | None = None,
+    time_zones: bool = False,
+    permafrost: bool = False,
+    permafrost_alpha: float = 0.7,
+    population: int | None = None,
+    population_alpha: float = 0.7,
+    livestock: str | None = None,
+    livestock_alpha: float = 0.7,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -860,6 +919,42 @@ def generate_orthographic_map(
         (CShapes in its years, Cliopatria otherwise).
     borders_alpha : float
         Opacity of the borders' fill (0–1).
+    ocean_depth : bool
+        Colour the sea floor by depth and shade it (terrain tiles, see
+        :mod:`elevation`), with a key. *elevation_alpha* sets its opacity.
+    ice_age : bool
+        Draw the land the last ice age left dry (the sea ~120 m lower, about
+        21,000 years ago) and its coastline, with or without *ocean_depth*.
+    plates : bool
+        Draw the plate boundaries (Bird 2003) by kind and name the large plates.
+    earthquakes : float, optional
+        Draw the earthquakes of at least this magnitude (5-9) since 1900 (USGS),
+        sized by magnitude and coloured by depth.
+    volcanoes : bool
+        Draw the Holocene volcanoes (Smithsonian GVP), red if they have erupted since 1900.
+    currents : bool
+        Draw the mean ocean surface currents (NOAA drifters) as arrows,
+        coloured by how warm their water is for its latitude.
+    rivers : bool
+        Draw the main rivers (Natural Earth) and name the greatest.
+    basins : bool
+        Colour the river basins of 100,000 km² or more (HydroBASINS), named,
+        inland drainage in grey, with a key; *basins_alpha* sets their opacity.
+    cyclones : int, optional
+        Draw the tropical cyclone tracks (IBTrACS) from this year (1980 on),
+        coloured by Saffir-Simpson category.
+    time_zones : bool
+        Shade and label the standard-time zones (Natural Earth).
+    permafrost : bool
+        Colour the Northern Hemisphere's permafrost zones (Obu et al. 2019);
+        *permafrost_alpha* sets their opacity.
+    population : int, optional
+        Colour the land by population density in this year (2000, 2005, 2010,
+        2015 or 2020; GPWv4 via NASA GIBS); *population_alpha* sets its opacity.
+    livestock : str, optional
+        Colour the land by the density of one kind of livestock in 2015
+        (``"cattle"``, ``"sheep"``, ``"chickens"`` …, see :data:`livestock.SPECIES`);
+        *livestock_alpha* sets its opacity.
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -876,8 +971,12 @@ def generate_orthographic_map(
         dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
         elevation_alpha=elevation_alpha, soil_alpha=soil_alpha, vegetation_alpha=vegetation_alpha,
         land_cover_year=land_cover_year, zoom=zoom, radius_km=radius_km, tile_provider=tile_provider,
-        lat=lat, beside=beside, biome_alpha=biome_alpha, borders_alpha=borders_alpha,
+        lat=lat, beside=beside, biome_alpha=biome_alpha, borders_alpha=borders_alpha, basins_alpha=basins_alpha,
+        permafrost_alpha=permafrost_alpha, population_alpha=population_alpha, livestock_alpha=livestock_alpha,
+        earthquakes=earthquakes, cyclones=cyclones,
     )
+    population_year = resolve_population_year(population) if population is not None else None
+    livestock_species = resolve_species(livestock) if livestock else None
     wind_period = resolve_wind_period(wind) if wind is not None else None
     land_cover_codes = resolve_land_cover_classes(land_cover_classes or [])
     land_cover = land_cover or bool(land_cover_codes) or land_cover_year is not None
@@ -1021,6 +1120,22 @@ def generate_orthographic_map(
         for ax in axes:
             ax.add_image(relief, relief_zoom, regrid_shape=regrid_shape, interpolation="bilinear", zorder=1)
 
+    # Step 5a1: The sea floor by depth and the last ice age's coast, from the same terrain tiles
+    ocean = None
+    if ocean_depth or ice_age:
+        ocean_zoom = RELIEF_ZOOM if radius_km is None else max(RELIEF_ZOOM, min(zoom, MAX_RELIEF_ZOOM))
+        logger.info("Adding the %s (alpha=%.2f, zoom %d) …",
+                    " and ".join(n for n, on in (("ocean depth", ocean_depth), ("ice-age coast", ice_age)) if on),
+                    elevation_alpha, ocean_zoom)
+        ocean = BufferedTileSource(
+            TerrariumTiles(cache_dir=tile_cache_dir, use_cache=tile_cache_dir is not None),
+            tile_buffer_factor=tile_buffer_factor,
+            postprocess=functools.partial(ocean_rgba, alpha=elevation_alpha, depth=ocean_depth, ice_age=ice_age,
+                                          zoom=ocean_zoom),
+        )
+        for ax in axes:
+            ax.add_image(ocean, ocean_zoom, regrid_shape=regrid_shape, interpolation="nearest", zorder=1)
+
     # Step 5a2: Vegetation, land cover or NDVI (above the elevation, below the climate
     # colours); NASA GIBS tiles, fetched in savefig like the map tiles
     vegetation = None
@@ -1050,6 +1165,25 @@ def generate_orthographic_map(
         for ax in axes:
             ax.add_image(vegetation, vegetation_zoom, regrid_shape=regrid_shape,
                          interpolation="nearest", zorder=2)
+
+    # Step 5a2b: Population density (NASA GIBS tiles, fetched in savefig)
+    people = None
+    if population_year is not None:
+        logger.info("Adding the population density of %d (alpha=%.2f) …", population_year, population_alpha)
+        try:
+            colormap = load_colormap(population_year, tile_cache_dir)
+        except (PopulationDataError, OSError) as e:
+            logger.warning("Skipping the population density: %s", e)
+        else:
+            people = BufferedTileSource(
+                population_tiles(population_year, tile_cache_dir, use_cache=tile_cache_dir is not None),
+                tile_buffer_factor=tile_buffer_factor,
+                postprocess=functools.partial(population_rgba, alpha=population_alpha, colormap=colormap),
+            )
+            people_zoom = POPULATION_ZOOM if radius_km is None else max(
+                POPULATION_ZOOM, min(zoom, people.tile_source.max_zoom))
+            for ax in axes:
+                ax.add_image(people, people_zoom, regrid_shape=regrid_shape, interpolation="nearest", zorder=2)
 
     # Step 5a3: Biomes or ecoregions (above the vegetation, below the climate colours)
     biome_layer = None
@@ -1196,6 +1330,60 @@ def generate_orthographic_map(
             logger.warning("Skipping the borders: %s", e)
             polities = None
 
+    # Step 5b4: River basins (like the borders), time zones, livestock and permafrost
+    basin_list = None
+    basin_colour_map: dict[str, tuple[int, int, int]] = {}
+    basin_counts: list[dict[int, int]] = []
+    if basins:
+        logger.info("Drawing the river basins (alpha=%.2f) …", basins_alpha)
+        try:
+            basin_list = load_basins()
+            basin_colour_map = basin_colours(basin_list)
+            basin_counts = [draw_basins(ax, basin_list, basin_colour_map, alpha=basins_alpha) for ax in axes]
+        except (HydrologyDataError, OSError) as e:
+            logger.warning("Skipping the river basins: %s", e)
+            basin_list = None
+    zones_drawn = False
+    if time_zones:
+        try:
+            zones = load_time_zones()
+            for ax in axes:
+                draw_time_zones(ax, zones)
+        except (TimeZoneDataError, OSError) as e:
+            logger.warning("Skipping the time zones: %s", e)
+        else:
+            zones_drawn = True
+    livestock_drawn = False
+    if livestock_species is not None:
+        try:
+            herd = load_livestock(livestock_species)
+            for ax in axes:
+                add_livestock_overlay(ax, herd, alpha=livestock_alpha, regrid_shape=regrid_shape)
+        except (LivestockDataError, OSError) as e:
+            logger.warning("Skipping the livestock: %s", e)
+        else:
+            livestock_drawn = True
+    permafrost_drawn = False
+    if permafrost:
+        try:
+            frozen = load_permafrost()
+            for ax in axes:
+                add_permafrost_overlay(ax, frozen, alpha=permafrost_alpha, regrid_shape=regrid_shape)
+        except (PermafrostDataError, OSError) as e:
+            logger.warning("Skipping the permafrost: %s", e)
+        else:
+            permafrost_drawn = True
+    rivers_drawn = False
+    if rivers:
+        try:
+            river_list = load_rivers()
+            for ax in axes:
+                draw_rivers(ax, river_list)
+        except (HydrologyDataError, OSError) as e:
+            logger.warning("Skipping the rivers: %s", e)
+        else:
+            rivers_drawn = True
+
     # Step 5c: Crop areas (above climate colours, below ice)
     crop_layer = None
     if crops:
@@ -1235,6 +1423,57 @@ def generate_orthographic_map(
             logger.warning("Skipping prevailing winds: %s", e)
         else:
             wind_drawn = True
+
+    # Step 5f: Ocean currents, cyclone tracks and plate tectonics (above the colours, below routes)
+    currents_drawn = False
+    if currents:
+        try:
+            field = load_currents()
+            for ax in axes:
+                add_currents_overlay(ax, field)
+        except (CurrentsDataError, OSError) as e:
+            logger.warning("Skipping the ocean currents: %s", e)
+        else:
+            currents_drawn = True
+    cyclones_drawn = False
+    if cyclones is not None:
+        try:
+            tracks = load_tracks(cyclones)
+            for ax in axes:
+                draw_tracks(ax, tracks)
+        except (CycloneDataError, OSError) as e:
+            logger.warning("Skipping the cyclone tracks: %s", e)
+        else:
+            cyclones_drawn = True
+    plates_drawn = False
+    if plates:
+        try:
+            boundaries = load_plates()
+            for ax in axes:
+                draw_plates(ax, boundaries)
+        except (TectonicsDataError, OSError) as e:
+            logger.warning("Skipping the plate boundaries: %s", e)
+        else:
+            plates_drawn = True
+    quakes = None
+    if earthquakes is not None:
+        try:
+            quakes = load_quakes(earthquakes)
+            for ax in axes:
+                draw_quakes(ax, quakes)
+        except (TectonicsDataError, OSError) as e:
+            logger.warning("Skipping the earthquakes: %s", e)
+            quakes = None
+    volcanoes_drawn = False
+    if volcanoes:
+        try:
+            vents = load_volcanoes()
+            for ax in axes:
+                draw_volcanoes(ax, vents)
+        except (TectonicsDataError, OSError) as e:
+            logger.warning("Skipping the volcanoes: %s", e)
+        else:
+            volcanoes_drawn = True
 
     # Step 6: Gridlines
     for ax in axes:
@@ -1321,6 +1560,10 @@ def generate_orthographic_map(
                                        title=sea_legend_title(sea_key_period) if sea_period else None))
     if relief is not None:
         keys.append(add_elevation_legend(near, x=key_x))
+    if ocean is not None:
+        keys.append(add_ocean_legend(near, depth=ocean_depth, ice_age=ice_age, x=key_x))
+    if people is not None and population_year is not None:
+        keys.append(add_population_legend(near, population_year, x=key_x))
     if land_cover:
         keys.append(add_land_cover_legend(near, land_cover_year or LATEST_LAND_COVER_YEAR,
                                           classes=land_cover_codes or None, x=key_x))
@@ -1340,10 +1583,22 @@ def generate_orthographic_map(
     if polities and border_when is not None and border_source is not None:
         keys.append(add_borders_legend(near, polities, border_counts, border_colours, border_when, border_source,
                                        x=key_x))
+    if basin_list:
+        keys.append(add_basins_legend(near, basin_list, basin_counts, basin_colour_map, x=key_x))
+    if permafrost_drawn:
+        keys.append(add_permafrost_legend(near, x=key_x))
+    if livestock_drawn and livestock_species is not None:
+        keys.append(add_livestock_legend(near, livestock_species, x=key_x))
     if crop_layer is not None:
         keys.append(add_crop_legend(near, crop_layer, x=key_x))
     if wind_drawn and wind_period is not None:
         keys.append(add_wind_legend(near, wind_period, x=key_x))
+    if currents_drawn:
+        keys.append(add_currents_legend(near, x=key_x))
+    if cyclones_drawn and cyclones is not None:
+        keys.append(add_cyclones_legend(near, cyclones, x=key_x))
+    if plates_drawn or quakes is not None or volcanoes_drawn:
+        keys.append(add_tectonics_legend(near, plates_drawn, quakes, volcanoes_drawn, x=key_x))
     if routes and route_legend:
         keys.append(add_route_legend(near, routes, x=key_x))
     _stack_keys(near, [k for k in keys if k is not None], top=-0.07 if climate_credits else -0.01, x=key_x)
@@ -1361,7 +1616,9 @@ def generate_orthographic_map(
         climate_credits.append(CLIMATE_ATTRIBUTION)
     if sea_credit:
         climate_credits.append(sea_credit)
-    for credit in climate_credits + ([ELEVATION_ATTRIBUTION] if relief is not None else []):
+    if people is not None and population_year is not None:
+        credits.append(population_attribution(population_year))
+    for credit in climate_credits + ([ELEVATION_ATTRIBUTION] if relief is not None or ocean is not None else []):
         if credit not in credits:
             credits.append(credit)
     if soil_drawn:
@@ -1370,12 +1627,27 @@ def generate_orthographic_map(
         credits.append(SOIL_PROPERTY_ATTRIBUTION)
     if polities is not None and border_source is not None:
         credits.append(borders_attribution(border_source))
+    if basin_list:
+        credits.append(BASINS_ATTRIBUTION)
+    if rivers_drawn:
+        credits.append(RIVERS_ATTRIBUTION)
+    if zones_drawn:
+        credits.append(TIMEZONES_ATTRIBUTION)
+    if permafrost_drawn:
+        credits.append(PERMAFROST_ATTRIBUTION)
+    if livestock_drawn:
+        credits.append(LIVESTOCK_ATTRIBUTION)
     if crop_layer is not None:
         credits.append(CROP_ATTRIBUTION)
     if ice_attribution:
         credits.append(ice_attribution)
     if wind_drawn:
         credits.append(WIND_ATTRIBUTION)
+    if currents_drawn:
+        credits.append(CURRENTS_ATTRIBUTION)
+    if cyclones_drawn:
+        credits.append(CYCLONES_ATTRIBUTION)
+    credits += tectonics_credits(plates_drawn, quakes is not None, volcanoes_drawn)
     _add_attribution(axes[-1], credits)
 
     # Step 8: Export
@@ -1386,6 +1658,10 @@ def generate_orthographic_map(
     if vegetation is not None and vegetation.failed_tiles:
         logger.warning("%d of %d vegetation tiles could not be downloaded (first error: %s).",
                        len(vegetation.failed_tiles), vegetation.total_tiles, vegetation.failed_tiles[0][1])
+    for layer, what in ((ocean, "terrain (ocean)"), (people, "population")):
+        if layer is not None and layer.failed_tiles:
+            logger.warning("%d of %d %s tiles could not be downloaded (first error: %s).",
+                           len(layer.failed_tiles), layer.total_tiles, what, layer.failed_tiles[0][1])
     if relief is not None and relief.failed_tiles:
         logger.warning("%d of %d terrain tiles could not be downloaded (first error: %s); "
                        "those areas have no elevation colours.", len(relief.failed_tiles),
@@ -1787,6 +2063,46 @@ def prompt_for_climate_classes(resolve: Any, example: str, what: str = "Climate 
         return specs
 
 
+# The extra layers the interactive prompt offers, and what each turns on
+EXTRA_LAYERS: dict[str, tuple[str, Any]] = {
+    "ocean-depth": ("ocean_depth", True), "ice-age": ("ice_age", True), "currents": ("currents", True),
+    "plates": ("plates", True), "earthquakes": ("earthquakes", DEFAULT_MIN_MAGNITUDE),
+    "volcanoes": ("volcanoes", True), "rivers": ("rivers", True), "basins": ("basins", True),
+    "cyclones": ("cyclones", FIRST_CYCLONE_YEAR), "time-zones": ("time_zones", True),
+    "permafrost": ("permafrost", True), "population": ("population", LATEST_POPULATION_YEAR),
+}
+
+
+def parse_extra_layers(text: str) -> dict[str, Any]:
+    """The keyword arguments for a comma-separated list of :data:`EXTRA_LAYERS` (and ``livestock:ANIMAL``).
+
+    Raises ``ValueError`` for a name it does not know.
+    """
+    chosen: dict[str, Any] = {}
+    for item in (part.strip().lower() for part in text.split(",")):
+        if not item:
+            continue
+        if item.startswith("livestock:"):
+            chosen["livestock"] = resolve_species(item.split(":", 1)[1])
+        elif item in EXTRA_LAYERS:
+            key, value = EXTRA_LAYERS[item]
+            chosen[key] = value
+        else:
+            raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL.")
+    return chosen
+
+
+def prompt_for_extra_layers() -> dict[str, Any]:
+    """Prompt for the extra layers, comma-separated; blank for none."""
+    while True:
+        raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
+                    + ", livestock:cattle …) [blank for none]: ")
+        try:
+            return parse_extra_layers(raw)
+        except ValueError as e:
+            print(f"{e}\n")
+
+
 def print_crop_names() -> None:
     """Print the CROPGRIDS crop names, several per line."""
     print(f"{len(CROP_NAMES)} crops (\"nes\" = not elsewhere specified, \"for\" = fodder):")
@@ -2019,7 +2335,18 @@ def build_cli_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.8,
         metavar="ALPHA",
-        help="Opacity of the elevation layer (0-1, default: 0.8).",
+        help="Opacity of the elevation and ocean layers (0-1, default: 0.8).",
+    )
+    relief.add_argument(
+        "--ocean-depth",
+        action="store_true",
+        help="Colour the sea floor by depth and shade it (the same terrain tiles), with a key.",
+    )
+    relief.add_argument(
+        "--ice-age",
+        action="store_true",
+        help="Draw the land the last ice age left dry, about 21,000 years ago when the sea stood ~120 m "
+             "lower (Doggerland, Beringia, Sundaland), and its coastline.",
     )
 
     veg = parser.add_argument_group("Vegetation (MODIS, via NASA GIBS)", "Land cover or NDVI, one at a time.")
@@ -2164,6 +2491,51 @@ def build_cli_parser() -> argparse.ArgumentParser:
         metavar="ALPHA",
         help="Opacity of the borders' fill (0-1, default: 0.55).",
     )
+
+    earth = parser.add_argument_group("Plate tectonics, rivers, cyclones, time zones, permafrost")
+    earth.add_argument("--plates", action="store_true",
+                       help="Draw the plate boundaries (Bird 2003): spreading ridges, subduction zones and "
+                            "transform faults, and name the large plates.")
+    earth.add_argument("--earthquakes", nargs="?", const=DEFAULT_MIN_MAGNITUDE, type=float, default=None,
+                       metavar="MAGNITUDE",
+                       help=f"Draw the earthquakes since 1900 of at least MAGNITUDE ({MIN_MAGNITUDE:g}-"
+                            f"{MAX_MAGNITUDE:g}; default {DEFAULT_MIN_MAGNITUDE:g}; USGS), sized by magnitude "
+                            "and coloured by depth.")
+    earth.add_argument("--volcanoes", action="store_true",
+                       help="Draw the volcanoes active in the last 11,700 years (Smithsonian GVP), red if "
+                            "they have erupted since 1900.")
+    earth.add_argument("--currents", action="store_true",
+                       help="Draw the mean ocean surface currents (NOAA drifters; one-time download of ~51 MB), "
+                            "coloured warm or cold for their latitude.")
+    earth.add_argument("--rivers", action="store_true",
+                       help="Draw the main rivers (Natural Earth) and name the greatest.")
+    earth.add_argument("--basins", action="store_true",
+                       help="Colour the river basins of 100,000 km² or more (HydroBASINS; one-time download of "
+                            "~55 MB), named, inland drainage in grey, with a key.")
+    earth.add_argument("--basins-alpha", type=float, default=0.5, metavar="ALPHA",
+                       help="Opacity of the river basins (0-1, default: 0.5).")
+    earth.add_argument("--cyclones", nargs="?", const=FIRST_CYCLONE_YEAR, type=int, default=None, metavar="SINCE",
+                       help=f"Draw the tropical cyclone tracks (IBTrACS) from the year SINCE (default "
+                            f"{FIRST_CYCLONE_YEAR}), coloured by Saffir-Simpson category.")
+    earth.add_argument("--time-zones", action="store_true",
+                       help="Shade and label the standard-time zones (Natural Earth).")
+    earth.add_argument("--permafrost", action="store_true",
+                       help="Colour the Northern Hemisphere's permafrost zones (Obu et al. 2019).")
+    earth.add_argument("--permafrost-alpha", type=float, default=0.7, metavar="ALPHA",
+                       help="Opacity of the permafrost (0-1, default: 0.7).")
+
+    people = parser.add_argument_group("People and livestock")
+    people.add_argument("--population", nargs="?", const=LATEST_POPULATION_YEAR, type=int, default=None,
+                        metavar="YEAR",
+                        help="Colour the land by population density (GPWv4 via NASA GIBS) in YEAR: "
+                             + ", ".join(map(str, POPULATION_YEARS)) + f" (default {LATEST_POPULATION_YEAR}).")
+    people.add_argument("--population-alpha", type=float, default=0.7, metavar="ALPHA",
+                        help="Opacity of the population density (0-1, default: 0.7).")
+    people.add_argument("--livestock", metavar="ANIMAL",
+                        help="Colour the land by the density of one kind of livestock in 2015 (Gridded Livestock "
+                             "of the World v4; ~10 MB each): " + ", ".join(LIVESTOCK_SPECIES) + ".")
+    people.add_argument("--livestock-alpha", type=float, default=0.7, metavar="ALPHA",
+                        help="Opacity of the livestock density (0-1, default: 0.7).")
 
     winds = parser.add_argument_group("Winds (NCEP/NCAR Reanalysis)")
     winds.add_argument(
@@ -2513,6 +2885,8 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
         borders_when = raw
         break
 
+    extra_layers = prompt_for_extra_layers()
+
     enable_ice = input(
         "Add polar ice at its winter maximum? [y/N]: "
     ).strip().lower() in ("y", "yes")
@@ -2543,6 +2917,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             ice=enable_ice,
             crops=crops,
             borders=borders_when,
+            **extra_layers,
             koppen_classes=koppen_classes,
             trewartha=enable_trewartha,
             trewartha_classes=trewartha_classes,
@@ -2623,6 +2998,10 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
     resolve_crops(args.crop or [])
     if args.borders:
         choose_borders_source(parse_when(args.borders), args.borders_source)
+    if args.population is not None:
+        resolve_population_year(args.population)
+    if args.livestock:
+        resolve_species(args.livestock)
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
@@ -2704,7 +3083,9 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             ice_year=args.ice_year, elevation_alpha=args.elevation_alpha, soil_alpha=args.soil_alpha,
             vegetation_alpha=args.vegetation_alpha, land_cover_year=args.landcover_year,
             zoom=zoom, radius_km=args.radius, tile_provider=args.provider, lat=lat, beside=beside_centre,
-            biome_alpha=args.biome_alpha, borders_alpha=args.borders_alpha,
+            biome_alpha=args.biome_alpha, borders_alpha=args.borders_alpha, basins_alpha=args.basins_alpha,
+            permafrost_alpha=args.permafrost_alpha, population_alpha=args.population_alpha,
+            livestock_alpha=args.livestock_alpha, earthquakes=args.earthquakes, cyclones=args.cyclones,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -2751,6 +3132,23 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         borders=args.borders,
         borders_source=args.borders_source,
         borders_alpha=args.borders_alpha,
+        ocean_depth=args.ocean_depth,
+        ice_age=args.ice_age,
+        plates=args.plates,
+        earthquakes=args.earthquakes,
+        volcanoes=args.volcanoes,
+        currents=args.currents,
+        rivers=args.rivers,
+        basins=args.basins,
+        basins_alpha=args.basins_alpha,
+        cyclones=args.cyclones,
+        time_zones=args.time_zones,
+        permafrost=args.permafrost,
+        permafrost_alpha=args.permafrost_alpha,
+        population=args.population,
+        population_alpha=args.population_alpha,
+        livestock=args.livestock,
+        livestock_alpha=args.livestock_alpha,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,

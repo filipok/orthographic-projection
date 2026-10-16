@@ -136,6 +136,14 @@ class TestMaps:
         _, status = _render(client, city="Lisbon", borders="-500")
         assert "--borders -500" in status["command"]
 
+    def test_atlas_layers(self, client, renders):
+        _, status = _render(client, city="Lisbon", ocean_depth=True, plates=True, earthquakes=7.0,
+                            population=2010, livestock="sheep")
+        assert renders[0]["earthquakes"] == 7.0 and renders[0]["population"] == 2010
+        assert renders[0]["livestock"] == "sheep" and renders[0]["ocean_depth"] is True
+        assert "--ocean-depth --plates --earthquakes 7.0" in status["command"]
+        assert "--population 2010 --livestock sheep" in status["command"]
+
     def test_a_globe_beside(self, client, renders):
         _, status = _render(client, city="Lisbon", beside="Tokyo")
         assert renders[0]["beside"] == (35.6762, 139.6503) and renders[0]["beside_name"] == "Tokyo"

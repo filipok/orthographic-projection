@@ -772,6 +772,18 @@ class TestCLIParser:
         with pytest.raises(SystemExit):
             self._parse(["--city", "nyc", "--borders", "1500", "--borders-source", "wikipedia"])
 
+    def test_atlas_layer_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert args.earthquakes is None and args.cyclones is None and args.population is None and not args.plates
+        args = self._parse(["--city", "nyc", "--ocean-depth", "--ice-age", "--plates", "--earthquakes", "--volcanoes",
+                            "--currents", "--rivers", "--basins", "--cyclones", "--time-zones", "--permafrost",
+                            "--population", "--livestock", "goats"])
+        assert args.ocean_depth and args.ice_age and args.plates and args.volcanoes and args.currents
+        assert args.rivers and args.basins and args.time_zones and args.permafrost
+        assert args.earthquakes == 6.0 and args.cyclones == 1980 and args.population == 2020 and args.livestock == "goats"
+        args = self._parse(["--city", "nyc", "--earthquakes", "7.5", "--cyclones", "2000", "--population", "2005"])
+        assert args.earthquakes == 7.5 and args.cyclones == 2000 and args.population == 2005
+
     def test_soil_property_flags(self):
         args = self._parse(["--city", "nyc"])
         assert args.soil_property is None and args.soil_depth is None
@@ -1008,6 +1020,9 @@ class TestRunCLIValidation:
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
             biomes=False, biome_class=None, ecoregions=False, realms=None, realm_regions=False, biome_alpha=0.6,
             borders=None, borders_source="auto", borders_alpha=0.55,
+            ocean_depth=False, ice_age=False, plates=False, earthquakes=None, volcanoes=False, currents=False,
+            rivers=False, basins=False, basins_alpha=0.5, cyclones=None, time_zones=False, permafrost=False,
+            permafrost_alpha=0.7, population=None, population_alpha=0.7, livestock=None, livestock_alpha=0.7,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1419,6 +1434,32 @@ class TestRunCLIValidation:
         render.assert_not_called()
         assert message in caplog.text
 
+    def test_atlas_layers_passed_to_renderer(self):
+        args = self._make_args(city="paris", ocean_depth=True, plates=True, earthquakes=7.0, cyclones=1990,
+                               population=2010, livestock="cow", basins=True, basins_alpha=0.3)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert kwargs["ocean_depth"] and kwargs["plates"] and kwargs["basins"] and kwargs["basins_alpha"] == 0.3
+        assert (kwargs["earthquakes"], kwargs["cyclones"], kwargs["population"], kwargs["livestock"]) == \
+            (7.0, 1990, 2010, "cow")
+
+    @pytest.mark.parametrize("overrides, message", [
+        ({"population": 2012}, "Population density is mapped for"),
+        ({"livestock": "llamas"}, "Unknown livestock"),
+        ({"earthquakes": 4.0}, "earthquakes must be a magnitude"),
+        ({"cyclones": 1970}, "cyclones must start"),
+        ({"basins": True, "basins_alpha": 2.0}, "basins_alpha"),
+    ])
+    def test_bad_atlas_options_exit_before_render(self, caplog, overrides, message):
+        args = self._make_args(city="paris", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render:
+            with pytest.raises(SystemExit):
+                ortho.run_cli(args)
+        render.assert_not_called()
+        assert message in caplog.text
+
     def test_soil_property_passed_to_renderer(self):
         args = self._make_args(city="paris", soil_property="clay", soil_depth="15-30cm")
         with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
@@ -1738,6 +1779,92 @@ class TestGenerateOrthographicMapIntegration:
         assert os.path.exists(result)
         key.assert_not_called()
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
+    @pytest.mark.parametrize("option, loader, drawer, key, credit", [
+        ({"currents": True}, "load_currents", "add_currents_overlay", "add_currents_legend", "CURRENTS_ATTRIBUTION"),
+        ({"cyclones": 1980}, "load_tracks", "draw_tracks", "add_cyclones_legend", "CYCLONES_ATTRIBUTION"),
+        ({"permafrost": True}, "load_permafrost", "add_permafrost_overlay", "add_permafrost_legend",
+         "PERMAFROST_ATTRIBUTION"),
+        ({"livestock": "sheep"}, "load_livestock", "add_livestock_overlay", "add_livestock_legend",
+         "LIVESTOCK_ATTRIBUTION"),
+        ({"time_zones": True}, "load_time_zones", "draw_time_zones", None, "TIMEZONES_ATTRIBUTION"),
+        ({"rivers": True}, "load_rivers", "draw_rivers", None, "RIVERS_ATTRIBUTION"),
+    ])
+    def test_atlas_layer_drawn_with_key_and_credit(self, tmp_path, option, loader, drawer, key, credit):
+        patches = [mock.patch.object(ortho.GeoAxes, "add_image", return_value=None),
+                   mock.patch.object(ortho, loader, return_value=mock.Mock()),
+                   mock.patch.object(ortho, drawer),
+                   mock.patch.object(ortho, "_add_attribution")]
+        if key:
+            patches.append(mock.patch.object(ortho, key))
+        with patches[0], patches[1] as load, patches[2] as draw, patches[3] as attribution, \
+                (patches[4] if key else mock.patch.object(ortho, "logger")) as legend:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(10, 10), **option)
+        load.assert_called_once()
+        assert draw.call_count == 2                                  # one per globe
+        if key:
+            legend.assert_called_once()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], getattr(ortho, credit)]
+
+    def test_tectonics_share_one_key(self, tmp_path):
+        quakes = mock.Mock()
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_plates"), mock.patch.object(ortho, "draw_plates"), \
+                mock.patch.object(ortho, "load_quakes", return_value=quakes) as load_quakes, \
+                mock.patch.object(ortho, "draw_quakes"), \
+                mock.patch.object(ortho, "load_volcanoes", side_effect=ortho.TectonicsDataError("offline")), \
+                mock.patch.object(ortho, "add_tectonics_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), plates=True, earthquakes=7.0,
+                                                     volcanoes=True)
+        assert os.path.exists(result)
+        assert load_quakes.call_args.args == (7.0,)
+        assert key.call_args.args[1:] == (True, quakes, False)       # the volcanoes failed: not in the key
+        assert attribution.call_args.args[1][1:] == ortho.tectonics_credits(True, True, False)
+
+    def test_basins_and_population(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None) as add_image, \
+                mock.patch.object(ortho, "load_basins", return_value=[mock.Mock()]), \
+                mock.patch.object(ortho, "basin_colours", return_value={}), \
+                mock.patch.object(ortho, "draw_basins", return_value={0: 1}) as draw, \
+                mock.patch.object(ortho, "add_basins_legend") as basins_key, \
+                mock.patch.object(ortho, "load_colormap", return_value=(None, None)), \
+                mock.patch.object(ortho, "add_population_legend") as population_key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), basins=True, basins_alpha=0.3,
+                                            population=2015)
+        assert draw.call_args.kwargs["alpha"] == 0.3
+        assert basins_key.call_args.args[2] == [{0: 1}]
+        assert population_key.call_args.args[1] == 2015
+        assert len(add_image.call_args_list) == 2                    # the map tiles and the population tiles
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.population_attribution(2015),
+                                                 ortho.BASINS_ATTRIBUTION]
+
+    def test_ocean_layer_and_its_credit(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None) as add_image, \
+                mock.patch.object(ortho, "add_ocean_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), ice_age=True)
+        ocean = add_image.call_args_list[1].args[0]
+        assert ocean.postprocess.keywords == {"alpha": 0.8, "depth": False, "ice_age": True, "zoom": ortho.RELIEF_ZOOM}
+        assert key.call_args.kwargs["ice_age"] is True and key.call_args.kwargs["depth"] is False
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.ELEVATION_ATTRIBUTION]
+
+    @pytest.mark.parametrize("text, expected", [
+        ("", {}),
+        ("plates, earthquakes ,population", {"plates": True, "earthquakes": 6.0, "population": 2020}),
+        ("livestock:cow, ice-age", {"livestock": "cattle", "ice_age": True}),
+    ])
+    def test_extra_layers_for_the_prompt(self, text, expected):
+        assert ortho.parse_extra_layers(text) == expected
+
+    def test_unknown_extra_layer(self):
+        with pytest.raises(ValueError, match="Unknown layer"):
+            ortho.parse_extra_layers("dragons")
 
     def test_biome_failure_still_saves_map_without_key_or_credit(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \

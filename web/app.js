@@ -147,6 +147,29 @@ function buildRequest() {
   }
   const crops = list($("crops").value);
   if (crops.length) req.crop = crops;
+  for (const name of ["ocean-depth", "ice-age", "currents", "plates", "volcanoes", "rivers", "time-zones"]) {
+    if ($(name).checked) req[name.replace("-", "_")] = true;
+  }
+  if ($("earthquakes").checked) {
+    req.earthquakes = Number($("earthquake-magnitude").value) || options.earthquakes.default;
+  }
+  if ($("basins").checked) {
+    req.basins = true;
+    req.basins_alpha = changed("basins-alpha", options.alpha.basins);
+  }
+  if ($("cyclones").checked) req.cyclones = Number($("cyclones-since").value) || options.first_cyclone_year;
+  if ($("permafrost").checked) {
+    req.permafrost = true;
+    req.permafrost_alpha = changed("permafrost-alpha", options.alpha.permafrost);
+  }
+  if ($("population").value) {
+    req.population = Number($("population").value);
+    req.population_alpha = changed("population-alpha", options.alpha.population);
+  }
+  if ($("livestock").value) {
+    req.livestock = $("livestock").value;
+    req.livestock_alpha = changed("livestock-alpha", options.alpha.livestock);
+  }
   const borders = $("borders").value.trim();
   if (borders) {
     req.borders = borders;
@@ -288,6 +311,21 @@ function fillForm(req) {
   $("ice").checked = Boolean(req.ice || req.ice_year);
   set("ice-year", req.ice_year);
   $("crops").value = (req.crop || []).join(", ");
+  for (const name of ["ocean-depth", "ice-age", "currents", "plates", "volcanoes", "rivers", "time-zones"]) {
+    $(name).checked = Boolean(req[name.replace("-", "_")]);
+  }
+  $("earthquakes").checked = req.earthquakes != null;
+  set("earthquake-magnitude", req.earthquakes);
+  $("basins").checked = Boolean(req.basins);
+  set("basins-alpha", req.basins_alpha);
+  $("cyclones").checked = req.cyclones != null;
+  set("cyclones-since", req.cyclones);
+  $("permafrost").checked = Boolean(req.permafrost);
+  set("permafrost-alpha", req.permafrost_alpha);
+  if (req.population != null) pick("population", String(req.population), "population year");
+  set("population-alpha", req.population_alpha);
+  if (req.livestock) pick("livestock", req.livestock, "livestock");
+  set("livestock-alpha", req.livestock_alpha);
   $("borders").value = req.borders ?? "";
   if (req.borders_source) pick("borders-source", req.borders_source, "borders source");
   set("borders-alpha", req.borders_alpha);
@@ -636,6 +674,14 @@ async function init() {
   $("vegetation-alpha").value = options.alpha.vegetation;
   $("biome-alpha").value = options.alpha.biome;
   $("borders-alpha").value = options.alpha.borders;
+  for (const name of ["basins", "permafrost", "population", "livestock"]) $(`${name}-alpha`).value = options.alpha[name];
+  $("earthquake-magnitude").min = options.earthquakes.min;
+  $("earthquake-magnitude").max = options.earthquakes.max;
+  $("earthquake-magnitude").value = options.earthquakes.default;
+  $("cyclones-since").min = options.first_cyclone_year;
+  $("cyclones-since").value = options.first_cyclone_year;
+  $("population").append(...options.population_years.slice().reverse().map((y) => option(String(y))));
+  $("livestock").append(...options.livestock.map((name) => option(name, name[0].toUpperCase() + name.slice(1))));
   $("soil-alpha").value = options.alpha.soil;
   $("crops").title = `${options.crops.length} crops, e.g. ${options.crops.slice(0, 8).join(", ")}…`;
   for (const el of document.querySelectorAll(".editable")) el.hidden = !options.editable;
