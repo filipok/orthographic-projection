@@ -1,0 +1,6 @@
+# Where the dengue mosquitoes Aedes aegypti and Ae. albopictus have been recorded, 1958-2014.
+lat = 5
+lon = -70
+provider = "osm_plain"
+aedes = "both"
+output = "orthographic_map_americas_osm_plain_z3_aedes.png"

@@ -784,6 +784,14 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc", "--earthquakes", "7.5", "--cyclones", "2000", "--population", "2005"])
         assert args.earthquakes == 7.5 and args.cyclones == 2000 and args.population == 2005
 
+    def test_malaria_and_aedes_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert args.malaria is None and args.malaria_year == 2025 and args.malaria_alpha == 0.75 and args.aedes is None
+        args = self._parse(["--city", "nyc", "--malaria", "pv", "--malaria-year", "2010", "--malaria-alpha", "0.5",
+                            "--aedes"])
+        assert (args.malaria, args.malaria_year, args.malaria_alpha, args.aedes) == ("pv", 2010, 0.5, "both")
+        assert self._parse(["--city", "nyc", "--aedes", "albopictus"]).aedes == "albopictus"
+
     def test_soil_property_flags(self):
         args = self._parse(["--city", "nyc"])
         assert args.soil_property is None and args.soil_depth is None
@@ -1023,6 +1031,7 @@ class TestRunCLIValidation:
             ocean_depth=False, ice_age=False, plates=False, earthquakes=None, volcanoes=False, currents=False,
             rivers=False, basins=False, basins_alpha=0.5, cyclones=None, time_zones=False, permafrost=False,
             permafrost_alpha=0.7, population=None, population_alpha=0.7, livestock=None, livestock_alpha=0.7,
+            malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1445,9 +1454,22 @@ class TestRunCLIValidation:
         assert (kwargs["earthquakes"], kwargs["cyclones"], kwargs["population"], kwargs["livestock"]) == \
             (7.0, 1990, 2010, "cow")
 
+    def test_malaria_and_aedes_passed_to_renderer(self):
+        args = self._make_args(city="paris", malaria="vivax", malaria_year=2005, malaria_alpha=0.5, aedes="both")
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert (kwargs["malaria"], kwargs["malaria_year"], kwargs["malaria_alpha"], kwargs["aedes"]) == \
+            ("vivax", 2005, 0.5, "both")
+
     @pytest.mark.parametrize("overrides, message", [
         ({"population": 2012}, "Population density is mapped for"),
         ({"livestock": "llamas"}, "Unknown livestock"),
+        ({"malaria": "knowlesi"}, "Unknown malaria parasite"),
+        ({"malaria": "pf", "malaria_year": 1999}, "Malaria is mapped for"),
+        ({"malaria": "pf", "malaria_alpha": 1.5}, "malaria_alpha"),
+        ({"aedes": "vexans"}, "Unknown Aedes"),
         ({"earthquakes": 4.0}, "earthquakes must be a magnitude"),
         ({"cyclones": 1970}, "cyclones must start"),
         ({"basins": True, "basins_alpha": 2.0}, "basins_alpha"),
@@ -1787,6 +1809,9 @@ class TestGenerateOrthographicMapIntegration:
          "PERMAFROST_ATTRIBUTION"),
         ({"livestock": "sheep"}, "load_livestock", "add_livestock_overlay", "add_livestock_legend",
          "LIVESTOCK_ATTRIBUTION"),
+        ({"malaria": "pv", "malaria_year": 2010}, "load_malaria", "add_malaria_overlay", "add_malaria_legend",
+         "MALARIA_ATTRIBUTION"),
+        ({"aedes": "aegypti"}, "load_aedes", "draw_aedes", "add_aedes_legend", "AEDES_ATTRIBUTION"),
         ({"time_zones": True}, "load_time_zones", "draw_time_zones", None, "TIMEZONES_ATTRIBUTION"),
         ({"rivers": True}, "load_rivers", "draw_rivers", None, "RIVERS_ATTRIBUTION"),
     ])
@@ -1872,6 +1897,8 @@ class TestGenerateOrthographicMapIntegration:
         ("", {}),
         ("plates, earthquakes ,population", {"plates": True, "earthquakes": 6.0, "population": 2020}),
         ("livestock:cow, ice-age", {"livestock": "cattle", "ice_age": True}),
+        ("malaria, aedes", {"malaria": "pf", "aedes": "both"}),
+        ("malaria:vivax, aedes:tiger", {"malaria": "pv", "aedes": "tiger"}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected

@@ -1,0 +1,6 @@
+# Malaria (Plasmodium falciparum) in 2025, centred on Africa.
+lat = 5
+lon = 20
+provider = "osm_plain"
+malaria = "pf"
+output = "orthographic_map_africa_osm_plain_z3_malaria_pf_2025.png"

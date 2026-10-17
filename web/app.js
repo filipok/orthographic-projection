@@ -170,6 +170,13 @@ function buildRequest() {
     req.livestock = $("livestock").value;
     req.livestock_alpha = changed("livestock-alpha", options.alpha.livestock);
   }
+  if ($("malaria").value) {
+    req.malaria = $("malaria").value;
+    const year = Number($("malaria-year").value);
+    if (year && year !== options.malaria_years[1]) req.malaria_year = year;
+    req.malaria_alpha = changed("malaria-alpha", options.alpha.malaria);
+  }
+  if ($("aedes").value) req.aedes = $("aedes").value;
   const borders = $("borders").value.trim();
   if (borders) {
     req.borders = borders;
@@ -326,6 +333,10 @@ function fillForm(req) {
   set("population-alpha", req.population_alpha);
   if (req.livestock) pick("livestock", req.livestock, "livestock");
   set("livestock-alpha", req.livestock_alpha);
+  if (req.malaria) pick("malaria", req.malaria, "malaria parasite");
+  set("malaria-year", req.malaria_year);
+  set("malaria-alpha", req.malaria_alpha);
+  if (req.aedes) pick("aedes", req.aedes, "Aedes species");
   $("borders").value = req.borders ?? "";
   if (req.borders_source) pick("borders-source", req.borders_source, "borders source");
   set("borders-alpha", req.borders_alpha);
@@ -674,7 +685,11 @@ async function init() {
   $("vegetation-alpha").value = options.alpha.vegetation;
   $("biome-alpha").value = options.alpha.biome;
   $("borders-alpha").value = options.alpha.borders;
-  for (const name of ["basins", "permafrost", "population", "livestock"]) $(`${name}-alpha`).value = options.alpha[name];
+  for (const name of ["basins", "permafrost", "population", "livestock", "malaria"]) {
+    $(`${name}-alpha`).value = options.alpha[name];
+  }
+  [$("malaria-year").min, $("malaria-year").max] = options.malaria_years;
+  $("malaria-year").value = options.malaria_years[1];
   $("earthquake-magnitude").min = options.earthquakes.min;
   $("earthquake-magnitude").max = options.earthquakes.max;
   $("earthquake-magnitude").value = options.earthquakes.default;
@@ -682,6 +697,7 @@ async function init() {
   $("cyclones-since").value = options.first_cyclone_year;
   $("population").append(...options.population_years.slice().reverse().map((y) => option(String(y))));
   $("livestock").append(...options.livestock.map((name) => option(name, name[0].toUpperCase() + name.slice(1))));
+  $("aedes").append(...options.aedes.map((name) => option(name, name === "both" ? "Both species" : `Aedes ${name}`)));
   $("soil-alpha").value = options.alpha.soil;
   $("crops").title = `${options.crops.length} crops, e.g. ${options.crops.slice(0, 8).join(", ")}…`;
   for (const el of document.querySelectorAll(".editable")) el.hidden = !options.editable;

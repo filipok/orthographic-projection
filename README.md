@@ -113,6 +113,14 @@ The main script is [ortho.py](ortho.py).
 *Right: Cattle per km², 2015 (plain OSM, zoom 3, Gridded Livestock of the World).*
 
 <p align="center">
+  <img src="sample_africa_malaria.png" alt="Globe centred on Africa with the Plasmodium falciparum parasite rate in children in 2025, deep red over 40% across the Congo basin, Angola, Zambia and parts of West Africa, orange across the Sahel and Mozambique, pale yellow in Namibia, the Horn of Africa and western India, and none in North Africa, Europe or South Africa" width="48%">
+  <img src="sample_americas_aedes.png" alt="Globe centred on the Americas with red dots where Aedes aegypti was recorded, thickest in eastern Brazil and spread through Central America, the Caribbean, Mexico and the southern United States, and blue dots for Aedes albopictus across the eastern United States, southern Brazil and southern Europe" width="48%">
+</p>
+
+*Left: Malaria (P. falciparum) in children aged 2–10, 2025 (plain OSM, zoom 3, Malaria Atlas Project).*<br>
+*Right: Where the dengue mosquitoes Aedes aegypti and Ae. albopictus were recorded, 1958–2014 (plain OSM, zoom 3, Kraemer et al. 2015).*
+
+<p align="center">
   <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
 </p>
 
@@ -172,6 +180,7 @@ The main script is [ortho.py](ortho.py).
 - Optional rivers, and river basins coloured and named, inland drainage in grey
 - Optional tropical cyclone tracks by Saffir-Simpson category, time zones, and Northern Hemisphere permafrost
 - Optional population density (2000–2020) and livestock density (cattle, sheep, goats, pigs, chickens and more)
+- Optional malaria parasite rate, *P. falciparum* or *P. vivax*, for any year from 2000 to 2025, and where the dengue mosquitoes *Aedes aegypti* and *Ae. albopictus* have been recorded
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
@@ -310,7 +319,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `livestock:cattle` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -384,6 +393,11 @@ python ortho.py --lat 0 --lon 20 --rivers --basins
 python ortho.py --lat 75 --lon 90 --permafrost --time-zones
 python ortho.py --lat 25 --lon 90 --population 2020
 python ortho.py --lat -30 --lon 145 --livestock sheep
+
+# Malaria in 2025 and in 2000; the dengue mosquitoes (see "Malaria and Aedes Mosquitoes")
+python ortho.py --lat 5 --lon 20 --malaria pf
+python ortho.py --lat 15 --lon 80 --malaria pv --malaria-year 2000
+python ortho.py --lat 0 --lon -70 --aedes
 
 # The states of a year or a day: 1500, the Roman world in 117, Africa on 1 July 1914 (see "Historical Borders")
 python ortho.py --city Lisbon --borders 1500
@@ -494,6 +508,10 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--population-alpha ALPHA` | Opacity of the population density (0–1) | `0.7` |
 | `--livestock ANIMAL` | Colour the land by the density of `cattle`, `buffaloes`, `horses`, `sheep`, `goats`, `pigs`, `chickens` or `ducks` in 2015 | — |
 | `--livestock-alpha ALPHA` | Opacity of the livestock density (0–1) | `0.7` |
+| `--malaria PARASITE` | Colour the land by the malaria parasite rate: `pf` (*P. falciparum*, children aged 2–10) or `pv` (*P. vivax*, all ages) | — |
+| `--malaria-year YEAR` | Year of the malaria map, 2000–2025 | `2025` |
+| `--malaria-alpha ALPHA` | Opacity of the malaria map (0–1) | `0.75` |
+| `--aedes [SPECIES]` | Draw where *Aedes* mosquitoes have been recorded, 1958–2014: `both`, `aegypti` or `albopictus` | off (`both` when given alone) |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
@@ -512,7 +530,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
 Historical borders, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
-Winds, Polar ice, Crops, Routes and areas, Recipes.
+Malaria and Aedes mosquitoes, Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -1310,6 +1328,40 @@ python ortho.py --lat -30 --lon 145 --livestock sheep
 
 The sample above is `python ortho.py --config recipes/india_cattle.toml`.
 
+## Malaria and Aedes Mosquitoes
+
+`--malaria PARASITE` colours the land by the share of people carrying malaria
+parasites, from the Malaria Atlas Project's 2026 release:
+
+- **`pf`, *Plasmodium falciparum*:** the deadliest parasite, mostly in Africa.
+  The rate is of children aged 2 to 10, the age at which surveys measure it.
+  It is drawn in bands from 0.1% to 60% and more.
+- **`pv`, *P. vivax*:** most common in Asia and the Americas. The rate is of
+  people of all ages, and much lower, so its bands run from 0.1% to 7% and more.
+
+`--malaria-year` picks the year, from 2000 to 2025 (default 2025), so you can
+compare maps of different years. Below 0.1% the land is left clear. So are the cells MAP masks
+out: sparsely populated parts of South America for *P. falciparum*, and very
+low transmission for *P. vivax*. Each year's map is read at about 10 km cells
+(~40 MB) once; `--malaria-alpha` sets the opacity.
+
+`--aedes` draws where *Aedes aegypti* (red) and *Ae. albopictus* (blue), the
+mosquitoes that carry dengue, chikungunya, Zika and yellow fever, were recorded
+from 1958 to 2014 (Kraemer et al. 2015, about 42,000 records). Use `--aedes aegypti` or
+`--aedes albopictus` for one of them. These are sightings collated from published
+studies, not a map of risk: a country studied less shows fewer dots. The
+records, ~0.3 MB a species, are read once from GBIF.
+
+```powershell
+python ortho.py --lat 5 --lon 20 --malaria pf
+python ortho.py --lat 15 --lon 80 --malaria pv --malaria-year 2000
+python ortho.py --lat 0 --lon -70 --aedes
+python ortho.py --lat 25 --lon 110 --radius 3000 --aedes albopictus
+```
+
+The samples above are `python ortho.py --config recipes/africa_malaria.toml` and
+`python ortho.py --config recipes/americas_aedes.toml`.
+
 ## Polar Ice
 
 `--ice` (`ice=True` in the API, or the interactive prompt) draws the ice at both
@@ -1805,6 +1857,8 @@ to the attribution block.
 | Northern Hemisphere permafrost zones, 2000–2016, 1 km, used at 5 km | Obu, J. et al. (2019), ESA Permafrost CCI / University of Oslo | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1016/j.earscirev.2019.04.023](https://doi.org/10.1016/j.earscirev.2019.04.023), data on [PANGAEA](https://doi.org/10.1594/PANGAEA.888600) |
 | Gridded Population of the World v4.11, population density 2000–2020, via NASA GIBS | CIESIN (2018), NASA SEDAC | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.7927/H49C6VHW](https://doi.org/10.7927/H49C6VHW) |
 | Gridded Livestock of the World v4, 2015, 5 arc-minutes | Gilbert, M. et al., FAO | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Harvard Dataverse, e.g. cattle [doi:10.7910/DVN/LHBICE](https://doi.org/10.7910/DVN/LHBICE) |
+| Malaria Atlas Project, 2026 release: *P. falciparum* (PfPR2–10) and *P. vivax* parasite rates, 2000–2025, 5 km, used at ~10 km | Malaria Atlas Project, The Kids Research Institute Australia | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) ([open access policy](https://malariaatlas.org/open-access-policy/)) | [malariaatlas.org](https://malariaatlas.org/), WCS at data.malariaatlas.org |
+| Global compendium of *Aedes aegypti* and *Ae. albopictus* occurrence, 1958–2014 | Kraemer, M. U. G. et al. (2015) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2015.35](https://doi.org/10.1038/sdata.2015.35), data [doi:10.5061/dryad.47v3c](https://doi.org/10.5061/dryad.47v3c), read from GBIF |
 | Cliopatria v0.2.1: borders of over 1,600 states and empires, 3400 BCE–2024 | Bennett, J. S. et al. (2025), Seshat Global History Databank | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-025-04516-9](https://doi.org/10.1038/s41597-025-04516-9), [github.com/Seshat-Global-History-Databank/cliopatria](https://github.com/Seshat-Global-History-Databank/cliopatria) |
 | CShapes 2.0: borders of states and dependent territories, 1886–2019 (Gleditsch & Ward system), from the `cshapes` R package | Schvitz, G. et al. (2022), ETH Zurich | No data licence stated; the article is CC BY-NC 4.0 and the R package GPL ≥ 2. Downloaded by each user, not shipped | [doi:10.1177/00220027211013563](https://doi.org/10.1177/00220027211013563), [icr.ethz.ch/data/cshapes](https://icr.ethz.ch/data/cshapes/) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
@@ -1852,6 +1906,8 @@ the globe:
 | `--permafrost` | *Permafrost: Obu et al. (2019), ESA Permafrost CCI / University of Oslo, CC BY 4.0* |
 | `--population` | *Population density: GPWv4.11 YEAR (CIESIN 2018), NASA SEDAC, via NASA GIBS, CC BY 4.0* |
 | `--livestock` | *Livestock: Gridded Livestock of the World v4, 2015 (FAO), CC0* |
+| `--malaria` | *Malaria: Malaria Atlas Project (2026 release), CC BY 3.0* |
+| `--aedes` | *Aedes records: Kraemer et al. (2015), global compendium of Aedes occurrence, via GBIF, CC0* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
 Keep this block (or credit the same sources elsewhere) when you share or publish
@@ -1921,6 +1977,8 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [permafrost.py](permafrost.py): Northern Hemisphere permafrost zones
 - [population.py](population.py): population density from GPWv4 tiles (NASA GIBS), in classed bands
 - [livestock.py](livestock.py): livestock density from Gridded Livestock of the World
+- [malaria.py](malaria.py): the malaria parasite rate from the Malaria Atlas Project, in classed bands
+- [aedes.py](aedes.py): where the dengue mosquitoes have been recorded, from Kraemer et al.'s compendium on GBIF
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)

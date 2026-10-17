@@ -24,7 +24,7 @@ FIELDS = [
     "soil_alpha", "soil_property", "soil_depth", "wind", "ice", "ice_year", "crop", "borders", "borders_source",
     "borders_alpha", "ocean_depth", "ice_age", "currents", "plates", "earthquakes", "volcanoes", "rivers", "basins",
     "basins_alpha", "cyclones", "time_zones", "permafrost", "permafrost_alpha", "population", "population_alpha",
-    "livestock", "livestock_alpha", "route", "route_legend",
+    "livestock", "livestock_alpha", "malaria", "malaria_year", "malaria_alpha", "aedes", "route", "route_legend",
 ]
 
 LINE = {"type": "Feature", "properties": {"name": "A line"},

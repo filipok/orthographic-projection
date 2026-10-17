@@ -171,6 +171,10 @@ class MapRequest(BaseModel):
     population_alpha: float | None = None
     livestock: str | None = None
     livestock_alpha: float | None = None
+    malaria: str | None = None
+    malaria_year: int | None = None
+    malaria_alpha: float | None = None
+    aedes: str | None = None
     route: list[str] | None = None
     route_legend: bool | None = None
 
@@ -396,7 +400,7 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "radius": {"default": ortho.DEFAULT_RADIUS_KM, "min": ortho.MIN_RADIUS_KM, "max": ortho.MAX_RADIUS_KM},
         "alpha": {"classification": ortho.CLASSIFICATION_ALPHA, "climate_mean": ortho.CLIMATE_MEAN_ALPHA,
                   "elevation": 0.8, "vegetation": 0.7, "biome": 0.6, "soil": 0.6, "borders": 0.55,
-                  "basins": 0.5, "permafrost": 0.7, "population": 0.7, "livestock": 0.7},
+                  "basins": 0.5, "permafrost": 0.7, "population": 0.7, "livestock": 0.7, "malaria": 0.75},
         "periods": PERIODS,
         "soil_properties": {name: prop.title for name, prop in SOIL_PROPERTIES.items()},
         "soil_depths": list(SOIL_DEPTHS),
@@ -404,6 +408,8 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "first_ice_year": FIRST_ICE_YEAR,
         "population_years": list(ortho.POPULATION_YEARS),
         "livestock": list(ortho.LIVESTOCK_SPECIES),
+        "malaria_years": [ortho.FIRST_MALARIA_YEAR, ortho.LATEST_MALARIA_YEAR],
+        "aedes": list(ortho.AEDES_CHOICES),
         "first_cyclone_year": ortho.FIRST_CYCLONE_YEAR,
         "earthquakes": {"default": ortho.DEFAULT_MIN_MAGNITUDE, "min": ortho.MIN_MAGNITUDE, "max": ortho.MAX_MAGNITUDE},
         "crops": list(CROP_NAMES),

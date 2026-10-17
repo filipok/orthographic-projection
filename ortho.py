@@ -62,9 +62,17 @@ from hydrology import (
     BASINS_ATTRIBUTION, RIVERS_ATTRIBUTION, HydrologyDataError, add_basins_legend, basin_colours, draw_basins,
     draw_rivers, load_basins, load_rivers,
 )
+from aedes import (
+    AEDES_ATTRIBUTION, CHOICES as AEDES_CHOICES, AedesDataError, add_aedes_legend, draw_aedes, load_aedes,
+    resolve_aedes,
+)
 from livestock import (
     LIVESTOCK_ATTRIBUTION, SPECIES as LIVESTOCK_SPECIES, LivestockDataError, add_livestock_legend,
     add_livestock_overlay, load_livestock, resolve_species,
+)
+from malaria import (
+    FIRST_YEAR as FIRST_MALARIA_YEAR, LATEST_YEAR as LATEST_MALARIA_YEAR, MALARIA_ATTRIBUTION, MalariaDataError,
+    add_malaria_legend, add_malaria_overlay, load_malaria, resolve_parasite, resolve_year as resolve_malaria_year,
 )
 from permafrost import (
     PERMAFROST_ATTRIBUTION, PermafrostDataError, add_permafrost_legend, add_permafrost_overlay, load_permafrost,
@@ -610,7 +618,7 @@ def validate_render_options(
     tile_provider: str = "osm", lat: float = 0.0, beside: tuple[float, float] | None = None,
     biome_alpha: float = 0.6, borders_alpha: float = 0.55, basins_alpha: float = 0.5,
     permafrost_alpha: float = 0.7, population_alpha: float = 0.7, livestock_alpha: float = 0.7,
-    earthquakes: float | None = None, cyclones: int | None = None,
+    earthquakes: float | None = None, cyclones: int | None = None, malaria_alpha: float = 0.75,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -652,7 +660,8 @@ def validate_render_options(
     if not 0.0 <= borders_alpha <= 1.0:
         raise ValueError(f"borders_alpha must be between 0 and 1, got {borders_alpha}")
     for name, value in (("basins_alpha", basins_alpha), ("permafrost_alpha", permafrost_alpha),
-                        ("population_alpha", population_alpha), ("livestock_alpha", livestock_alpha)):
+                        ("population_alpha", population_alpha), ("livestock_alpha", livestock_alpha),
+                        ("malaria_alpha", malaria_alpha)):
         if not 0.0 <= value <= 1.0:
             raise ValueError(f"{name} must be between 0 and 1, got {value}")
     if earthquakes is not None and not MIN_MAGNITUDE <= earthquakes <= MAX_MAGNITUDE:
@@ -741,6 +750,10 @@ def generate_orthographic_map(
     population_alpha: float = 0.7,
     livestock: str | None = None,
     livestock_alpha: float = 0.7,
+    malaria: str | None = None,
+    malaria_year: int = LATEST_MALARIA_YEAR,
+    malaria_alpha: float = 0.75,
+    aedes: str | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -957,6 +970,14 @@ def generate_orthographic_map(
         Colour the land by the density of one kind of livestock in 2015
         (``"cattle"``, ``"sheep"``, ``"chickens"`` …, see :data:`livestock.SPECIES`);
         *livestock_alpha* sets its opacity.
+    malaria : str, optional
+        Colour the land by the malaria parasite rate in *malaria_year*
+        (2000-2025, Malaria Atlas Project): ``"pf"`` for *Plasmodium
+        falciparum* (children aged 2-10) or ``"pv"`` for *P. vivax* (all ages);
+        *malaria_alpha* sets its opacity.
+    aedes : str, optional
+        Draw where *Aedes* mosquitoes have been recorded (Kraemer et al. 2015):
+        ``"both"``, ``"aegypti"`` or ``"albopictus"``.
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -975,10 +996,14 @@ def generate_orthographic_map(
         land_cover_year=land_cover_year, zoom=zoom, radius_km=radius_km, tile_provider=tile_provider,
         lat=lat, beside=beside, biome_alpha=biome_alpha, borders_alpha=borders_alpha, basins_alpha=basins_alpha,
         permafrost_alpha=permafrost_alpha, population_alpha=population_alpha, livestock_alpha=livestock_alpha,
-        earthquakes=earthquakes, cyclones=cyclones,
+        earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha,
     )
     population_year = resolve_population_year(population) if population is not None else None
     livestock_species = resolve_species(livestock) if livestock else None
+    malaria_parasite = resolve_parasite(malaria) if malaria else None
+    if malaria_parasite is not None:
+        resolve_malaria_year(malaria_year)
+    aedes_species = resolve_aedes(aedes) if aedes else ()
     wind_period = resolve_wind_period(wind) if wind is not None else None
     land_cover_codes = resolve_land_cover_classes(land_cover_classes or [])
     land_cover = land_cover or bool(land_cover_codes) or land_cover_year is not None
@@ -1376,6 +1401,25 @@ def generate_orthographic_map(
             logger.warning("Skipping the livestock: %s", e)
         else:
             livestock_drawn = True
+    malaria_drawn = False
+    if malaria_parasite is not None:
+        try:
+            parasites = load_malaria(malaria_parasite, malaria_year)
+            for ax in axes:
+                add_malaria_overlay(ax, parasites, alpha=malaria_alpha, regrid_shape=regrid_shape)
+        except (MalariaDataError, OSError) as e:
+            logger.warning("Skipping the malaria map: %s", e)
+        else:
+            malaria_drawn = True
+    mosquitoes = []
+    for species in aedes_species:
+        try:
+            mosquitoes.append(load_aedes(species))
+        except (AedesDataError, OSError) as e:
+            logger.warning("Skipping the Aedes %s records: %s", species, e)
+    if mosquitoes:
+        for ax in axes:
+            draw_aedes(ax, mosquitoes)
     permafrost_drawn = False
     if permafrost:
         try:
@@ -1602,6 +1646,10 @@ def generate_orthographic_map(
         keys.append(add_permafrost_legend(near, x=key_x))
     if livestock_drawn and livestock_species is not None:
         keys.append(add_livestock_legend(near, livestock_species, x=key_x))
+    if malaria_drawn and malaria_parasite is not None:
+        keys.append(add_malaria_legend(near, malaria_parasite, malaria_year, x=key_x))
+    if mosquitoes:
+        keys.append(add_aedes_legend(near, mosquitoes, x=key_x))
     if crop_layer is not None:
         keys.append(add_crop_legend(near, crop_layer, x=key_x))
     if wind_drawn and wind_period is not None:
@@ -1652,6 +1700,10 @@ def generate_orthographic_map(
         credits.append(PERMAFROST_ATTRIBUTION)
     if livestock_drawn:
         credits.append(LIVESTOCK_ATTRIBUTION)
+    if malaria_drawn:
+        credits.append(MALARIA_ATTRIBUTION)
+    if mosquitoes:
+        credits.append(AEDES_ATTRIBUTION)
     if crop_layer is not None:
         credits.append(CROP_ATTRIBUTION)
     if ice_attribution:
@@ -2085,11 +2137,15 @@ EXTRA_LAYERS: dict[str, tuple[str, Any]] = {
     "volcanoes": ("volcanoes", True), "rivers": ("rivers", True), "basins": ("basins", True),
     "cyclones": ("cyclones", FIRST_CYCLONE_YEAR), "time-zones": ("time_zones", True),
     "permafrost": ("permafrost", True), "population": ("population", LATEST_POPULATION_YEAR),
+    "malaria": ("malaria", "pf"), "aedes": ("aedes", "both"),
 }
 
 
 def parse_extra_layers(text: str) -> dict[str, Any]:
-    """The keyword arguments for a comma-separated list of :data:`EXTRA_LAYERS` (and ``livestock:ANIMAL``).
+    """The keyword arguments for a comma-separated list of :data:`EXTRA_LAYERS`.
+
+    ``livestock:ANIMAL``, ``malaria:pf`` or ``malaria:pv`` and ``aedes:SPECIES`` choose
+    which kind.
 
     Raises ``ValueError`` for a name it does not know.
     """
@@ -2099,11 +2155,18 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             continue
         if item.startswith("livestock:"):
             chosen["livestock"] = resolve_species(item.split(":", 1)[1])
+        elif item.startswith("malaria:"):
+            chosen["malaria"] = resolve_parasite(item.split(":", 1)[1])
+        elif item.startswith("aedes:"):
+            kind = item.split(":", 1)[1].strip()
+            resolve_aedes(kind)
+            chosen["aedes"] = kind
         elif item in EXTRA_LAYERS:
             key, value = EXTRA_LAYERS[item]
             chosen[key] = value
         else:
-            raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL.")
+            raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
+                             "malaria:pv, aedes:SPECIES.")
     return chosen
 
 
@@ -2111,7 +2174,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -2551,6 +2614,19 @@ def build_cli_parser() -> argparse.ArgumentParser:
                              "of the World v4; ~10 MB each): " + ", ".join(LIVESTOCK_SPECIES) + ".")
     people.add_argument("--livestock-alpha", type=float, default=0.7, metavar="ALPHA",
                         help="Opacity of the livestock density (0-1, default: 0.7).")
+
+    health = parser.add_argument_group("Malaria and Aedes mosquitoes")
+    health.add_argument("--malaria", metavar="PARASITE",
+                        help="Colour the land by the malaria parasite rate (Malaria Atlas Project; ~40 MB a year): "
+                             "pf (Plasmodium falciparum, children aged 2-10) or pv (P. vivax, all ages).")
+    health.add_argument("--malaria-year", type=int, default=LATEST_MALARIA_YEAR, metavar="YEAR",
+                        help=f"Year of the malaria map ({FIRST_MALARIA_YEAR}-{LATEST_MALARIA_YEAR}, "
+                             f"default: {LATEST_MALARIA_YEAR}).")
+    health.add_argument("--malaria-alpha", type=float, default=0.75, metavar="ALPHA",
+                        help="Opacity of the malaria map (0-1, default: 0.75).")
+    health.add_argument("--aedes", nargs="?", const="both", metavar="SPECIES",
+                        help="Draw where the dengue mosquitoes have been recorded, 1958-2014 (Kraemer et al. 2015): "
+                             + ", ".join(AEDES_CHOICES) + " (default: both).")
 
     winds = parser.add_argument_group("Winds (NCEP/NCAR Reanalysis)")
     winds.add_argument(
@@ -3017,6 +3093,11 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         resolve_population_year(args.population)
     if args.livestock:
         resolve_species(args.livestock)
+    if args.malaria:
+        resolve_parasite(args.malaria)
+        resolve_malaria_year(args.malaria_year)
+    if args.aedes:
+        resolve_aedes(args.aedes)
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
@@ -3101,6 +3182,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             biome_alpha=args.biome_alpha, borders_alpha=args.borders_alpha, basins_alpha=args.basins_alpha,
             permafrost_alpha=args.permafrost_alpha, population_alpha=args.population_alpha,
             livestock_alpha=args.livestock_alpha, earthquakes=args.earthquakes, cyclones=args.cyclones,
+            malaria_alpha=args.malaria_alpha,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -3164,6 +3246,10 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         population_alpha=args.population_alpha,
         livestock=args.livestock,
         livestock_alpha=args.livestock_alpha,
+        malaria=args.malaria,
+        malaria_year=args.malaria_year,
+        malaria_alpha=args.malaria_alpha,
+        aedes=args.aedes,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,
