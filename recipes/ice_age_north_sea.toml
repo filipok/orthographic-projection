@@ -1,5 +1,6 @@
 # The North Sea in the last ice age, 2,500 km around: with the sea some 120 m lower,
-# Britain was joined to Europe across Doggerland. The sea floor is coloured by depth.
+# Britain was joined to Europe across Doggerland, and ice covered Scandinavia and the
+# Baltic. The sea floor is coloured by depth.
 lat = 55
 lon = 3
 provider = "osm_plain"

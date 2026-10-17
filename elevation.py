@@ -424,9 +424,9 @@ def ocean_rgba(mosaic: np.ndarray, extent: tuple[float, float, float, float], al
     return out
 
 
-def add_ocean_legend(ax: GeoAxes, depth: bool = True, ice_age: bool = False,
+def add_ocean_legend(ax: GeoAxes, depth: bool = True, ice_age: bool = False, ice_sheets: bool = False,
                      y: float = -0.01, x: float = 0.5) -> Legend:
-    """A key to the ocean layer: the depth bands, and the ice-age land and coast."""
+    """A key to the ocean layer: the depth bands, the ice-age land and coast, and its ice sheets."""
     handles: list[Any] = []
     labels: list[str] = []
     if depth:
@@ -439,8 +439,11 @@ def add_ocean_legend(ax: GeoAxes, depth: bool = True, ice_age: bool = False,
         handles.append(mpatches.Patch(facecolor=(r / 255, g / 255, b / 255),
                                       edgecolor=(cr / 255, cg / 255, cb / 255), linewidth=1.5))
         labels.append(f"Dry land in the last ice age (sea {-ICE_AGE_SEA_LEVEL:.0f} m lower)")
+    if ice_sheets:
+        handles.append(mpatches.Patch(facecolor=(244 / 255, 248 / 255, 252 / 255), edgecolor="#6f8fae", linewidth=1.2))
+        labels.append("Ice sheets, 20,000 years ago")
     title = ("Ocean depth (each colour from the depth shown)" if depth
-             else "The last ice age, about 21,000 years ago")
+             else "The last ice age, about 20,000 years ago")
     legend = Legend(
         ax, handles, labels,
         loc="upper center",

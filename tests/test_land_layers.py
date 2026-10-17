@@ -200,4 +200,4 @@ class TestOcean:
         both = elevation.add_ocean_legend(_globe(), depth=True, ice_age=True)
         assert len(both.get_texts()) == len(elevation.DEPTH_BANDS) + 1
         only = elevation.add_ocean_legend(_globe(), depth=False, ice_age=True)
-        assert len(only.get_texts()) == 1 and "21,000 years" in only.get_title().get_text()
+        assert len(only.get_texts()) == 1 and "20,000 years" in only.get_title().get_text()

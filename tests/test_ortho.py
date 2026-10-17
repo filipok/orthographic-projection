@@ -1845,6 +1845,8 @@ class TestGenerateOrthographicMapIntegration:
 
     def test_ocean_layer_and_its_credit(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None) as add_image, \
+                mock.patch.object(ortho, "load_ice_sheets", return_value=["sheet"]), \
+                mock.patch.object(ortho, "draw_ice_sheets") as sheets, \
                 mock.patch.object(ortho, "add_ocean_legend") as key, \
                 mock.patch.object(ortho, "_add_attribution") as attribution:
             ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
@@ -1852,7 +1854,19 @@ class TestGenerateOrthographicMapIntegration:
         ocean = add_image.call_args_list[1].args[0]
         assert ocean.postprocess.keywords == {"alpha": 0.8, "depth": False, "ice_age": True, "zoom": ortho.RELIEF_ZOOM}
         assert key.call_args.kwargs["ice_age"] is True and key.call_args.kwargs["depth"] is False
-        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.ELEVATION_ATTRIBUTION]
+        assert sheets.call_args.args[1] == ["sheet"] and key.call_args.kwargs["ice_sheets"] is True
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.ICE_SHEETS_ATTRIBUTION,
+                                                 ortho.ELEVATION_ATTRIBUTION]
+
+    def test_ice_age_without_its_ice_sheets_still_draws(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_ice_sheets", side_effect=ortho.IceAgeDataError("offline")), \
+                mock.patch.object(ortho, "add_ocean_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), ice_age=True)
+        assert os.path.exists(result) and key.call_args.kwargs["ice_sheets"] is False
+        assert ortho.ICE_SHEETS_ATTRIBUTION not in attribution.call_args.args[1]
 
     @pytest.mark.parametrize("text, expected", [
         ("", {}),

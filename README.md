@@ -89,11 +89,11 @@ The main script is [ortho.py](ortho.py).
 *Right: Africa on 1 July 1914, each colony in a lighter shade of its ruler's colour (plain OSM, zoom 3, CShapes 2.0).*
 
 <p align="center">
-  <img src="sample_ice_age_north_sea.png" alt="A disc 2,500 km around the North Sea with the sea floor coloured by depth, from pale shelves to the deep blue Atlantic and Norwegian Sea, and the land the last ice age left dry in sand: Doggerland joining Britain to the continent, the English Channel, the northern Adriatic and the Sea of Azov" width="48%">
+  <img src="sample_ice_age_north_sea.png" alt="A disc 2,500 km around the North Sea with the sea floor coloured by depth, from pale shelves to the deep blue Atlantic and Norwegian Sea, the land the last ice age left dry in sand: Doggerland joining Britain to the continent, the English Channel, the northern Adriatic and the Sea of Azov, and the ice sheet of 20,000 years ago in white over Scandinavia, the Baltic, Scotland and Iceland" width="48%">
   <img src="sample_ring_of_fire.png" alt="Globe centred on the western Pacific with the plate boundaries, red spreading ridges, blue subduction zones and green transform faults, the earthquakes of magnitude 6 and more since 1900 in orange, yellow and purple by depth, deep ones behind every trench, and red triangles for volcanoes that have erupted since 1900, along Japan, the Philippines, Indonesia and New Zealand" width="48%">
 </p>
 
-*Left: The North Sea in the last ice age: Doggerland, with the sea floor by depth (plain OSM, radius 2,500 km).*<br>
+*Left: The North Sea in the last ice age: Doggerland, the ice sheets of 20,000 years ago and the sea floor by depth (plain OSM, radius 2,500 km, PaleoMIST).*<br>
 *Right: The Ring of Fire: plate boundaries, earthquakes since 1900 by depth, and volcanoes (plain OSM, zoom 3).*
 
 <p align="center">
@@ -208,6 +208,7 @@ The script currently includes:
 - Lusaka
 - Sydney
 - Lisbon
+- Oslo
 - Honolulu
 - Papeete
 - San Francisco
@@ -477,7 +478,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--borders-source SOURCE` | `cliopatria` (3400 BCE–2024), `cshapes` (1886–2019, with colonies) or `auto` (CShapes in its years, Cliopatria otherwise) | `auto` |
 | `--borders-alpha ALPHA` | Opacity of the borders' fill (0–1) | `0.55` |
 | `--ocean-depth` | Colour the sea floor by depth and shade it, with a key (opacity: `--elevation-alpha`) | off |
-| `--ice-age` | Draw the land the last ice age left dry (sea ~120 m lower) and its coast | off |
+| `--ice-age` | Draw the last ice age: the land it left dry (sea ~120 m lower), its coast, and its ice sheets | off |
 | `--plates` | Draw the plate boundaries by kind and name the large plates | off |
 | `--earthquakes [MAGNITUDE]` | Draw the earthquakes since 1900 of at least MAGNITUDE (5–9), sized by magnitude, coloured by depth | off (`6` when given alone) |
 | `--volcanoes` | Draw the Holocene volcanoes, red if erupted since 1900 | off |
@@ -1166,11 +1167,15 @@ Cliopatria otherwise):
 `--ocean-depth` (`ocean_depth=True`) colours the sea floor by depth in eight
 bands, from the pale continental shelves to the trenches below 6,000 m, and
 shades it, so ridges, seamounts and canyons stand out. `--ice-age`
-(`ice_age=True`) draws the land the last ice age left dry: at its peak, about
-21,000 years ago, so much water was locked in ice sheets that the sea stood some
-120 m lower (estimates run to 134 m). Doggerland joined Britain to Europe, Beringia
-joined Asia to America, Sundaland joined Borneo, Sumatra and Java to Asia. The two
-go together or alone.
+(`ice_age=True`) draws the last ice age: at its peak, about 20,000 years ago, so
+much water was locked in ice sheets that the sea stood some 120 m lower
+(estimates run to 134 m). It shows the land that left dry, with its coastline
+(Doggerland joined Britain to Europe, Beringia joined Asia to America, Sundaland
+joined Borneo, Sumatra and Java to Asia), and the ice sheets themselves, white
+within their margins: the Laurentide and Cordilleran sheets over Canada and the
+northern United States, Greenland, Iceland, the Eurasian sheet from Ireland across
+Scandinavia and the Barents Sea, Patagonia and a larger Antarctica. The two
+options go together or alone.
 
 ```powershell
 python ortho.py --lat 55 --lon 3 --radius 2500 --ocean-depth --ice-age
@@ -1182,9 +1187,11 @@ The sample above is `python ortho.py --config recipes/ice_age_north_sea.toml`.
 - **Data.** The same Terrarium terrain tiles as `--elevation`, whose sea
   heights come from ETOPO1 (NOAA). Lakes are left out, so the Caspian, below sea
   level, is not mistaken for dry sea floor.
-- **Not shown:** the ice sheets themselves. The northern shelves (the Baltic,
-  Hudson Bay, the Barents Sea) lay under ice at the time, not dry land, though
-  they are drawn as dry. `--elevation-alpha` sets the opacity.
+- **Ice sheets.** PaleoMIST 1.0 (Gowan et al. 2021), the ice sheet margins
+  20,000 years ago. The dataset is one 3.7 GB archive; only its four margin files
+  (~2.3 MB) are read from it, by HTTP range requests, once. Mountain glaciers
+  outside those sheets, such as the Alps' and the Himalaya's, are not in it.
+  `--elevation-alpha` sets the opacity of the dry land and the sea floor.
 
 ## Plate Tectonics
 
@@ -1787,6 +1794,7 @@ to the attribution block.
 | NCEP/NCAR Reanalysis 1, long-term monthly means 1991–2020 of the 10 m wind (u, v) and wind speed, and 1981–2010 of the 2 m air temperature (for `--temperature-over-sea`), T62 Gaussian grid (~1.9°) | Kalnay, E. et al. (1996); NOAA PSL | Public domain (US government); acknowledgement requested: "NCEP-NCAR Reanalysis 1 data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/1520-0477(1996)077<0437:TNYRP>2.0.CO;2](https://doi.org/10.1175/1520-0477(1996)077%3C0437:TNYRP%3E2.0.CO;2), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.derived.html) |
 | NOAA OI SST V2.1 High Resolution, long-term monthly means 1991–2020 of the sea surface temperature, 0.25° | Huang, B. et al. (2021); NOAA NCEI, via NOAA PSL | Public domain (US government); acknowledgement requested: "NOAA OI SST V2 High Resolution data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/JCLI-D-20-0166.1](https://doi.org/10.1175/JCLI-D-20-0166.1), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.noaa.oisst.v2.highres.html) |
 | Natural Earth (land / ocean fallback, Trewartha, climate mean and elevation land masks, polar land ice) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
+| PaleoMIST 1.0: ice sheet margins 20,000 years ago | Gowan, E. J. et al. (2021) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41467-021-21469-w](https://doi.org/10.1038/s41467-021-21469-w), data [doi:10.1594/PANGAEA.905800](https://doi.org/10.1594/PANGAEA.905800) |
 | PB2002 plate boundaries, converted by Hugo Ahlenius (Nordpil) | Bird, P. (2003) | [ODC-By 1.0](https://opendatacommons.org/licenses/by/1-0/) | [doi:10.1029/2001GC000252](https://doi.org/10.1029/2001GC000252), [github.com/fraxen/tectonicplates](https://github.com/fraxen/tectonicplates) |
 | ANSS Comprehensive Earthquake Catalog (ComCat), 1900 on | U.S. Geological Survey | Public domain (US government) | [earthquake.usgs.gov](https://earthquake.usgs.gov/fdsnws/event/1/) |
 | Volcanoes of the World v5, Holocene volcanoes | Global Volcanism Program (2025), Smithsonian Institution | Free to use with citation | [doi:10.5479/si.GVP.VOTW5-2025.5.3](https://doi.org/10.5479/si.GVP.VOTW5-2025.5.3) |
@@ -1832,6 +1840,7 @@ the globe:
 | `--borders` (Cliopatria) | *Borders: Cliopatria v0.2.1, Seshat Global History Databank (Bennett et al. 2025), CC BY 4.0* |
 | `--borders` (CShapes) | *Borders: CShapes 2.0 (Schvitz et al. 2022), ETH Zurich* |
 | `--ocean-depth`, `--ice-age` | the elevation credit above |
+| `--ice-age` (ice sheets) | *Ice sheets 20,000 years ago: PaleoMIST 1.0 (Gowan et al. 2021), PANGAEA, CC BY 4.0* |
 | `--plates` | *Plate boundaries: Bird (2003), PB2002, converted by Ahlenius (Nordpil), ODC-By* |
 | `--earthquakes` | *Earthquakes: USGS ANSS Comprehensive Catalog (ComCat)* |
 | `--volcanoes` | *Volcanoes: Global Volcanism Program, Volcanoes of the World v5, Smithsonian Institution* |
@@ -1903,6 +1912,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [elevation.py](elevation.py): elevation layer and heights from the Mapzen terrain tiles
 - [vegetation.py](vegetation.py): MODIS land cover and NDVI layers and keys (NASA GIBS tiles)
 - [biomes.py](biomes.py): biome, ecoregion and realm layer and keys (RESOLVE Ecoregions 2017, rasterised from its shapefile)
+- [iceage.py](iceage.py): the ice sheets of 20,000 years ago (PaleoMIST), read from a remote archive by range requests
 - [tectonics.py](tectonics.py): plate boundaries, earthquakes and volcanoes, and their key
 - [currents.py](currents.py): ocean surface current arrows, warm and cold, and their key
 - [hydrology.py](hydrology.py): rivers, and river basins merged from HydroBASINS and named

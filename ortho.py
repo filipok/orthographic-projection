@@ -80,6 +80,7 @@ from tectonics import (
     load_volcanoes,
 )
 from timezones import TIMEZONES_ATTRIBUTION, TimeZoneDataError, draw_time_zones, load_time_zones
+from iceage import ICE_SHEETS_ATTRIBUTION, IceAgeDataError, draw_ice_sheets, load_ice_sheets
 from biomes import (
     BIOME_ATTRIBUTION, ECOREGION_ATTRIBUTION, REALM_ATTRIBUTION, BiomeDataError, add_biome_legend,
     add_ecoregion_legend, add_ecoregion_overlay, add_realm_legend, load_ecoregions, resolve_biome_classes,
@@ -324,6 +325,7 @@ MAJOR_METROPOLISES = {
     "Lusaka": {"lat": -15.3875, "lon": 28.3228, "slug": "lusaka"},
     "Sydney": {"lat": -33.8688, "lon": 151.2093, "slug": "sydney"},
     "Lisbon": {"lat": 38.7223, "lon": -9.1393, "slug": "lisbon"},
+    "Oslo": {"lat": 59.9139, "lon": 10.7522, "slug": "oslo"},
     "Honolulu": {"lat": 21.3069, "lon": -157.8583, "slug": "honolulu"},
     "Papeete": {"lat": -17.5516, "lon": -149.5585, "slug": "papeete"},
     "San Francisco": {"lat": 37.7749, "lon": -122.4194, "slug": "san_francisco"},
@@ -1135,6 +1137,17 @@ def generate_orthographic_map(
         )
         for ax in axes:
             ax.add_image(ocean, ocean_zoom, regrid_shape=regrid_shape, interpolation="nearest", zorder=1)
+    # ... and the ice sheets of the time, over the land they covered and the shelves they grounded on
+    ice_sheets_drawn = False
+    if ice_age:
+        try:
+            sheets = load_ice_sheets()
+            for ax in axes:
+                draw_ice_sheets(ax, sheets, regrid_shape=regrid_shape)
+        except (IceAgeDataError, OSError) as e:
+            logger.warning("Skipping the ice-age ice sheets: %s", e)
+        else:
+            ice_sheets_drawn = True
 
     # Step 5a2: Vegetation, land cover or NDVI (above the elevation, below the climate
     # colours); NASA GIBS tiles, fetched in savefig like the map tiles
@@ -1561,7 +1574,7 @@ def generate_orthographic_map(
     if relief is not None:
         keys.append(add_elevation_legend(near, x=key_x))
     if ocean is not None:
-        keys.append(add_ocean_legend(near, depth=ocean_depth, ice_age=ice_age, x=key_x))
+        keys.append(add_ocean_legend(near, depth=ocean_depth, ice_age=ice_age, ice_sheets=ice_sheets_drawn, x=key_x))
     if people is not None and population_year is not None:
         keys.append(add_population_legend(near, population_year, x=key_x))
     if land_cover:
@@ -1618,6 +1631,8 @@ def generate_orthographic_map(
         climate_credits.append(sea_credit)
     if people is not None and population_year is not None:
         credits.append(population_attribution(population_year))
+    if ice_sheets_drawn:
+        credits.append(ICE_SHEETS_ATTRIBUTION)
     for credit in climate_credits + ([ELEVATION_ATTRIBUTION] if relief is not None or ocean is not None else []):
         if credit not in credits:
             credits.append(credit)
@@ -2345,8 +2360,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
     relief.add_argument(
         "--ice-age",
         action="store_true",
-        help="Draw the land the last ice age left dry, about 21,000 years ago when the sea stood ~120 m "
-             "lower (Doggerland, Beringia, Sundaland), and its coastline.",
+        help="Draw the last ice age: the land it left dry, when the sea stood ~120 m lower (Doggerland, "
+             "Beringia, Sundaland), its coastline, and the ice sheets of 20,000 years ago (PaleoMIST).",
     )
 
     veg = parser.add_argument_group("Vegetation (MODIS, via NASA GIBS)", "Land cover or NDVI, one at a time.")
