@@ -1,0 +1,6 @@
+# Where lions have been recorded in the wild (GBIF occurrence records, ~20 km cells).
+lat = 0
+lon = 20
+provider = "osm_plain"
+species = "lion"
+output = "orthographic_map_africa_osm_plain_z3_species_lion.png"

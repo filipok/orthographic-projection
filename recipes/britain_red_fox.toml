@@ -1,0 +1,9 @@
+# Zoomed in: red fox records since 2000, 900 km around southern England (GBIF, ~20 km cells).
+# Britain and the Low Countries are among the best-recorded places on Earth: compare Ireland and France.
+lat = 52
+lon = 0
+provider = "osm_plain"
+radius = 900
+species = "red fox"
+species_years = "2000-2025"
+output = "orthographic_map_britain_osm_plain_z7_r900km_species_red_fox.png"

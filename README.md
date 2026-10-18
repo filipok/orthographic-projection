@@ -121,6 +121,14 @@ The main script is [ortho.py](ortho.py).
 *Right: Where the dengue mosquitoes Aedes aegypti and Ae. albopictus were recorded, 1958–2014 (plain OSM, zoom 3, Kraemer et al. 2015).*
 
 <p align="center">
+  <img src="sample_africa_lion.png" alt="Globe centred on Africa with pink to purple squares where lions have been recorded in the wild, thickest in Kenya, Tanzania, the Okavango, Zimbabwe and Kruger, scattered across the Sahel and West Africa, and a small cluster in Gujarat in India" width="48%">
+  <img src="sample_britain_red_fox.png" alt="A disc 900 km around southern England with squares of about 20 km where red foxes were recorded since 2000: darkest over England, the Netherlands, Belgium and parts of France and Germany, lighter over Ireland, Scotland and western France" width="48%">
+</p>
+
+*Left: Where lions have been recorded in the wild (plain OSM, zoom 3, GBIF).*<br>
+*Right: Red fox records since 2000, 900 km around southern England (plain OSM, zoom 7, GBIF).*
+
+<p align="center">
   <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
 </p>
 
@@ -181,6 +189,7 @@ The main script is [ortho.py](ortho.py).
 - Optional tropical cyclone tracks by Saffir-Simpson category, time zones, and Northern Hemisphere permafrost
 - Optional population density (2000–2020) and livestock density (cattle, sheep, goats, pigs, chickens and more)
 - Optional malaria parasite rate, *P. falciparum* or *P. vivax*, for any year from 2000 to 2025, and where the dengue mosquitoes *Aedes aegypti* and *Ae. albopictus* have been recorded
+- Optional records of any species, genus or family from GBIF, by scientific or common name, for all years or a span of years
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
@@ -319,7 +328,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -398,6 +407,10 @@ python ortho.py --lat -30 --lon 145 --livestock sheep
 python ortho.py --lat 5 --lon 20 --malaria pf
 python ortho.py --lat 15 --lon 80 --malaria pv --malaria-year 2000
 python ortho.py --lat 0 --lon -70 --aedes
+
+# Where a species has been recorded (see "Species Records")
+python ortho.py --lat 0 --lon 20 --species lion
+python ortho.py --lat 52 --lon 0 --radius 900 --species "red fox" --species-years 2000-2025
 
 # The states of a year or a day: 1500, the Roman world in 117, Africa on 1 July 1914 (see "Historical Borders")
 python ortho.py --city Lisbon --borders 1500
@@ -512,6 +525,8 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--malaria-year YEAR` | Year of the malaria map, 2000–2025 | `2025` |
 | `--malaria-alpha ALPHA` | Opacity of the malaria map (0–1) | `0.75` |
 | `--aedes [SPECIES]` | Draw where *Aedes* mosquitoes have been recorded, 1958–2014: `both`, `aegypti` or `albopictus` | off (`both` when given alone) |
+| `--species NAME` | Draw where a species, genus or family has been recorded in the wild (GBIF), by scientific or common name: `"Panthera leo"`, `"red fox"`, `Quercus` | — |
+| `--species-years YEARS` | Only the records of these years: `FROM-TO` or `YEAR` | all years |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
@@ -530,7 +545,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
 Historical borders, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
-Malaria and Aedes mosquitoes, Winds, Polar ice, Crops, Routes and areas, Recipes.
+Malaria and Aedes mosquitoes, Species records (GBIF), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -1362,6 +1377,43 @@ python ortho.py --lat 25 --lon 110 --radius 3000 --aedes albopictus
 The samples above are `python ortho.py --config recipes/africa_malaria.toml` and
 `python ortho.py --config recipes/americas_aedes.toml`.
 
+## Species Records
+
+`--species NAME` draws where a species has been recorded in the wild, from the
+billions of occurrence records gathered by [GBIF](https://www.gbif.org/):
+museum specimens, surveys, and citizen science such as iNaturalist and eBird.
+
+- **Any name:** a scientific name (`"Panthera leo"`, or misspelt as
+  `"Vulpes vulpis"`) or a common one (`lion`, `"red fox"`, `"monarch butterfly"`).
+  A common name goes to the taxon most sources call by it, so `tiger` is
+  *Panthera tigris*, not the tiger muskellunge.
+- **Any rank:** a genus or family works too (`Quercus` or `oak` for all oaks,
+  `Felidae` for all cats). The key names the rank.
+- **Cells, not dots:** the world is split into cells of about 20 km (0.18°), shaded
+  by how many records each holds, from 1 to over 1,000. On a zoomed-in map each cell
+  is drawn at its true size; on a whole globe each is widened just enough to see.
+- **Wild records only:** fossils and zoo or garden specimens are left out.
+- **Years:** `--species-years 1990-2020` (or one year, `2015`) keeps only the
+  records of those years.
+
+These are records, not a range map. Places with many naturalists, such as
+Britain, the Netherlands and North America, have far more records than the
+tropics, so a dark cell shows where people looked as much as where the species
+lives. The name and the eight tiles of records (from a few KB to ~2 MB) are read
+once and cached under `~/.cache/ortho_tiles/gbif/`; delete a cached file to
+fetch newer records. The credit gives the date the records were read.
+
+```powershell
+python ortho.py --lat 0 --lon 20 --species lion
+python ortho.py --lat 30 --lon 85 --species tiger
+python ortho.py --lat 40 --lon -95 --species "monarch butterfly" --species-years 2020-2025
+python ortho.py --lat 52 --lon 0 --radius 900 --species "red fox" --species-years 2000-2025
+python ortho.py --lat 45 --lon 10 --species Quercus
+```
+
+The samples above are `python ortho.py --config recipes/africa_lion.toml` and
+`python ortho.py --config recipes/britain_red_fox.toml`.
+
 ## Polar Ice
 
 `--ice` (`ice=True` in the API, or the interactive prompt) draws the ice at both
@@ -1859,6 +1911,7 @@ to the attribution block.
 | Gridded Livestock of the World v4, 2015, 5 arc-minutes | Gilbert, M. et al., FAO | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Harvard Dataverse, e.g. cattle [doi:10.7910/DVN/LHBICE](https://doi.org/10.7910/DVN/LHBICE) |
 | Malaria Atlas Project, 2026 release: *P. falciparum* (PfPR2–10) and *P. vivax* parasite rates, 2000–2025, 5 km, used at ~10 km | Malaria Atlas Project, The Kids Research Institute Australia | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) ([open access policy](https://malariaatlas.org/open-access-policy/)) | [malariaatlas.org](https://malariaatlas.org/), WCS at data.malariaatlas.org |
 | Global compendium of *Aedes aegypti* and *Ae. albopictus* occurrence, 1958–2014 | Kraemer, M. U. G. et al. (2015) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2015.35](https://doi.org/10.1038/sdata.2015.35), data [doi:10.5061/dryad.47v3c](https://doi.org/10.5061/dryad.47v3c), read from GBIF |
+| GBIF occurrence records, read as occurrence density maps (zoom 1, ~20 km cells) | GBIF.org and its data publishers | Per dataset: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) or [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); see [GBIF's terms](https://www.gbif.org/terms) | [gbif.org](https://www.gbif.org/), [maps API](https://techdocs.gbif.org/en/openapi/v2/maps) |
 | Cliopatria v0.2.1: borders of over 1,600 states and empires, 3400 BCE–2024 | Bennett, J. S. et al. (2025), Seshat Global History Databank | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-025-04516-9](https://doi.org/10.1038/s41597-025-04516-9), [github.com/Seshat-Global-History-Databank/cliopatria](https://github.com/Seshat-Global-History-Databank/cliopatria) |
 | CShapes 2.0: borders of states and dependent territories, 1886–2019 (Gleditsch & Ward system), from the `cshapes` R package | Schvitz, G. et al. (2022), ETH Zurich | No data licence stated; the article is CC BY-NC 4.0 and the R package GPL ≥ 2. Downloaded by each user, not shipped | [doi:10.1177/00220027211013563](https://doi.org/10.1177/00220027211013563), [icr.ethz.ch/data/cshapes](https://icr.ethz.ch/data/cshapes/) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
@@ -1908,6 +1961,7 @@ the globe:
 | `--livestock` | *Livestock: Gridded Livestock of the World v4, 2015 (FAO), CC0* |
 | `--malaria` | *Malaria: Malaria Atlas Project (2026 release), CC BY 3.0* |
 | `--aedes` | *Aedes records: Kraemer et al. (2015), global compendium of Aedes occurrence, via GBIF, CC0* |
+| `--species` | *Species records: GBIF.org occurrence data, retrieved YYYY-MM-DD* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
 Keep this block (or credit the same sources elsewhere) when you share or publish
@@ -1979,6 +2033,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [livestock.py](livestock.py): livestock density from Gridded Livestock of the World
 - [malaria.py](malaria.py): the malaria parasite rate from the Malaria Atlas Project, in classed bands
 - [aedes.py](aedes.py): where the dengue mosquitoes have been recorded, from Kraemer et al.'s compendium on GBIF
+- [gbif.py](gbif.py): where any species has been recorded, from GBIF's occurrence density maps, with name lookup
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)

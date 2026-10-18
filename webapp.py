@@ -175,6 +175,8 @@ class MapRequest(BaseModel):
     malaria_year: int | None = None
     malaria_alpha: float | None = None
     aedes: str | None = None
+    species: str | None = None
+    species_years: str | None = None
     route: list[str] | None = None
     route_legend: bool | None = None
 

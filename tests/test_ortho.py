@@ -1031,7 +1031,7 @@ class TestRunCLIValidation:
             ocean_depth=False, ice_age=False, plates=False, earthquakes=None, volcanoes=False, currents=False,
             rivers=False, basins=False, basins_alpha=0.5, cyclones=None, time_zones=False, permafrost=False,
             permafrost_alpha=0.7, population=None, population_alpha=0.7, livestock=None, livestock_alpha=0.7,
-            malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None,
+            malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None, species=None, species_years=None,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1463,6 +1463,18 @@ class TestRunCLIValidation:
         assert (kwargs["malaria"], kwargs["malaria_year"], kwargs["malaria_alpha"], kwargs["aedes"]) == \
             ("vivax", 2005, 0.5, "both")
 
+    def test_species_passed_to_renderer(self, caplog):
+        args = self._make_args(city="paris", species="red fox", species_years="1990-2020")
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert (render.call_args.kwargs["species"], render.call_args.kwargs["species_years"]) == \
+            ("red fox", "1990-2020")
+        args = self._make_args(city="paris", species_years="1990-2020")
+        with mock.patch.object(ortho, "generate_orthographic_map"), mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert "--species-years is ignored" in caplog.text
+
     @pytest.mark.parametrize("overrides, message", [
         ({"population": 2012}, "Population density is mapped for"),
         ({"livestock": "llamas"}, "Unknown livestock"),
@@ -1470,6 +1482,7 @@ class TestRunCLIValidation:
         ({"malaria": "pf", "malaria_year": 1999}, "Malaria is mapped for"),
         ({"malaria": "pf", "malaria_alpha": 1.5}, "malaria_alpha"),
         ({"aedes": "vexans"}, "Unknown Aedes"),
+        ({"species": "lion", "species_years": "2020-1990"}, "Species years"),
         ({"earthquakes": 4.0}, "earthquakes must be a magnitude"),
         ({"cyclones": 1970}, "cyclones must start"),
         ({"basins": True, "basins_alpha": 2.0}, "basins_alpha"),
@@ -1832,6 +1845,49 @@ class TestGenerateOrthographicMapIntegration:
             legend.assert_called_once()
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], getattr(ortho, credit)]
 
+    def test_species_records_drawn_with_key_and_credit(self, tmp_path):
+        taxon = mock.Mock()
+        found = mock.Mock(records=[3, 4], retrieved="2026-10-18")
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "resolve_taxon", return_value=taxon) as resolve, \
+                mock.patch.object(ortho, "load_occurrences", return_value=found) as load, \
+                mock.patch.object(ortho, "draw_occurrences") as draw, \
+                mock.patch.object(ortho, "add_occurrences_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(10, 10), species="lion",
+                                            species_years="2000-2010")
+        assert resolve.call_args.args == ("lion",) and load.call_args.args == (taxon, (2000, 2010))
+        assert draw.call_count == 2                                  # one per globe
+        key.assert_called_once()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"],
+                                                 "Species records: GBIF.org occurrence data, retrieved 2026-10-18"]
+
+    @pytest.mark.parametrize("resolved, loaded, warning", [
+        ({"side_effect": ortho.GbifDataError("offline")}, {}, "Skipping the species records"),
+        ({"return_value": mock.Mock()}, {"side_effect": ortho.GbifDataError("busy")}, "Skipping the records"),
+        ({"return_value": mock.Mock()}, {"return_value": mock.Mock(records=[])}, "no wild records"),
+    ])
+    def test_species_records_missing_still_saves_map(self, tmp_path, caplog, resolved, loaded, warning):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "resolve_taxon", **resolved), \
+                mock.patch.object(ortho, "load_occurrences", **loaded), \
+                mock.patch.object(ortho, "add_occurrences_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), species="lion")
+        assert os.path.exists(result) and warning in caplog.text
+        key.assert_not_called()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
+    def test_unknown_species_stops_before_tiles(self, tmp_path):
+        with mock.patch.object(ortho, "resolve_taxon", side_effect=ValueError("GBIF knows no species called 'x'")), \
+                mock.patch.object(ortho.GeoAxes, "add_image") as tiles:
+            with pytest.raises(ValueError, match="no species"):
+                ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                output_dir=str(tmp_path), species="x")
+        tiles.assert_not_called()
+
     def test_tectonics_share_one_key(self, tmp_path):
         quakes = mock.Mock()
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
@@ -1899,9 +1955,14 @@ class TestGenerateOrthographicMapIntegration:
         ("livestock:cow, ice-age", {"livestock": "cattle", "ice_age": True}),
         ("malaria, aedes", {"malaria": "pf", "aedes": "both"}),
         ("malaria:vivax, aedes:tiger", {"malaria": "pv", "aedes": "tiger"}),
+        ("species: Red Fox, plates", {"species": "red fox", "plates": True}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected
+
+    def test_extra_layer_species_needs_a_name(self):
+        with pytest.raises(ValueError, match="Name the species"):
+            ortho.parse_extra_layers("species:")
 
     def test_unknown_extra_layer(self):
         with pytest.raises(ValueError, match="Unknown layer"):

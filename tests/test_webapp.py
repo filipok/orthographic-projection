@@ -149,6 +149,11 @@ class TestMaps:
         assert (renders[0]["malaria"], renders[0]["malaria_year"], renders[0]["aedes"]) == ("pv", 2010, "both")
         assert "--malaria pv --malaria-year 2010 --aedes both" in status["command"]
 
+    def test_species(self, client, renders):
+        _, status = _render(client, city="Lisbon", species="red fox", species_years="1990-2020")
+        assert (renders[0]["species"], renders[0]["species_years"]) == ("red fox", "1990-2020")
+        assert "--species 'red fox' --species-years 1990-2020" in status["command"]
+
     def test_a_globe_beside(self, client, renders):
         _, status = _render(client, city="Lisbon", beside="Tokyo")
         assert renders[0]["beside"] == (35.6762, 139.6503) and renders[0]["beside_name"] == "Tokyo"

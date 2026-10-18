@@ -177,6 +177,10 @@ function buildRequest() {
     req.malaria_alpha = changed("malaria-alpha", options.alpha.malaria);
   }
   if ($("aedes").value) req.aedes = $("aedes").value;
+  if ($("species").value.trim()) {
+    req.species = $("species").value.trim();
+    if ($("species-years").value.trim()) req.species_years = $("species-years").value.trim();
+  }
   const borders = $("borders").value.trim();
   if (borders) {
     req.borders = borders;
@@ -337,6 +341,8 @@ function fillForm(req) {
   set("malaria-year", req.malaria_year);
   set("malaria-alpha", req.malaria_alpha);
   if (req.aedes) pick("aedes", req.aedes, "Aedes species");
+  set("species", req.species);
+  set("species-years", req.species_years);
   $("borders").value = req.borders ?? "";
   if (req.borders_source) pick("borders-source", req.borders_source, "borders source");
   set("borders-alpha", req.borders_alpha);

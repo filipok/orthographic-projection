@@ -66,6 +66,10 @@ from aedes import (
     AEDES_ATTRIBUTION, CHOICES as AEDES_CHOICES, AedesDataError, add_aedes_legend, draw_aedes, load_aedes,
     resolve_aedes,
 )
+from gbif import (
+    GbifDataError, add_occurrences_legend, draw_occurrences, gbif_attribution, load_occurrences, parse_years,
+    resolve_taxon,
+)
 from livestock import (
     LIVESTOCK_ATTRIBUTION, SPECIES as LIVESTOCK_SPECIES, LivestockDataError, add_livestock_legend,
     add_livestock_overlay, load_livestock, resolve_species,
@@ -754,6 +758,8 @@ def generate_orthographic_map(
     malaria_year: int = LATEST_MALARIA_YEAR,
     malaria_alpha: float = 0.75,
     aedes: str | None = None,
+    species: str | None = None,
+    species_years: str | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -978,6 +984,11 @@ def generate_orthographic_map(
     aedes : str, optional
         Draw where *Aedes* mosquitoes have been recorded (Kraemer et al. 2015):
         ``"both"``, ``"aegypti"`` or ``"albopictus"``.
+    species : str, optional
+        Draw where a species (or genus, family …) has been recorded in the
+        wild, from GBIF, by its scientific or common name (``"Panthera leo"``,
+        ``"red fox"``); *species_years* (``"1990-2020"`` or ``"2015"``) keeps
+        the records of those years.
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -1004,6 +1015,13 @@ def generate_orthographic_map(
     if malaria_parasite is not None:
         resolve_malaria_year(malaria_year)
     aedes_species = resolve_aedes(aedes) if aedes else ()
+    record_years = parse_years(species_years) if species else None
+    taxon = None
+    if species:
+        try:
+            taxon = resolve_taxon(species)
+        except GbifDataError as e:
+            logger.warning("Skipping the species records: %s", e)
     wind_period = resolve_wind_period(wind) if wind is not None else None
     land_cover_codes = resolve_land_cover_classes(land_cover_classes or [])
     land_cover = land_cover or bool(land_cover_codes) or land_cover_year is not None
@@ -1420,6 +1438,20 @@ def generate_orthographic_map(
     if mosquitoes:
         for ax in axes:
             draw_aedes(ax, mosquitoes)
+    sightings = None
+    if taxon is not None:
+        try:
+            sightings = load_occurrences(taxon, record_years)
+        except (GbifDataError, OSError) as e:
+            logger.warning("Skipping the records of %s: %s", taxon.name, e)
+        else:
+            if not len(sightings.records):
+                logger.warning("GBIF has no wild records of %s%s.", taxon.name,
+                               f" in {species_years}" if record_years else "")
+                sightings = None
+    if sightings is not None:
+        for ax in axes:
+            draw_occurrences(ax, sightings)
     permafrost_drawn = False
     if permafrost:
         try:
@@ -1650,6 +1682,8 @@ def generate_orthographic_map(
         keys.append(add_malaria_legend(near, malaria_parasite, malaria_year, x=key_x))
     if mosquitoes:
         keys.append(add_aedes_legend(near, mosquitoes, x=key_x))
+    if sightings is not None:
+        keys.append(add_occurrences_legend(near, sightings, x=key_x))
     if crop_layer is not None:
         keys.append(add_crop_legend(near, crop_layer, x=key_x))
     if wind_drawn and wind_period is not None:
@@ -1704,6 +1738,8 @@ def generate_orthographic_map(
         credits.append(MALARIA_ATTRIBUTION)
     if mosquitoes:
         credits.append(AEDES_ATTRIBUTION)
+    if sightings is not None:
+        credits.append(gbif_attribution(sightings))
     if crop_layer is not None:
         credits.append(CROP_ATTRIBUTION)
     if ice_attribution:
@@ -2145,7 +2181,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
     """The keyword arguments for a comma-separated list of :data:`EXTRA_LAYERS`.
 
     ``livestock:ANIMAL``, ``malaria:pf`` or ``malaria:pv`` and ``aedes:SPECIES`` choose
-    which kind.
+    which kind; ``species:NAME`` draws the GBIF records of a species.
 
     Raises ``ValueError`` for a name it does not know.
     """
@@ -2157,6 +2193,11 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen["livestock"] = resolve_species(item.split(":", 1)[1])
         elif item.startswith("malaria:"):
             chosen["malaria"] = resolve_parasite(item.split(":", 1)[1])
+        elif item.startswith("species:"):
+            name = item.split(":", 1)[1].strip()
+            if not name:
+                raise ValueError("Name the species after 'species:', e.g. species:red fox.")
+            chosen["species"] = name
         elif item.startswith("aedes:"):
             kind = item.split(":", 1)[1].strip()
             resolve_aedes(kind)
@@ -2166,7 +2207,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen[key] = value
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
-                             "malaria:pv, aedes:SPECIES.")
+                             "malaria:pv, aedes:SPECIES, species:NAME.")
     return chosen
 
 
@@ -2174,7 +2215,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -2627,6 +2668,14 @@ def build_cli_parser() -> argparse.ArgumentParser:
     health.add_argument("--aedes", nargs="?", const="both", metavar="SPECIES",
                         help="Draw where the dengue mosquitoes have been recorded, 1958-2014 (Kraemer et al. 2015): "
                              + ", ".join(AEDES_CHOICES) + " (default: both).")
+
+    wild = parser.add_argument_group("Species records (GBIF)")
+    wild.add_argument("--species", metavar="NAME",
+                      help="Draw where a species, genus or family has been recorded in the wild, by its scientific "
+                           "or common name ('Panthera leo', 'red fox', 'Quercus'), from GBIF; ~20 km cells, darker "
+                           "for more records.")
+    wild.add_argument("--species-years", metavar="YEARS",
+                      help="Only the records of these years: FROM-TO or YEAR (e.g. 1990-2020).")
 
     winds = parser.add_argument_group("Winds (NCEP/NCAR Reanalysis)")
     winds.add_argument(
@@ -3098,6 +3147,10 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         resolve_malaria_year(args.malaria_year)
     if args.aedes:
         resolve_aedes(args.aedes)
+    if args.species_years and not args.species:
+        logger.warning("--species-years is ignored because no --species was given.")
+    elif args.species:
+        parse_years(args.species_years)
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
@@ -3250,6 +3303,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         malaria_year=args.malaria_year,
         malaria_alpha=args.malaria_alpha,
         aedes=args.aedes,
+        species=args.species,
+        species_years=args.species_years,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,
