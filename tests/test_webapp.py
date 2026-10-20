@@ -161,6 +161,11 @@ class TestMaps:
             ("life-expectancy", 2000, 0.5)
         assert "--indicator life-expectancy --indicator-year 2000 --indicator-alpha 0.5" in status["command"]
 
+    def test_industry(self, client, renders):
+        _, status = _render(client, city="Lisbon", industry="petrochemical,steel")
+        assert renders[0]["industry"] == "petrochemical,steel"
+        assert "--industry petrochemical,steel" in status["command"]
+
     def test_cities(self, client, renders):
         _, status = _render(client, city="Lisbon", cities=1975, cities_min=250000)
         assert (renders[0]["cities"], renders[0]["cities_min"]) == (1975, 250000)

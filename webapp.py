@@ -184,6 +184,7 @@ class MapRequest(BaseModel):
     indicator: str | None = None
     indicator_year: int | None = None
     indicator_alpha: float | None = None
+    industry: str | None = None
     route: list[str] | None = None
     route_legend: bool | None = None
 
@@ -418,6 +419,8 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "first_ice_year": FIRST_ICE_YEAR,
         "population_years": list(ortho.POPULATION_YEARS),
         "cities_years": list(ortho.CITIES_YEARS),
+        "industry": {**{name: f"group: {', '.join(sectors)}" for name, sectors in ortho.INDUSTRY_GROUPS.items()},
+                     **{name: sector.label for name, sector in ortho.INDUSTRY_SECTORS.items()}},
         "indicators": {**{name: preset.title for name, preset in ortho.INDICATOR_PRESETS.items()},
                        **{f"eurostat:{name}": f"{preset.title} (European regions)"
                           for name, preset in ortho.EUROSTAT_PRESETS.items()}},

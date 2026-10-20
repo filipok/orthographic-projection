@@ -74,6 +74,10 @@ from indicators import (
     EUROSTAT_PRESETS, PRESETS as INDICATOR_PRESETS, IndicatorDataError, add_indicator_legend, class_breaks,
     draw_indicator, indicator_attribution, load_areas, load_values, resolve_indicator, resolve_indicator_year,
 )
+from industry import (
+    GROUPS as INDUSTRY_GROUPS, SECTORS as INDUSTRY_SECTORS, IndustryDataError, add_industry_legend, draw_industry,
+    industry_attribution, load_plants, resolve_sectors,
+)
 from cities import (
     CITIES_ATTRIBUTION, YEARS as CITIES_YEARS, CitiesDataError, add_cities_legend, default_min_population,
     draw_cities, load_cities, resolve_cities_year,
@@ -779,6 +783,7 @@ def generate_orthographic_map(
     indicator: str | None = None,
     indicator_year: int | None = None,
     indicator_alpha: float = 0.75,
+    industry: str | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -1025,6 +1030,11 @@ def generate_orthographic_map(
         Eurostat one (``"eurostat:unemployment"``, or
         ``"eurostat:DATASET?dim=CODE&level=nuts3"``). In *indicator_year*
         (default: each area's latest); *indicator_alpha* sets its opacity.
+    industry : str, optional
+        Draw industrial plants (Climate TRACE) as circles sized by their
+        emissions, the largest named: comma-separated sectors
+        (``"refineries,steel"``, see :data:`industry.SECTORS`) or groups
+        (``"petrochemical"``, ``"heavy"``, ``"mining"``, ``"all"``).
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -1066,6 +1076,7 @@ def generate_orthographic_map(
         except IucnDataError as e:
             logger.warning("Skipping the IUCN range: %s", e)
     cities_year = resolve_cities_year(cities) if cities is not None else None
+    industry_sectors = resolve_sectors(industry) if industry else ()
     statistic = None
     if indicator:
         stat_year = resolve_indicator_year(indicator_year)
@@ -1506,6 +1517,15 @@ def generate_orthographic_map(
             stat_breaks = class_breaks(list(statistic.values.values()), bool(statistic.indicator.log))
             stat_counts = [draw_indicator(ax, statistic, nations, stat_breaks, alpha=indicator_alpha)
                            for ax in axes][0]
+    factories: list = []
+    factory_counts: dict[str, int] = {}
+    for sector in industry_sectors:
+        try:
+            factories.append(load_plants(sector))
+        except (IndustryDataError, OSError) as e:
+            logger.warning("Skipping the %s: %s", INDUSTRY_SECTORS[sector].label.lower(), e)
+    if factories:
+        factory_counts = [draw_industry(ax, factories) for ax in axes][0]
     towns = None
     town_floor = cities_min if cities_min is not None else default_min_population(radius_km)
     towns_shown = 0
@@ -1767,6 +1787,8 @@ def generate_orthographic_map(
                                          x=key_x))
     if towns is not None:
         keys.append(add_cities_legend(near, towns, town_floor, towns_shown, x=key_x))
+    if factories:
+        keys.append(add_industry_legend(near, factories, factory_counts, x=key_x))
     if sightings is not None:
         keys.append(add_occurrences_legend(near, sightings, x=key_x))
     if crop_layer is not None:
@@ -1829,6 +1851,8 @@ def generate_orthographic_map(
         credits.append(indicator_attribution(statistic))
     if towns is not None:
         credits.append(CITIES_ATTRIBUTION)
+    if factories:
+        credits.append(industry_attribution(factories))
     if sightings is not None:
         credits.append(gbif_attribution(sightings))
     if crop_layer is not None:
@@ -2299,6 +2323,10 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             name = item.split(":", 1)[1].strip()
             resolve_indicator(name)
             chosen["indicator"] = name
+        elif item.startswith("industry:"):
+            sectors = item.split(":", 1)[1].strip()
+            resolve_sectors(sectors)
+            chosen["industry"] = sectors
         elif item.startswith("cities:"):
             chosen["cities"] = resolve_cities_year(item.split(":", 1)[1])
         elif item.startswith("aedes:"):
@@ -2310,7 +2338,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen[key] = value
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
-                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, indicator:NAME.")
+                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, indicator:NAME, industry:SECTORS.")
     return chosen
 
 
@@ -2318,7 +2346,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, indicator:life-expectancy …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, indicator:life-expectancy, industry:petrochemical …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -2812,6 +2840,12 @@ def build_cli_parser() -> argparse.ArgumentParser:
     stats.add_argument("--indicator-alpha", type=float, default=0.75, metavar="ALPHA",
                        help="Opacity of the statistics (0-1, default: 0.75).")
 
+    plants = parser.add_argument_group("Industry (Climate TRACE)")
+    plants.add_argument("--industry", metavar="SECTORS",
+                        help="Draw industrial plants as circles sized by their greenhouse-gas emissions, the largest "
+                             "named: comma-separated sectors (" + ", ".join(INDUSTRY_SECTORS) + ") or groups ("
+                             + ", ".join(INDUSTRY_GROUPS) + "). Each sector is downloaded once.")
+
     winds = parser.add_argument_group("Winds (NCEP/NCAR Reanalysis)")
     winds.add_argument(
         "--wind",
@@ -3297,6 +3331,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         resolve_indicator_year(args.indicator_year)
     elif args.indicator_year is not None:
         logger.warning("--indicator-year is ignored because no --indicator was given.")
+    if args.industry:
+        resolve_sectors(args.industry)
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
@@ -3459,6 +3495,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         indicator=args.indicator,
         indicator_year=args.indicator_year,
         indicator_alpha=args.indicator_alpha,
+        industry=args.industry,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,

@@ -144,6 +144,14 @@ The main script is [ortho.py](ortho.py).
 *Right: Unemployment by NUTS 2 region, latest figures (plain OSM, 2,200 km radius, Eurostat).*
 
 <p align="center">
+  <img src="sample_world_petrochemical.png" alt="Globe centred on the Middle East with purple, pink and lilac circles for oil refineries, steam crackers and chemical plants, sized by emissions: thickest around the Gulf, along India's west coast and on the Chinese coast, with Jamnagar, Ulsan and Zhejiang Rongsheng among those named" width="48%">
+  <img src="sample_rhine_ruhr_heavy_industry.png" alt="A disc 300 km around the Low Countries with circles for refineries, crackers, chemical plants, steelworks, aluminium and cement works: clusters at Rotterdam, Antwerp, IJmuiden, Ghent, Dunkirk and along the Rhine and Ruhr, the steelworks of Duisburg and IJmuiden largest" width="48%">
+</p>
+
+*Left: Oil refineries, steam crackers and chemical plants, sized by emissions (plain OSM, zoom 3, Climate TRACE).*<br>
+*Right: Heavy industry from Rotterdam to the Ruhr (plain OSM, 300 km radius, Climate TRACE).*
+
+<p align="center">
   <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
 </p>
 
@@ -208,6 +216,7 @@ The main script is [ortho.py](ortho.py).
 - Optional IUCN Red List range of a species, genus or family, from range files you download from IUCN: where it lives, where it may still live, where it was introduced and where it has died out
 - Optional big cities: built-up urban centres (metropolitan areas) as their real shape, the largest named, for any five-year step from 1975 to 2030
 - Optional statistics: each country shaded by a World Bank figure (GDP, life expectancy, CO₂ per person, internet use and 1,400 more), or each European region by a Eurostat one (unemployment, GDP, population density by NUTS 2 or 3 region), for any year
+- Optional industry: refineries, petrochemical and chemical plants, steelworks, aluminium, cement, glass, paper, mines and fossil-fuel power stations worldwide, as circles sized by their emissions, the largest named
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
@@ -346,7 +355,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -440,6 +449,10 @@ python ortho.py --config recipes/pearl_river_delta_1975.toml
 # Statistics by country or European region (see "Statistics")
 python ortho.py --lat 10 --lon 20 --indicator life-expectancy
 python ortho.py --lat 50 --lon 12 --radius 2200 --indicator eurostat:unemployment
+
+# Industry: refineries, crackers, steelworks … sized by emissions (see "Industry")
+python ortho.py --lat 30 --lon 60 --industry petrochemical
+python ortho.py --lat 51.3 --lon 5.5 --radius 300 --industry heavy
 
 # The states of a year or a day: 1500, the Roman world in 117, Africa on 1 July 1914 (see "Historical Borders")
 python ortho.py --city Lisbon --borders 1500
@@ -564,6 +577,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--indicator NAME` | Shade each country by a World Bank statistic (`life-expectancy`, `gdp-per-person`, a code such as `NY.GDP.PCAP.CD`) or each European region by a Eurostat one (`eurostat:unemployment`, `eurostat:DATASET?dim=CODE&level=nuts3`) | — |
 | `--indicator-year YEAR` | Year of the figures; an area without one that year shows its latest from the nine years before | each area's latest |
 | `--indicator-alpha ALPHA` | Opacity of the statistics (0–1) | `0.75` |
+| `--industry SECTORS` | Draw industrial plants as circles sized by emissions, the largest named: comma-separated sectors (`refineries`, `petrochemicals`, `steel`, `cement`, `power` …) or groups (`petrochemical`, `heavy`, `mining`, `all`) | — |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
@@ -582,7 +596,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
 Historical borders, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
-Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Winds, Polar ice, Crops, Routes and areas, Recipes.
+Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -1603,6 +1617,47 @@ python ortho.py --lat 48 --lon 8 --radius 900 --indicator eurostat:population-de
 The samples above are `python ortho.py --config recipes/world_life_expectancy.toml`
 and `python ortho.py --config recipes/europe_unemployment.toml`.
 
+## Industry
+
+`--industry SECTORS` draws industrial plants worldwide from
+[Climate TRACE](https://climatetrace.org), which estimates the greenhouse-gas
+emissions of each plant from satellite images and other data. Each plant is a
+circle in its sector's colour, its area proportional to its emissions (CO₂
+equivalent, last full year): a fair measure of size across very different
+plants. The biggest are named, as long as the names don't overlap.
+
+| Sector | Plants (worldwide) |
+|---|---|
+| `refineries` | Oil refineries (~730) |
+| `petrochemicals` | Petrochemical plants: steam crackers making ethylene and propylene (~240) |
+| `chemicals` | Chemical plants: ammonia, methanol, soda ash (~450) |
+| `steel`, `aluminium`, `cement`, `glass`, `paper` | Steelworks, aluminium smelters and refineries, cement works, glassworks, pulp and paper mills |
+| `coal-mines`, `copper-mines`, `iron-mines`, `bauxite-mines` | Mines |
+| `power` | Fossil-fuel power stations (~11,600) |
+| `oil-gas` | Oil and gas production, by basin (each circle a whole basin); what a country produces outside its named basins, nearly a third of the total, is one figure at one point, drawn as a hollow ring ("Russia, other basins") |
+
+Groups: `petrochemical` (refineries, crackers and chemical plants), `heavy`
+(those with steel, aluminium and cement), `mining`, and `all` (every sector
+but the oil and gas basins, which would swamp the plants). The key counts the
+plants of each sector in view. Circles grow a little on a closer map, so a
+300 km disc still shows them well; the key's sizes always match the map.
+
+Each sector is downloaded once from Climate TRACE's API (a few seconds; the
+power stations ~20 s) and cached under `~/.cache/ortho_tiles/industry/`, read
+again after 90 days. The figures are modelled estimates: Climate TRACE grades
+its confidence for each plant, often "low" for single plants.
+
+```powershell
+python ortho.py --lat 30 --lon 60 --industry petrochemical
+python ortho.py --lat 29 --lon -94 --radius 500 --industry refineries,petrochemicals,chemicals
+python ortho.py --lat 51.3 --lon 5.5 --radius 300 --industry heavy
+python ortho.py --lat 35 --lon 110 --industry steel,cement,power
+python ortho.py --lat -15 --lon 25 --industry mining
+```
+
+The samples above are `python ortho.py --config recipes/world_petrochemical.toml`
+and `python ortho.py --config recipes/rhine_ruhr_heavy_industry.toml`.
+
 ## Polar Ice
 
 `--ice` (`ice=True` in the API, or the interactive prompt) draws the ice at both
@@ -2100,6 +2155,7 @@ to the attribution block.
 | Gridded Livestock of the World v4, 2015, 5 arc-minutes | Gilbert, M. et al., FAO | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Harvard Dataverse, e.g. cattle [doi:10.7910/DVN/LHBICE](https://doi.org/10.7910/DVN/LHBICE) |
 | Malaria Atlas Project, 2026 release: *P. falciparum* (PfPR2–10) and *P. vivax* parasite rates, 2000–2025, 5 km, used at ~10 km | Malaria Atlas Project, The Kids Research Institute Australia | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) ([open access policy](https://malariaatlas.org/open-access-policy/)) | [malariaatlas.org](https://malariaatlas.org/), WCS at data.malariaatlas.org |
 | Global compendium of *Aedes aegypti* and *Ae. albopictus* occurrence, 1958–2014 | Kraemer, M. U. G. et al. (2015) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2015.35](https://doi.org/10.1038/sdata.2015.35), data [doi:10.5061/dryad.47v3c](https://doi.org/10.5061/dryad.47v3c), read from GBIF |
+| Climate TRACE emissions inventory: individual plants with location, type and yearly emissions | Climate TRACE coalition | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) ([terms](https://climatetrace.org/terms)) | [climatetrace.org](https://climatetrace.org/data), [API](https://api.climatetrace.org/v6/swagger/index.html) |
 | World Development Indicators, read from the World Bank's API | World Bank | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [data.worldbank.org/indicator](https://data.worldbank.org/indicator), [API](https://datahelpdesk.worldbank.org/knowledgebase/articles/889392) |
 | Natural Earth 1:50m countries (for `--indicator`) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | Eurostat regional statistics, read from Eurostat's API | Eurostat | Reuse allowed with acknowledgement ([Eurostat copyright notice](https://ec.europa.eu/eurostat/about-us/policies/copyright)) | [Eurostat database](https://ec.europa.eu/eurostat/data/database), [API](https://wikis.ec.europa.eu/display/EUROSTATHELP/API+Statistics+-+data+query) |
@@ -2159,6 +2215,7 @@ the globe:
 | `--aedes` | *Aedes records: Kraemer et al. (2015), global compendium of Aedes occurrence, via GBIF, CC0* |
 | `--species` | *Species records: GBIF.org occurrence data, retrieved YYYY-MM-DD* |
 | `--cities` | *Urban centres: GHS-UCDB R2024A (European Commission, JRC), CC BY 4.0* |
+| `--industry` | *Industry: Climate TRACE (climatetrace.org), CC BY 4.0, retrieved YYYY-MM-DD* |
 | `--indicator` | *Statistics: World Bank, World Development Indicators (CODE), CC BY 4.0, retrieved YYYY-MM-DD; countries: Natural Earth*, or *Statistics: Eurostat (DATASET), retrieved YYYY-MM-DD; regions: © EuroGeographics for the administrative boundaries* |
 | `--iucn` | *Range: IUCN (YYYY), The IUCN Red List of Threatened Species, spatial data of YYYY-MM-DD*, or for birds *Range: BirdLife International and Handbook of the Birds of the World (YYYY), Bird species distribution maps of the world, version YYYY.N* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
@@ -2236,6 +2293,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [iucn.py](iucn.py): a species' range from the IUCN Red List or, for birds, BirdLife, read from the files the user downloaded
 - [cities.py](cities.py): big cities, the GHSL urban centres with their names, outlines and populations from 1975 to 2030
 - [indicators.py](indicators.py): statistics by country (World Bank) or European region (Eurostat), in classes, with the country and NUTS region shapes
+- [industry.py](industry.py): industrial plants worldwide from Climate TRACE, as circles sized by emissions
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)

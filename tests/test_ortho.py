@@ -1034,7 +1034,7 @@ class TestRunCLIValidation:
             permafrost_alpha=0.7, population=None, population_alpha=0.7, livestock=None, livestock_alpha=0.7,
             malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None, species=None, species_years=None,
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
-            indicator=None, indicator_year=None, indicator_alpha=0.75,
+            indicator=None, indicator_year=None, indicator_alpha=0.75, industry=None,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1490,6 +1490,13 @@ class TestRunCLIValidation:
             ortho.run_cli(args)
         assert "--indicator-year is ignored" in caplog.text
 
+    def test_industry_passed_to_renderer(self):
+        args = self._make_args(city="paris", industry="petrochemical")
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["industry"] == "petrochemical"
+
     def test_cities_passed_to_renderer(self, caplog):
         args = self._make_args(city="paris", cities=1990, cities_min=200000)
         with mock.patch.object(ortho, "generate_orthographic_map") as render, \
@@ -1524,6 +1531,7 @@ class TestRunCLIValidation:
         ({"iucn": "lion", "iucn_alpha": -0.1}, "iucn_alpha"),
         ({"cities": 1977}, "Cities are mapped for"),
         ({"indicator": "happiness"}, "Unknown indicator"),
+        ({"industry": "smelting"}, "Unknown industry"),
         ({"indicator": "fertility", "indicator_year": 1900}, "Indicator years run from 1960"),
         ({"indicator": "fertility", "indicator_alpha": 2.0}, "indicator_alpha"),
         ({"earthquakes": 4.0}, "earthquakes must be a magnitude"),
@@ -1980,6 +1988,40 @@ class TestGenerateOrthographicMapIntegration:
         credit.assert_called_once_with(values)
         assert "Statistics: World Bank" in attribution.call_args.args[1]
 
+    def test_industry_drawn_with_key_and_credit(self, tmp_path, caplog):
+        refineries = mock.Mock(retrieved="2026-10-20")
+
+        def load(sector):
+            if sector == "chemicals":
+                raise ortho.IndustryDataError("busy")
+            return refineries
+
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_plants", side_effect=load) as loaded, \
+                mock.patch.object(ortho, "draw_industry", return_value={"refineries": 3}) as draw, \
+                mock.patch.object(ortho, "add_industry_legend") as key, \
+                mock.patch.object(ortho, "industry_attribution", return_value="Industry: Climate TRACE") as credit, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(10, 10), industry="petrochemical")
+        assert [c.args[0] for c in loaded.call_args_list] == ["refineries", "petrochemicals", "chemicals"]
+        assert "Skipping the chemical plants (ammonia, methanol, soda ash): busy" in caplog.text
+        assert draw.call_count == 2 and draw.call_args.args[1] == [refineries, refineries]
+        assert key.call_args.args[1:] == ([refineries, refineries], {"refineries": 3})
+        credit.assert_called_once()
+        assert "Industry: Climate TRACE" in attribution.call_args.args[1]
+
+    def test_industry_unavailable_draws_nothing(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_plants", side_effect=ortho.IndustryDataError("offline")), \
+                mock.patch.object(ortho, "draw_industry") as draw, \
+                mock.patch.object(ortho, "add_industry_legend") as key:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), industry="steel")
+        assert os.path.exists(result)
+        draw.assert_not_called()
+        key.assert_not_called()
+
     @pytest.mark.parametrize("failure", ["values", "countries"])
     def test_indicator_unavailable_still_saves_map(self, tmp_path, caplog, failure):
         values = mock.Mock(values={"FRA": 1.0}, indicator=mock.Mock(log=False))
@@ -2091,6 +2133,7 @@ class TestGenerateOrthographicMapIntegration:
         ("cities, plates", {"cities": 2025, "plates": True}),
         ("cities:1975", {"cities": 1975}),
         ("indicator:Life-Expectancy, cities", {"indicator": "life-expectancy", "cities": 2025}),
+        ("industry:petrochemical", {"industry": "petrochemical"}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected

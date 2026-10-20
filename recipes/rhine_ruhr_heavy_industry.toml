@@ -1,0 +1,8 @@
+# Heavy industry from Rotterdam and Antwerp to the Ruhr: refineries, crackers, chemical plants, steelworks,
+# aluminium and cement, circles sized by their emissions (Climate TRACE).
+lat = 51.3
+lon = 5.5
+provider = "osm_plain"
+radius = 300
+industry = "heavy"
+output = "orthographic_map_rhine_ruhr_osm_plain_r300km_industry_heavy.png"

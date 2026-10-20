@@ -1,0 +1,7 @@
+# Oil refineries, steam crackers and chemical plants, circles sized by their emissions (Climate TRACE).
+# The Gulf, India's west coast and the Chinese coast stand out; Jamnagar is the largest refinery.
+lat = 30
+lon = 60
+provider = "osm_plain"
+industry = "petrochemical"
+output = "orthographic_map_asia_osm_plain_z3_industry_petrochemical.png"

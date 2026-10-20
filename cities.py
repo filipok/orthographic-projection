@@ -233,6 +233,36 @@ def anchor(cities: Cities, i: int) -> tuple[float, float]:
     return point.x, point.y
 
 
+class LabelSpace:
+    """Room for names on a globe: a name above a point fits if it stays on the disc and clear of every name and
+    point already placed (the sizes of names are estimated from their length)."""
+
+    def __init__(self, ax: GeoAxes):
+        self.to_pixels = ax.transData
+        self.dpi = ax.figure.dpi
+        (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+        (cx0, cy0), (cx1, cy1) = self.to_pixels.transform([(x0, y0), (x1, y1)])
+        self.centre, self.radius = ((cx0 + cx1) / 2, (cy0 + cy1) / 2), abs(cx1 - cx0) / 2
+        self.placed: list[tuple[float, float, float, float]] = []
+
+    def claim(self, x: float, y: float, text: str, size: float, point: float | None = None) -> bool:
+        """Whether *text* in *size* points fits above (*x*, *y*) (map coordinates); if so it is placed, with the
+        point under it (*point* pixels across; about a quarter of the type size by default)."""
+        px, py = self.to_pixels.transform((x, y))
+        gap = 0.25 * size * self.dpi / 72
+        half_w = 0.3 * size * len(text) * self.dpi / 72
+        box = (px - half_w, py + gap, px + half_w, py + gap + 1.2 * size * self.dpi / 72)
+        corners = [(box[0], box[1]), (box[0], box[3]), (box[2], box[1]), (box[2], box[3])]
+        if any((cx - self.centre[0]) ** 2 + (cy - self.centre[1]) ** 2 > (0.97 * self.radius) ** 2
+               for cx, cy in corners):
+            return False
+        if any(box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in self.placed):
+            return False
+        half = (point / 2) if point is not None else gap
+        self.placed += [box, (px - half, py - half, px + half, py + half)]
+        return True
+
+
 def draw_cities(ax: GeoAxes, cities: Cities, min_population: int, alpha: float = 0.6,
                 labels: bool = True, limit: int = LABEL_MAX) -> list[int]:
     """Fill the built-up extent of each centre of at least *min_population* on *ax* and name the largest.
@@ -250,12 +280,7 @@ def draw_cities(ax: GeoAxes, cities: Cities, min_population: int, alpha: float =
                           linewidth=0.4, alpha=alpha, zorder=7.3)
     if not labels:
         return shown
-    to_pixels = ax.transData
-    dpi = ax.figure.dpi
-    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
-    (cx0, cy0), (cx1, cy1) = to_pixels.transform([(x0, y0), (x1, y1)])
-    centre, radius = ((cx0 + cx1) / 2, (cy0 + cy1) / 2), abs(cx1 - cx0) / 2
-    placed: list[tuple[float, float, float, float]] = []
+    space = LabelSpace(ax)
     named = 0
     for i in shown:
         if named >= limit:
@@ -263,17 +288,8 @@ def draw_cities(ax: GeoAxes, cities: Cities, min_population: int, alpha: float =
         lon, lat = anchor(cities, i)
         x, y = ax.projection.transform_point(lon, lat, ccrs.PlateCarree())
         size = label_size(cities.population[i])
-        px, py = to_pixels.transform((x, y))
-        gap = 0.25 * size * dpi / 72
-        half_w = 0.3 * size * len(cities.names[i]) * dpi / 72
-        box = (px - half_w, py + gap, px + half_w, py + gap + 1.2 * size * dpi / 72)
-        corners = [(box[0], box[1]), (box[0], box[3]), (box[2], box[1]), (box[2], box[3])]
-        if any((cx - centre[0]) ** 2 + (cy - centre[1]) ** 2 > (0.97 * radius) ** 2 for cx, cy in corners):
+        if not space.claim(x, y, cities.names[i], size):
             continue
-        if any(box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in placed):
-            continue
-        placed.append(box)
-        placed.append((px - gap, py - gap, px + gap, py + gap))             # the dot
         named += 1
         ax.plot(x, y, "o", transform=ax.projection, markersize=0.45 * size, markerfacecolor="white",
                 markeredgecolor="#222222", markeredgewidth=0.8, zorder=8)

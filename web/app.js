@@ -190,6 +190,7 @@ function buildRequest() {
     if ($("indicator-year").value) req.indicator_year = Number($("indicator-year").value);
     req.indicator_alpha = changed("indicator-alpha", options.alpha.indicator);
   }
+  if ($("industry").value.trim()) req.industry = $("industry").value.trim();
   if ($("cities-year").value) {
     req.cities = Number($("cities-year").value);
     if ($("cities-min").value) req.cities_min = Number($("cities-min").value);
@@ -358,6 +359,7 @@ function fillForm(req) {
   set("species-years", req.species_years);
   set("iucn", req.iucn);
   set("iucn-alpha", req.iucn_alpha);
+  set("industry", req.industry);
   set("indicator", req.indicator);
   set("indicator-year", req.indicator_year);
   set("indicator-alpha", req.indicator_alpha);
@@ -722,6 +724,7 @@ async function init() {
   $("cyclones-since").min = options.first_cyclone_year;
   $("cyclones-since").value = options.first_cyclone_year;
   $("population").append(...options.population_years.slice().reverse().map((y) => option(String(y))));
+  $("industry-list").append(...Object.entries(options.industry).map(([name, about]) => option(name, about)));
   $("indicator-list").append(...Object.entries(options.indicators).map(([name, title]) => option(name, title)));
   $("cities-year").append(...options.cities_years.slice().reverse().map((y) => option(String(y),
     y === 2030 ? "2030 (projected)" : String(y))));
