@@ -1895,7 +1895,7 @@ class TestGenerateOrthographicMapIntegration:
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
 
     def test_iucn_range_drawn_with_key_and_credit(self, tmp_path):
-        found = mock.Mock(dated="2026-06-26")
+        found = mock.Mock(credit="Range: IUCN (2026), The IUCN Red List of Threatened Species, spatial data of 2026-06-26")
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
                 mock.patch.object(ortho, "load_range", return_value=found) as load, \
                 mock.patch.object(ortho, "draw_range") as draw, \

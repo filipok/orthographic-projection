@@ -532,7 +532,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--species NAME` | Draw where a species, genus or family has been recorded in the wild (GBIF), by scientific or common name: `"Panthera leo"`, `"red fox"`, `Quercus` | — |
 | `--species-years YEARS` | Only the records of these years: `FROM-TO` or `YEAR` | all years |
 | `--iucn NAME` | Draw the IUCN Red List range of a species, genus or family, by scientific or common name: `"Panthera leo"`, `lion`, `Felidae` | — |
-| `--iucn-data PATH` | Folder, zip or `.shp` of IUCN range files | `~/.cache/ortho_tiles/iucn` |
+| `--iucn-data PATH` | Folder, zip, `.shp` or `.gpkg` of IUCN or BirdLife range files | `~/.cache/ortho_tiles/iucn` |
 | `--iucn-alpha ALPHA` | Opacity of the IUCN range (0–1) | `0.45` |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
@@ -552,7 +552,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
 Historical borders, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
-Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List), Winds, Polar ice, Crops, Routes and areas, Recipes.
+Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -1424,21 +1424,30 @@ The samples above are `python ortho.py --config recipes/africa_lion.toml` and
 ## Species Ranges
 
 `--iucn NAME` draws where a species lives according to the
-[IUCN Red List](https://www.iucnredlist.org/): the range its experts have mapped,
-rather than where people happened to record it. It pairs with `--species`:
+[IUCN Red List](https://www.iucnredlist.org/), or for birds
+[BirdLife International](https://datazone.birdlife.org/): the range their experts
+have mapped, rather than where people happened to record it. It pairs with `--species`:
 `--iucn lion --species lion` draws the range with the GBIF records on top.
 
-IUCN's terms do not allow its range data to be passed on, so this project
-neither downloads nor ships it. Get it yourself, free, for non-commercial use:
+Neither's terms allow the range data to be passed on, so this project neither
+downloads nor ships it. Get it yourself, free, for non-commercial use:
 
 1. Make an account at [iucnredlist.org](https://www.iucnredlist.org/) and log in.
 2. Either take a whole group (mammals, amphibians, reptiles, fishes …) from the
    [spatial data download](https://www.iucnredlist.org/resources/spatial-data-download)
    page, or search for a species or group and choose **Download → Range data –
    Polygons (SHP)**. IUCN asks how you will use the data, then emails a zip.
-   Birds come from [BirdLife International](https://datazone.birdlife.org/) instead.
 3. Put the zip, as it is, in `~/.cache/ortho_tiles/iucn/` (any number of zips),
    or point to it with `--iucn-data PATH`.
+
+For birds, request **Species' distribution maps** from
+[BirdLife's data zone](https://datazone.birdlife.org/species/requestdis). The zip
+holds a GeoPackage (`BOTW_2025.gpkg`, ~9 GB) and BirdLife's checklist. Unzip the
+GeoPackage into the same folder (SQLite cannot read inside a zip; a warning says
+so if you forget) and leave the zip or the checklist there: the checklist gives
+each bird's family, order, Red List category and English names, so
+`--iucn osprey`, `--iucn "white stork"` and `--iucn Accipitridae` work. The names
+in the GeoPackage are indexed once (about 20 seconds).
 
 - **Any name:** a scientific name as IUCN spells it (`"Lynx lynx"`), a genus
   (`Panthera`), a family (`Felidae`) or an order. A common name (`lion`) or a
@@ -1454,16 +1463,20 @@ neither downloads nor ships it. Get it yourself, free, for non-commercial use:
   about 1 km and kept under `~/.cache/ortho_tiles/iucn/ranges/`. Adding another
   group's zip keeps the ranges already read; replacing a zip reads its ranges
   afresh. Plants, amphibians, reptiles and the other groups work the same way
-  (`--iucn "Picea omorika"`, `--iucn "Rana temporaria"`).
+  (`--iucn "Picea omorika"`, `--iucn "Rana temporaria"`). Migratory birds show
+  their breeding, non-breeding and passage ranges.
 
-The credit names IUCN and the date of the data. IUCN's terms allow use for
-conservation, education and research, but not commercial use or sharing the
-maps without its permission, so this README has no sample image.
+The credit names IUCN and the date of the data, or BirdLife and the version of
+its maps. Both publishers' terms allow use for conservation, education and
+research, but not commercial use or sharing the maps without their permission,
+so this README has no sample image.
 
 ```powershell
 python ortho.py --lat 10 --lon 30 --iucn lion --species lion
 python ortho.py --lat 50 --lon 10 --radius 2500 --iucn "Lynx lynx"
 python ortho.py --lat 40 --lon -100 --iucn Felidae
+python ortho.py --lat 30 --lon -60 --iucn osprey
+python ortho.py --lat 20 --lon 10 --iucn "white stork"
 ```
 
 ## Polar Ice
@@ -1963,6 +1976,7 @@ to the attribution block.
 | Gridded Livestock of the World v4, 2015, 5 arc-minutes | Gilbert, M. et al., FAO | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Harvard Dataverse, e.g. cattle [doi:10.7910/DVN/LHBICE](https://doi.org/10.7910/DVN/LHBICE) |
 | Malaria Atlas Project, 2026 release: *P. falciparum* (PfPR2–10) and *P. vivax* parasite rates, 2000–2025, 5 km, used at ~10 km | Malaria Atlas Project, The Kids Research Institute Australia | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) ([open access policy](https://malariaatlas.org/open-access-policy/)) | [malariaatlas.org](https://malariaatlas.org/), WCS at data.malariaatlas.org |
 | Global compendium of *Aedes aegypti* and *Ae. albopictus* occurrence, 1958–2014 | Kraemer, M. U. G. et al. (2015) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2015.35](https://doi.org/10.1038/sdata.2015.35), data [doi:10.5061/dryad.47v3c](https://doi.org/10.5061/dryad.47v3c), read from GBIF |
+| BirdLife bird species distribution maps (GeoPackage) and the HBW-BirdLife checklist, read from files each user requests | BirdLife International and Handbook of the Birds of the World | [BirdLife data terms of use](https://datazone.birdlife.org/about-our-science/terms-of-use): non-commercial use; no reposting or redistribution, of the data or of works made from it, without BirdLife's permission. Not shipped or downloaded here | [datazone.birdlife.org/species/requestdis](https://datazone.birdlife.org/species/requestdis) |
 | IUCN Red List range polygons (spatial data), read from files each user downloads | IUCN | [IUCN Red List Terms and Conditions of Use](https://www.iucnredlist.org/terms/terms-of-use): non-commercial use; no reposting or redistribution, of the data or of works made from it, without IUCN's permission. Not shipped or downloaded here | [iucnredlist.org/resources/spatial-data-download](https://www.iucnredlist.org/resources/spatial-data-download) |
 | GBIF occurrence records, read as occurrence density maps (zoom 1, ~20 km cells) | GBIF.org and its data publishers | Per dataset: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) or [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); see [GBIF's terms](https://www.gbif.org/terms) | [gbif.org](https://www.gbif.org/), [maps API](https://techdocs.gbif.org/en/openapi/v2/maps) |
 | Cliopatria v0.2.1: borders of over 1,600 states and empires, 3400 BCE–2024 | Bennett, J. S. et al. (2025), Seshat Global History Databank | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-025-04516-9](https://doi.org/10.1038/s41597-025-04516-9), [github.com/Seshat-Global-History-Databank/cliopatria](https://github.com/Seshat-Global-History-Databank/cliopatria) |
@@ -2015,7 +2029,7 @@ the globe:
 | `--malaria` | *Malaria: Malaria Atlas Project (2026 release), CC BY 3.0* |
 | `--aedes` | *Aedes records: Kraemer et al. (2015), global compendium of Aedes occurrence, via GBIF, CC0* |
 | `--species` | *Species records: GBIF.org occurrence data, retrieved YYYY-MM-DD* |
-| `--iucn` | *Range: IUCN (YYYY), The IUCN Red List of Threatened Species, spatial data of YYYY-MM-DD* |
+| `--iucn` | *Range: IUCN (YYYY), The IUCN Red List of Threatened Species, spatial data of YYYY-MM-DD*, or for birds *Range: BirdLife International and Handbook of the Birds of the World (YYYY), Bird species distribution maps of the world, version YYYY.N* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
 Keep this block (or credit the same sources elsewhere) when you share or publish
@@ -2088,7 +2102,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [malaria.py](malaria.py): the malaria parasite rate from the Malaria Atlas Project, in classed bands
 - [aedes.py](aedes.py): where the dengue mosquitoes have been recorded, from Kraemer et al.'s compendium on GBIF
 - [gbif.py](gbif.py): where any species has been recorded, from GBIF's occurrence density maps, with name lookup
-- [iucn.py](iucn.py): a species' IUCN Red List range, read from the range files the user downloaded
+- [iucn.py](iucn.py): a species' range from the IUCN Red List or, for birds, BirdLife, read from the files the user downloaded
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)

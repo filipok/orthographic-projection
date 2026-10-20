@@ -2706,13 +2706,13 @@ def build_cli_parser() -> argparse.ArgumentParser:
     wild.add_argument("--species-years", metavar="YEARS",
                       help="Only the records of these years: FROM-TO or YEAR (e.g. 1990-2020).")
 
-    ranges = parser.add_argument_group("Species ranges (IUCN Red List)")
+    ranges = parser.add_argument_group("Species ranges (IUCN Red List and BirdLife)")
     ranges.add_argument("--iucn", metavar="NAME",
                         help="Draw the IUCN Red List range of a species, genus or family ('Panthera leo', 'lion', "
-                             "'Felidae'), from range files you downloaded from IUCN; shaded by presence, origin "
+                             "'Felidae', 'osprey'), from range files you downloaded from IUCN or BirdLife; shaded by presence, origin "
                              "and season.")
     ranges.add_argument("--iucn-data", metavar="PATH",
-                        help="Folder, zip or .shp of IUCN range files (default: ~/.cache/ortho_tiles/iucn).")
+                        help="Folder, zip, .shp or .gpkg of range files (default: ~/.cache/ortho_tiles/iucn).")
     ranges.add_argument("--iucn-alpha", type=float, default=0.45, metavar="ALPHA",
                         help="Opacity of the IUCN range (0-1, default: 0.45).")
 
