@@ -5,6 +5,7 @@ import io
 import os
 import time
 import urllib.error
+from collections import Counter
 from unittest import mock
 
 import numpy as np
@@ -1033,6 +1034,7 @@ class TestRunCLIValidation:
             permafrost_alpha=0.7, population=None, population_alpha=0.7, livestock=None, livestock_alpha=0.7,
             malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None, species=None, species_years=None,
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
+            indicator=None, indicator_year=None, indicator_alpha=0.75,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1476,6 +1478,18 @@ class TestRunCLIValidation:
             ortho.run_cli(args)
         assert "--species-years is ignored" in caplog.text
 
+    def test_indicator_passed_to_renderer(self, caplog):
+        args = self._make_args(city="paris", indicator="gdp-per-person", indicator_year=2000, indicator_alpha=0.5)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert (kwargs["indicator"], kwargs["indicator_year"], kwargs["indicator_alpha"]) == ("gdp-per-person", 2000, 0.5)
+        args = self._make_args(city="paris", indicator_year=2000)
+        with mock.patch.object(ortho, "generate_orthographic_map"), mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert "--indicator-year is ignored" in caplog.text
+
     def test_cities_passed_to_renderer(self, caplog):
         args = self._make_args(city="paris", cities=1990, cities_min=200000)
         with mock.patch.object(ortho, "generate_orthographic_map") as render, \
@@ -1509,6 +1523,9 @@ class TestRunCLIValidation:
         ({"species": "lion", "species_years": "2020-1990"}, "Species years"),
         ({"iucn": "lion", "iucn_alpha": -0.1}, "iucn_alpha"),
         ({"cities": 1977}, "Cities are mapped for"),
+        ({"indicator": "happiness"}, "Unknown indicator"),
+        ({"indicator": "fertility", "indicator_year": 1900}, "Indicator years run from 1960"),
+        ({"indicator": "fertility", "indicator_alpha": 2.0}, "indicator_alpha"),
         ({"earthquakes": 4.0}, "earthquakes must be a magnitude"),
         ({"cyclones": 1970}, "cyclones must start"),
         ({"basins": True, "basins_alpha": 2.0}, "basins_alpha"),
@@ -1944,6 +1961,39 @@ class TestGenerateOrthographicMapIntegration:
         assert key.call_args.args[1:] == (towns, floor, 3)
         assert attribution.call_args.args[1][-1] == ortho.CITIES_ATTRIBUTION
 
+    def test_indicator_drawn_with_key_and_credit(self, tmp_path):
+        values = mock.Mock(values={"FRA": 1.0, "DEU": 2.0}, indicator=mock.Mock(log=False))
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_values", return_value=values) as load, \
+                mock.patch.object(ortho, "load_areas", return_value=["countries"]), \
+                mock.patch.object(ortho, "draw_indicator", return_value=Counter({0: 2})) as draw, \
+                mock.patch.object(ortho, "add_indicator_legend") as key, \
+                mock.patch.object(ortho, "indicator_attribution", return_value="Statistics: World Bank") as credit, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(10, 10), indicator="fertility",
+                                            indicator_year=2010, indicator_alpha=0.4)
+        assert load.call_args.args[0].code == "SP.DYN.TFRT.IN" and load.call_args.args[1] == 2010
+        assert draw.call_count == 2 and draw.call_args.args[1:3] == (values, ["countries"])
+        assert draw.call_args.kwargs["alpha"] == 0.4
+        key.assert_called_once()
+        credit.assert_called_once_with(values)
+        assert "Statistics: World Bank" in attribution.call_args.args[1]
+
+    @pytest.mark.parametrize("failure", ["values", "countries"])
+    def test_indicator_unavailable_still_saves_map(self, tmp_path, caplog, failure):
+        values = mock.Mock(values={"FRA": 1.0}, indicator=mock.Mock(log=False))
+        loaded = {"side_effect": ortho.IndicatorDataError("offline")} if failure == "values" else {"return_value": values}
+        countries = {"side_effect": OSError("no Natural Earth")} if failure == "countries" else {"return_value": []}
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_values", **loaded), \
+                mock.patch.object(ortho, "load_areas", **countries), \
+                mock.patch.object(ortho, "add_indicator_legend") as key:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), indicator="fertility")
+        assert os.path.exists(result) and "Skipping the statistics" in caplog.text
+        key.assert_not_called()
+
     def test_cities_unavailable_still_saves_map(self, tmp_path, caplog):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
                 mock.patch.object(ortho, "load_cities", side_effect=ortho.CitiesDataError("offline")), \
@@ -2040,6 +2090,7 @@ class TestGenerateOrthographicMapIntegration:
         ("iucn:Panthera leo, species:lion", {"iucn": "panthera leo", "species": "lion"}),
         ("cities, plates", {"cities": 2025, "plates": True}),
         ("cities:1975", {"cities": 1975}),
+        ("indicator:Life-Expectancy, cities", {"indicator": "life-expectancy", "cities": 2025}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected

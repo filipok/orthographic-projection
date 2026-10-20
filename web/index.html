@@ -227,6 +227,18 @@
       </details>
 
       <details>
+        <summary>Statistics by country or region (World Bank, Eurostat)</summary>
+        <label class="field"><span>Statistic: a name from the list, a World Bank code or eurostat:DATASET</span>
+          <input id="indicator" type="text" list="indicator-list" placeholder="life-expectancy, NY.GDP.PCAP.CD"
+                 autocomplete="off" spellcheck="false"></label>
+        <datalist id="indicator-list"></datalist>
+        <label class="field" data-show="indicator" hidden><span>Year (blank: each country's latest)</span>
+          <input id="indicator-year" type="number" min="1960" step="1" placeholder="e.g. 2000"></label>
+        <label class="field slider" data-show="indicator" hidden><span>Opacity <output for="indicator-alpha"></output></span>
+          <input id="indicator-alpha" type="range" min="0" max="1" step="0.05"></label>
+      </details>
+
+      <details>
         <summary>History: borders</summary>
         <label class="field"><span>Borders of a year or a date</span>
           <input id="borders" type="text" placeholder="e.g. 1500, 500 BC, 1914-08-01"></label>

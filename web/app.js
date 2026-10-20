@@ -185,6 +185,11 @@ function buildRequest() {
     req.iucn = $("iucn").value.trim();
     req.iucn_alpha = changed("iucn-alpha", options.alpha.iucn);
   }
+  if ($("indicator").value.trim()) {
+    req.indicator = $("indicator").value.trim();
+    if ($("indicator-year").value) req.indicator_year = Number($("indicator-year").value);
+    req.indicator_alpha = changed("indicator-alpha", options.alpha.indicator);
+  }
   if ($("cities-year").value) {
     req.cities = Number($("cities-year").value);
     if ($("cities-min").value) req.cities_min = Number($("cities-min").value);
@@ -353,6 +358,9 @@ function fillForm(req) {
   set("species-years", req.species_years);
   set("iucn", req.iucn);
   set("iucn-alpha", req.iucn_alpha);
+  set("indicator", req.indicator);
+  set("indicator-year", req.indicator_year);
+  set("indicator-alpha", req.indicator_alpha);
   if (req.cities != null) pick("cities-year", String(req.cities), "cities year");
   set("cities-min", req.cities_min);
   $("borders").value = req.borders ?? "";
@@ -703,7 +711,7 @@ async function init() {
   $("vegetation-alpha").value = options.alpha.vegetation;
   $("biome-alpha").value = options.alpha.biome;
   $("borders-alpha").value = options.alpha.borders;
-  for (const name of ["basins", "permafrost", "population", "livestock", "malaria", "iucn"]) {
+  for (const name of ["basins", "permafrost", "population", "livestock", "malaria", "iucn", "indicator"]) {
     $(`${name}-alpha`).value = options.alpha[name];
   }
   [$("malaria-year").min, $("malaria-year").max] = options.malaria_years;
@@ -714,6 +722,7 @@ async function init() {
   $("cyclones-since").min = options.first_cyclone_year;
   $("cyclones-since").value = options.first_cyclone_year;
   $("population").append(...options.population_years.slice().reverse().map((y) => option(String(y))));
+  $("indicator-list").append(...Object.entries(options.indicators).map(([name, title]) => option(name, title)));
   $("cities-year").append(...options.cities_years.slice().reverse().map((y) => option(String(y),
     y === 2030 ? "2030 (projected)" : String(y))));
   $("livestock").append(...options.livestock.map((name) => option(name, name[0].toUpperCase() + name.slice(1))));

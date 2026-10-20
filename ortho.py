@@ -70,6 +70,10 @@ from gbif import (
     GbifDataError, add_occurrences_legend, draw_occurrences, gbif_attribution, load_occurrences, parse_years,
     resolve_taxon,
 )
+from indicators import (
+    EUROSTAT_PRESETS, PRESETS as INDICATOR_PRESETS, IndicatorDataError, add_indicator_legend, class_breaks,
+    draw_indicator, indicator_attribution, load_areas, load_values, resolve_indicator, resolve_indicator_year,
+)
 from cities import (
     CITIES_ATTRIBUTION, YEARS as CITIES_YEARS, CitiesDataError, add_cities_legend, default_min_population,
     draw_cities, load_cities, resolve_cities_year,
@@ -628,7 +632,7 @@ def validate_render_options(
     biome_alpha: float = 0.6, borders_alpha: float = 0.55, basins_alpha: float = 0.5,
     permafrost_alpha: float = 0.7, population_alpha: float = 0.7, livestock_alpha: float = 0.7,
     earthquakes: float | None = None, cyclones: int | None = None, malaria_alpha: float = 0.75,
-    iucn_alpha: float = 0.45,
+    iucn_alpha: float = 0.45, indicator_alpha: float = 0.75,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -671,7 +675,8 @@ def validate_render_options(
         raise ValueError(f"borders_alpha must be between 0 and 1, got {borders_alpha}")
     for name, value in (("basins_alpha", basins_alpha), ("permafrost_alpha", permafrost_alpha),
                         ("population_alpha", population_alpha), ("livestock_alpha", livestock_alpha),
-                        ("malaria_alpha", malaria_alpha), ("iucn_alpha", iucn_alpha)):
+                        ("malaria_alpha", malaria_alpha), ("iucn_alpha", iucn_alpha),
+                        ("indicator_alpha", indicator_alpha)):
         if not 0.0 <= value <= 1.0:
             raise ValueError(f"{name} must be between 0 and 1, got {value}")
     if earthquakes is not None and not MIN_MAGNITUDE <= earthquakes <= MAX_MAGNITUDE:
@@ -771,6 +776,9 @@ def generate_orthographic_map(
     iucn_alpha: float = 0.45,
     cities: int | None = None,
     cities_min: int | None = None,
+    indicator: str | None = None,
+    indicator_year: int | None = None,
+    indicator_alpha: float = 0.75,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -1010,6 +1018,13 @@ def generate_orthographic_map(
         years; GHSL) and name the largest; *cities_min* is the fewest people
         a centre shown has (default: a million on a whole globe, fewer on a
         closer map).
+    indicator : str, optional
+        Shade each country by a World Bank statistic: a short name
+        (``"life-expectancy"``, see :data:`indicators.PRESETS`) or a World
+        Bank code (``"NY.GDP.PCAP.CD"``); or each European region by a
+        Eurostat one (``"eurostat:unemployment"``, or
+        ``"eurostat:DATASET?dim=CODE&level=nuts3"``). In *indicator_year*
+        (default: each area's latest); *indicator_alpha* sets its opacity.
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -1029,6 +1044,7 @@ def generate_orthographic_map(
         lat=lat, beside=beside, biome_alpha=biome_alpha, borders_alpha=borders_alpha, basins_alpha=basins_alpha,
         permafrost_alpha=permafrost_alpha, population_alpha=population_alpha, livestock_alpha=livestock_alpha,
         earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha, iucn_alpha=iucn_alpha,
+        indicator_alpha=indicator_alpha,
     )
     population_year = resolve_population_year(population) if population is not None else None
     livestock_species = resolve_species(livestock) if livestock else None
@@ -1050,6 +1066,13 @@ def generate_orthographic_map(
         except IucnDataError as e:
             logger.warning("Skipping the IUCN range: %s", e)
     cities_year = resolve_cities_year(cities) if cities is not None else None
+    statistic = None
+    if indicator:
+        stat_year = resolve_indicator_year(indicator_year)
+        try:
+            statistic = load_values(resolve_indicator(indicator), stat_year)
+        except IndicatorDataError as e:
+            logger.warning("Skipping the statistics: %s", e)
     if cities_min is not None and cities_min < 0:
         raise ValueError(f"cities_min must be a number of people, got {cities_min}")
     wind_period = resolve_wind_period(wind) if wind is not None else None
@@ -1471,6 +1494,18 @@ def generate_orthographic_map(
     if species_range is not None:
         for ax in axes:
             draw_range(ax, species_range, alpha=iucn_alpha)
+    stat_breaks: list[float] = []
+    stat_counts = None
+    if statistic is not None:
+        try:
+            nations = load_areas(statistic)
+        except Exception as e:                 # Natural Earth, GISCO and shapefile errors alike
+            logger.warning("Skipping the statistics: could not read the countries or regions: %s", e)
+            statistic = None
+        else:
+            stat_breaks = class_breaks(list(statistic.values.values()), bool(statistic.indicator.log))
+            stat_counts = [draw_indicator(ax, statistic, nations, stat_breaks, alpha=indicator_alpha)
+                           for ax in axes][0]
     towns = None
     town_floor = cities_min if cities_min is not None else default_min_population(radius_km)
     towns_shown = 0
@@ -1727,6 +1762,9 @@ def generate_orthographic_map(
         keys.append(add_aedes_legend(near, mosquitoes, x=key_x))
     if species_range is not None:
         keys.append(add_range_legend(near, species_range, alpha=iucn_alpha, x=key_x))
+    if statistic is not None and stat_counts is not None:
+        keys.append(add_indicator_legend(near, statistic, stat_breaks, stat_counts, alpha=indicator_alpha,
+                                         x=key_x))
     if towns is not None:
         keys.append(add_cities_legend(near, towns, town_floor, towns_shown, x=key_x))
     if sightings is not None:
@@ -1787,6 +1825,8 @@ def generate_orthographic_map(
         credits.append(AEDES_ATTRIBUTION)
     if species_range is not None:
         credits.append(iucn_attribution(species_range))
+    if statistic is not None:
+        credits.append(indicator_attribution(statistic))
     if towns is not None:
         credits.append(CITIES_ATTRIBUTION)
     if sightings is not None:
@@ -2255,6 +2295,10 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             if not name:
                 raise ValueError("Name the species after 'iucn:', e.g. iucn:Panthera leo.")
             chosen["iucn"] = name
+        elif item.startswith("indicator:"):
+            name = item.split(":", 1)[1].strip()
+            resolve_indicator(name)
+            chosen["indicator"] = name
         elif item.startswith("cities:"):
             chosen["cities"] = resolve_cities_year(item.split(":", 1)[1])
         elif item.startswith("aedes:"):
@@ -2266,7 +2310,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen[key] = value
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
-                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR.")
+                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, indicator:NAME.")
     return chosen
 
 
@@ -2274,7 +2318,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975 …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, indicator:life-expectancy …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -2743,6 +2787,9 @@ def build_cli_parser() -> argparse.ArgumentParser:
                              "and season.")
     ranges.add_argument("--iucn-data", metavar="PATH",
                         help="Folder, zip, .shp or .gpkg of range files (default: ~/.cache/ortho_tiles/iucn).")
+    ranges.add_argument("--iucn-alpha", type=float, default=0.45, metavar="ALPHA",
+                        help="Opacity of the IUCN range (0-1, default: 0.45).")
+
     towns = parser.add_argument_group("Cities (GHSL urban centres)")
     towns.add_argument("--cities", nargs="?", const=2025, type=int, metavar="YEAR",
                        help="Draw the built-up urban centres (metropolitan areas) and name the largest, as of "
@@ -2751,8 +2798,19 @@ def build_cli_parser() -> argparse.ArgumentParser:
     towns.add_argument("--cities-min", type=int, metavar="PEOPLE",
                        help="Show only centres of at least this many people (default: 1,000,000 on a whole globe, "
                             "fewer on a closer map, down to 50,000).")
-    ranges.add_argument("--iucn-alpha", type=float, default=0.45, metavar="ALPHA",
-                        help="Opacity of the IUCN range (0-1, default: 0.45).")
+
+    stats = parser.add_argument_group("Statistics by country or region (World Bank, Eurostat)")
+    stats.add_argument("--indicator", metavar="NAME",
+                       help="Shade each country by a World Bank statistic: " + ", ".join(INDICATOR_PRESETS)
+                            + ", or any World Bank code (e.g. NY.GDP.PCAP.CD; see data.worldbank.org/indicator). "
+                            "Or each European region by a Eurostat one: "
+                            + ", ".join("eurostat:" + n for n in EUROSTAT_PRESETS)
+                            + ", or eurostat:DATASET?dim=CODE&level=nuts2.")
+    stats.add_argument("--indicator-year", type=int, metavar="YEAR",
+                       help="Year of the figures (default: each country's latest); a country without one that "
+                            "year shows its latest from the nine years before.")
+    stats.add_argument("--indicator-alpha", type=float, default=0.75, metavar="ALPHA",
+                       help="Opacity of the statistics (0-1, default: 0.75).")
 
     winds = parser.add_argument_group("Winds (NCEP/NCAR Reanalysis)")
     winds.add_argument(
@@ -3234,6 +3292,11 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         resolve_cities_year(args.cities)
     elif args.cities_min is not None:
         logger.warning("--cities-min is ignored because no --cities was given.")
+    if args.indicator:
+        resolve_indicator(args.indicator)
+        resolve_indicator_year(args.indicator_year)
+    elif args.indicator_year is not None:
+        logger.warning("--indicator-year is ignored because no --indicator was given.")
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
@@ -3318,7 +3381,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             biome_alpha=args.biome_alpha, borders_alpha=args.borders_alpha, basins_alpha=args.basins_alpha,
             permafrost_alpha=args.permafrost_alpha, population_alpha=args.population_alpha,
             livestock_alpha=args.livestock_alpha, earthquakes=args.earthquakes, cyclones=args.cyclones,
-            malaria_alpha=args.malaria_alpha, iucn_alpha=args.iucn_alpha,
+            malaria_alpha=args.malaria_alpha, iucn_alpha=args.iucn_alpha, indicator_alpha=args.indicator_alpha,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -3393,6 +3456,9 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         iucn_alpha=args.iucn_alpha,
         cities=args.cities,
         cities_min=args.cities_min,
+        indicator=args.indicator,
+        indicator_year=args.indicator_year,
+        indicator_alpha=args.indicator_alpha,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,

@@ -1,0 +1,6 @@
+# Life expectancy at birth by country, each country's latest figure (World Bank, World Development Indicators).
+lat = 10
+lon = 20
+provider = "osm_plain"
+indicator = "life-expectancy"
+output = "orthographic_map_world_osm_plain_z3_indicator_life_expectancy.png"

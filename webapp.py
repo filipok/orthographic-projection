@@ -181,6 +181,9 @@ class MapRequest(BaseModel):
     iucn_alpha: float | None = None
     cities: int | None = None
     cities_min: int | None = None
+    indicator: str | None = None
+    indicator_year: int | None = None
+    indicator_alpha: float | None = None
     route: list[str] | None = None
     route_legend: bool | None = None
 
@@ -407,7 +410,7 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "alpha": {"classification": ortho.CLASSIFICATION_ALPHA, "climate_mean": ortho.CLIMATE_MEAN_ALPHA,
                   "elevation": 0.8, "vegetation": 0.7, "biome": 0.6, "soil": 0.6, "borders": 0.55,
                   "basins": 0.5, "permafrost": 0.7, "population": 0.7, "livestock": 0.7, "malaria": 0.75,
-                  "iucn": 0.45},
+                  "iucn": 0.45, "indicator": 0.75},
         "periods": PERIODS,
         "soil_properties": {name: prop.title for name, prop in SOIL_PROPERTIES.items()},
         "soil_depths": list(SOIL_DEPTHS),
@@ -415,6 +418,9 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "first_ice_year": FIRST_ICE_YEAR,
         "population_years": list(ortho.POPULATION_YEARS),
         "cities_years": list(ortho.CITIES_YEARS),
+        "indicators": {**{name: preset.title for name, preset in ortho.INDICATOR_PRESETS.items()},
+                       **{f"eurostat:{name}": f"{preset.title} (European regions)"
+                          for name, preset in ortho.EUROSTAT_PRESETS.items()}},
         "livestock": list(ortho.LIVESTOCK_SPECIES),
         "malaria_years": [ortho.FIRST_MALARIA_YEAR, ortho.LATEST_MALARIA_YEAR],
         "aedes": list(ortho.AEDES_CHOICES),

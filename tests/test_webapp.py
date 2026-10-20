@@ -154,6 +154,13 @@ class TestMaps:
         assert (renders[0]["species"], renders[0]["species_years"]) == ("red fox", "1990-2020")
         assert "--species 'red fox' --species-years 1990-2020" in status["command"]
 
+    def test_indicator(self, client, renders):
+        _, status = _render(client, city="Lisbon", indicator="life-expectancy", indicator_year=2000,
+                            indicator_alpha=0.5)
+        assert (renders[0]["indicator"], renders[0]["indicator_year"], renders[0]["indicator_alpha"]) == \
+            ("life-expectancy", 2000, 0.5)
+        assert "--indicator life-expectancy --indicator-year 2000 --indicator-alpha 0.5" in status["command"]
+
     def test_cities(self, client, renders):
         _, status = _render(client, city="Lisbon", cities=1975, cities_min=250000)
         assert (renders[0]["cities"], renders[0]["cities_min"]) == (1975, 250000)

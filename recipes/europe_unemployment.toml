@@ -1,0 +1,8 @@
+# Unemployment by NUTS 2 region across Europe, latest figures (Eurostat).
+# Highest in southern Spain, southern Italy, Greece and Finland; lowest in Czechia, Poland and southern Germany.
+lat = 50
+lon = 12
+provider = "osm_plain"
+radius = 2200
+indicator = "eurostat:unemployment"
+output = "orthographic_map_europe_osm_plain_r2200km_indicator_unemployment.png"
