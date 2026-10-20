@@ -5,6 +5,7 @@ import os
 import zipfile
 
 import matplotlib.patches as mpatches
+import numpy as np
 import pytest
 import shapefile
 import shapely
@@ -153,6 +154,20 @@ class TestRanges:
         os.utime(os.path.join(data, "MAMMALS.zip"), (0, 0))
         assert iucn.load_range("Panthera leo", data, cache).kinds == [iucn.RESIDENT]
 
+    def test_other_groups_keep_it(self, data, tmp_path, monkeypatch):
+        import gbif
+
+        cache = str(tmp_path / "cache")
+        iucn.load_range("Panthera leo", data, cache)
+        frogs = [("Rana temporaria", "Rana", "RANIDAE", 1, 1, 1, "LC", [_square(0, 50)])]
+        _write_ranges(os.path.join(data, "AMPHIBIANS.zip"), frogs, member="AMPHIBIANS_PART1")
+        monkeypatch.setattr(iucn, "_build", lambda *a: pytest.fail("read again"))
+        monkeypatch.setattr(gbif, "resolve_taxon",
+                            lambda name, cache_dir=None: gbif.Taxon(5219404, "Panthera leo", "SPECIES", "lion"))
+        assert iucn.load_range("Panthera leo", data, cache).common is None
+        assert iucn.load_range("lion", data, cache).common == "lion"     # the same range, by its common name
+        assert len(os.listdir(cache)) == 1
+
     @pytest.mark.parametrize("name, label", [
         ("Panthera", "Panthera (genus, 2 species)"),
         ("felidae", "Felidae (family, 3 species)"),
@@ -193,7 +208,7 @@ class TestDrawing:
         found = iucn.load_range("Panthera leo", data, str(tmp_path / "cache"))
         ax = _globe(0, 20)
         iucn.draw_range(ax, found)
-        assert len(ax.collections) == 2
+        assert len(ax.collections) == 4                            # each kind: its fill, then its outline
         legend = iucn.add_range_legend(ax, found)
         assert [t.get_text() for t in legend.get_texts()] == ["Extant (resident)", "Extinct"]
         assert legend.get_title().get_text() == "Range of Panthera leo, Vulnerable (IUCN Red List)"
@@ -201,7 +216,21 @@ class TestDrawing:
         assert len(hatched) == 1                                   # the extinct part
         assert iucn.iucn_attribution(found).startswith(f"Range: IUCN ({found.dated[:4]}), The IUCN Red List")
 
+    def test_tiles_cover_the_range(self):
+        ocean = shapely.box(-100, -40, 100, 60)
+        pieces = iucn.tiles(ocean)
+        assert len(pieces) == 8 * 4                            # tiles start at multiples of 30°
+        assert sum(p.area for p in pieces) == pytest.approx(ocean.area)
+        assert all(np.ptp(shapely.get_coordinates(p), axis=0).max() <= iucn.TILE_DEGREES for p in pieces)
+
+    def test_hairline_gap_closed(self):
+        west, east = shapely.box(-30, -20, 0, 20), shapely.box(0.00002, -20, 30, 20)   # 2 m apart
+        merged = iucn.merge([west, east])
+        assert merged.geom_type == "Polygon" and merged.area == pytest.approx(2400, rel=1e-6)
+        apart = iucn.merge([west, shapely.box(0.01, -20, 30, 20)])                       # 1 km apart: kept
+        assert apart.geom_type == "MultiPolygon"
+
     def test_geometry_kept_as_degrees(self, data, tmp_path, no_gbif):
         found = iucn.load_range("Lynx lynx", data, str(tmp_path / "cache"))
         assert found.kinds == [iucn.POSSIBLY_EXTANT]
-        assert shapely.bounds(found.geometries[0]).tolist() == [0, 0, 10, 10]
+        assert shapely.bounds(found.geometries[0]).tolist() == pytest.approx([0, 0, 10, 10])

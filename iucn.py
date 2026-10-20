@@ -12,7 +12,8 @@ account, non-commercial use) and leaves them, zipped, in
 ranges of a search (any zip of shapefiles with IUCN's fields). The shapes are
 read straight from the zip; one taxon's range is merged by kind, simplified to
 about 1 km and kept under ``~/.cache/ortho_tiles/iucn/ranges/`` so later maps
-need not read the gigabytes again.
+need not read the gigabytes again. It is kept against the zips that hold it,
+so adding another group keeps it, and replacing its own zip rebuilds it.
 
 Each part of a range carries IUCN's codes for presence (extant, possibly
 extinct …), origin (native, introduced …) and season (resident, breeding …);
@@ -47,8 +48,10 @@ from biomes import _key
 
 logger = logging.getLogger(__name__)
 
-DATA_VERSION = 1
+DATA_VERSION = 3
 SIMPLIFY_DEGREES = 0.01          # ~1 km: finer than a zoomed-in map shows
+TILE_DEGREES = 30.0              # ranges are drawn in pieces this size (see tiles)
+GAP_DEGREES = 1e-4               # ~10 m: gaps this narrow between parts of a range are closed
 POLYGON_TYPES = (5, 15, 25)      # Polygon, PolygonZ, PolygonM
 FIELDS = ("sci_name", "presence", "origin", "seasonal", "category", "genus", "family", "order_")
 
@@ -240,7 +243,7 @@ def _read_shapes(source: Source, indices: list[int]) -> dict[int, shapely.Geomet
     return found
 
 
-def _match(records: list[tuple[Source, int, dict]], wanted: str) -> tuple[str, str, list] | None:
+def _match(records: list, wanted: str) -> tuple[str, str, list] | None:
     """The records of the taxon called *wanted*: (its name, rank, records), trying species, genus, family, order."""
     for field, rank in RANKS:
         hits = [r for r in records if str(r[2].get(field, "")).strip().lower() == wanted]
@@ -250,15 +253,18 @@ def _match(records: list[tuple[Source, int, dict]], wanted: str) -> tuple[str, s
     return None
 
 
-def _suggestions(records: list[tuple[Source, int, dict]], wanted: str) -> str:
+def _suggestions(records: list, wanted: str) -> str:
     names = {str(r[2].get(f, "")).strip().lower(): str(r[2].get(f, "")).strip()
              for r in records for f in ("sci_name", "genus")}
     close = difflib.get_close_matches(wanted, list(names), n=3, cutoff=0.75)
     return f" Did you mean {', '.join(repr(names[c]) for c in close)}?" if close else ""
 
 
-def _build(sources: list[Source], name: str) -> Range:
-    wanted = " ".join(name.split()).lower()
+Record = tuple[Source, int, dict]      # a shape: its file, its index there, its attributes
+
+
+def _all_records(sources: list[Source]) -> list[Record]:
+    """Every shape's attributes, from the small tables beside the shapes (half a second for all groups)."""
     records = []
     for source in sources:
         try:
@@ -269,9 +275,19 @@ def _build(sources: list[Source], name: str) -> Range:
             raise IucnDataError(f"Could not read {source.path}: {exc}") from exc
     if not records:
         raise IucnDataError("The IUCN range files have no sci_name field; are they IUCN range polygons?")
+    return records
 
-    common = None
+
+def _resolve(records: list[Record], name: str) -> tuple[str, str, str | None, list[Record]]:
+    """The taxon *name* stands for: (scientific name, rank, common name, its records).
+
+    A scientific name is matched in the files; anything else is looked up in
+    GBIF and its scientific name matched. Raises ``ValueError`` when nothing
+    has that name.
+    """
+    wanted = " ".join(name.split()).lower()
     matched = _match(records, wanted)
+    common = None
     if matched is None:                          # a common name, or a synonym: ask GBIF
         from gbif import GbifDataError, resolve_taxon
         try:
@@ -285,7 +301,23 @@ def _build(sources: list[Source], name: str) -> Range:
         raise ValueError(f"The IUCN range files hold no species, genus or family called {name!r}."
                          + _suggestions(records, wanted))
     scientific, rank, hits = matched
+    return scientific, rank, common, hits
 
+
+def merge(parts: list) -> shapely.Geometry:
+    """*parts* as one geometry, closing hairline gaps between them.
+
+    IUCN splits a wide range into pieces (an ocean at the prime meridian)
+    that do not quite meet, metres apart: merged as they are, the seam would
+    be drawn as an outline across the range.
+    """
+    grown = shapely.buffer(parts, GAP_DEGREES, quad_segs=1, join_style="mitre")
+    return shapely.make_valid(shapely.buffer(shapely.union_all(grown), -GAP_DEGREES, quad_segs=1,
+                                             join_style="mitre"))
+
+
+def _build(scientific: str, rank: str, hits: list[Record]) -> Range:
+    """The range from the shapes of *hits*, merged by kind."""
     logger.info("Reading the IUCN range of %s (%d parts; one-time) …", scientific, len(hits))
     parts: dict[int, list] = {}
     for source in {h[0] for h in hits}:
@@ -301,11 +333,11 @@ def _build(sources: list[Source], name: str) -> Range:
                                   int(rec.get("seasonal") or 1))
                 parts.setdefault(kind, []).append(shapely.simplify(shape, SIMPLIFY_DEGREES))
     kinds = sorted(parts)
-    geometries = [shapely.make_valid(shapely.union_all(parts[k])) for k in kinds]
+    geometries = [merge(parts[k]) for k in kinds]
     categories = Counter(str(h[2].get("category", "")).strip() for h in hits)
     species = len({str(h[2]["sci_name"]).strip().lower() for h in hits})
     category = categories.most_common(1)[0][0] or None if species == 1 else None
-    return Range(scientific, rank, common, species, category, kinds, geometries,
+    return Range(scientific, rank, None, species, category, kinds, geometries,
                  max(s.dated() for s in {h[0] for h in hits}))
 
 
@@ -313,31 +345,32 @@ def load_range(name: str, data: str | None = None, cache_dir: str | None = None)
     """The IUCN range of the species, genus, family or order *name*, from the range files in *data*.
 
     A scientific name is matched in the files; anything else (``lion``) is
-    looked up in GBIF and its scientific name matched. Raises ``ValueError``
-    when there are no range files or no taxon of that name, and
+    looked up in GBIF and its scientific name matched. The range is cached
+    against the files that hold it, so adding other groups keeps it. Raises
+    ``ValueError`` when there are no range files or no taxon of that name, and
     :class:`IucnDataError` when a file cannot be read.
     """
     if not " ".join(name.split()):
         raise ValueError("Give a species name for the IUCN range, such as 'Panthera leo'.")
-    sources = find_sources(data)
+    scientific, rank, common, hits = _resolve(_all_records(find_sources(data)), name)
     cache_dir = cache_dir or os.path.join(default_data_dir(), "ranges")
-    slug = "".join(c if c.isalnum() else "_" for c in " ".join(name.split()).lower())
-    path = os.path.join(cache_dir, f"{slug}_{_signature(sources)}_v{DATA_VERSION}.npz")
+    slug = "".join(c if c.isalnum() else "_" for c in scientific.lower())
+    held_in = list({h[0] for h in hits})
+    path = os.path.join(cache_dir, f"{rank.lower()}_{slug}_{_signature(held_in)}_v{DATA_VERSION}.npz")
     if not os.path.isfile(path):
-        found = _build(sources, name)
+        found = _build(scientific, rank, hits)
         wkb = [bytes(shapely.to_wkb(g)) for g in found.geometries]
         os.makedirs(cache_dir, exist_ok=True)
         part = path + ".part.npz"
         np.savez_compressed(part, name=np.array(found.name), rank=np.array(found.rank),
-                            common=np.array(found.common or ""), species=np.array(found.species),
-                            category=np.array(found.category or ""), kinds=np.array(found.kinds, int),
-                            wkb=np.frombuffer(b"".join(wkb), np.uint8), ends=np.cumsum([len(w) for w in wkb]),
-                            dated=np.array(found.dated))
+                            species=np.array(found.species), category=np.array(found.category or ""),
+                            kinds=np.array(found.kinds, int), wkb=np.frombuffer(b"".join(wkb), np.uint8),
+                            ends=np.cumsum([len(w) for w in wkb]), dated=np.array(found.dated))
         os.replace(part, path)
     with np.load(path) as saved:
         blob, ends = saved["wkb"].tobytes(), saved["ends"]
         geometries = [shapely.from_wkb(blob[a:b]) for a, b in zip([0, *ends[:-1]], ends)]
-        return Range(str(saved["name"]), str(saved["rank"]), str(saved["common"]) or None, int(saved["species"]),
+        return Range(str(saved["name"]), str(saved["rank"]), common, int(saved["species"]),
                      str(saved["category"]) or None, saved["kinds"].tolist(), geometries, str(saved["dated"]))
 
 
@@ -365,10 +398,34 @@ def _patch_style(kind: int, alpha: float) -> dict:
                 linewidth=0.8)
 
 
+def tiles(geometry: shapely.Geometry, size: float = TILE_DEGREES) -> list:
+    """*geometry* cut into pieces no larger than *size* degrees square.
+
+    Cartopy clips a polygon spanning half the world (an ocean-wide sea turtle's
+    range) wrongly at the globe's rim, leaving wedges unfilled; pieces this
+    size are clipped right.
+    """
+    x0, y0, x1, y1 = shapely.bounds(geometry)
+    xs = np.arange(np.floor(x0 / size) * size, x1, size)
+    ys = np.arange(np.floor(y0 / size) * size, y1, size)
+    boxes = shapely.box(*np.meshgrid(xs, ys), *np.meshgrid(xs + size, ys + size))
+    pieces = shapely.intersection(geometry, boxes.ravel())
+    return [p for p in pieces if not p.is_empty and p.area > 0]
+
+
 def draw_range(ax: GeoAxes, found: Range, alpha: float = 0.45) -> None:
-    """Fill each kind of range on *ax* in its colour, extinct parts beneath, the living range on top."""
+    """Fill each kind of range on *ax* in its colour, extinct parts beneath, the living range on top.
+
+    The fill is drawn tile by tile without edges (so the seams do not show)
+    and the outline over it.
+    """
     for kind, geometry in zip(found.kinds, found.geometries):
-        ax.add_geometries([geometry], crs=ccrs.PlateCarree(), zorder=7.1, **_patch_style(kind, alpha))
+        style = _patch_style(kind, alpha)
+        linewidth = style.pop("linewidth")
+        ax.add_geometries(tiles(geometry), crs=ccrs.PlateCarree(), zorder=7.1, linewidth=0, antialiased=False,
+                          **style)
+        ax.add_geometries([geometry.boundary], crs=ccrs.PlateCarree(), zorder=7.1, facecolor="none",
+                          edgecolor=style["edgecolor"], linewidth=linewidth)
     logger.info("IUCN range of %s drawn: %s.", found.name, ", ".join(RANGE_KINDS[k][0] for k in found.kinds))
 
 

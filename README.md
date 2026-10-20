@@ -1451,8 +1451,10 @@ neither downloads nor ships it. Get it yourself, free, for non-commercial use:
   the range has and gives a species' Red List category.
 - **Read once:** the shapes are read straight from the zip (a species takes a
   few seconds, a large family up to a minute), merged by kind, simplified to
-  about 1 km and kept under `~/.cache/ortho_tiles/iucn/ranges/`. New or changed
-  zips are read afresh.
+  about 1 km and kept under `~/.cache/ortho_tiles/iucn/ranges/`. Adding another
+  group's zip keeps the ranges already read; replacing a zip reads its ranges
+  afresh. Plants, amphibians, reptiles and the other groups work the same way
+  (`--iucn "Picea omorika"`, `--iucn "Rana temporaria"`).
 
 The credit names IUCN and the date of the data. IUCN's terms allow use for
 conservation, education and research, but not commercial use or sharing the
