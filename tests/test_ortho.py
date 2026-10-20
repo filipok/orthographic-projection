@@ -1032,6 +1032,7 @@ class TestRunCLIValidation:
             rivers=False, basins=False, basins_alpha=0.5, cyclones=None, time_zones=False, permafrost=False,
             permafrost_alpha=0.7, population=None, population_alpha=0.7, livestock=None, livestock_alpha=0.7,
             malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None, species=None, species_years=None,
+            iucn=None, iucn_data=None, iucn_alpha=0.45,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1475,6 +1476,18 @@ class TestRunCLIValidation:
             ortho.run_cli(args)
         assert "--species-years is ignored" in caplog.text
 
+    def test_iucn_passed_to_renderer(self, caplog):
+        args = self._make_args(city="paris", iucn="lion", iucn_data="~/ranges", iucn_alpha=0.3)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert (kwargs["iucn"], kwargs["iucn_data"], kwargs["iucn_alpha"]) == ("lion", "~/ranges", 0.3)
+        args = self._make_args(city="paris", iucn_data="~/ranges")
+        with mock.patch.object(ortho, "generate_orthographic_map"), mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert "--iucn-data is ignored" in caplog.text
+
     @pytest.mark.parametrize("overrides, message", [
         ({"population": 2012}, "Population density is mapped for"),
         ({"livestock": "llamas"}, "Unknown livestock"),
@@ -1483,6 +1496,7 @@ class TestRunCLIValidation:
         ({"malaria": "pf", "malaria_alpha": 1.5}, "malaria_alpha"),
         ({"aedes": "vexans"}, "Unknown Aedes"),
         ({"species": "lion", "species_years": "2020-1990"}, "Species years"),
+        ({"iucn": "lion", "iucn_alpha": -0.1}, "iucn_alpha"),
         ({"earthquakes": 4.0}, "earthquakes must be a magnitude"),
         ({"cyclones": 1970}, "cyclones must start"),
         ({"basins": True, "basins_alpha": 2.0}, "basins_alpha"),
@@ -1880,6 +1894,38 @@ class TestGenerateOrthographicMapIntegration:
         key.assert_not_called()
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
 
+    def test_iucn_range_drawn_with_key_and_credit(self, tmp_path):
+        found = mock.Mock(dated="2026-06-26")
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_range", return_value=found) as load, \
+                mock.patch.object(ortho, "draw_range") as draw, \
+                mock.patch.object(ortho, "add_range_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(10, 10), iucn="lion",
+                                            iucn_data="ranges", iucn_alpha=0.3)
+        assert load.call_args.args == ("lion", "ranges")
+        assert draw.call_count == 2 and draw.call_args.kwargs["alpha"] == 0.3        # one per globe
+        key.assert_called_once()
+        assert attribution.call_args.args[1][1].startswith("Range: IUCN (2026), The IUCN Red List")
+
+    def test_iucn_range_unreadable_still_saves_map(self, tmp_path, caplog):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_range", side_effect=ortho.IucnDataError("bad zip")), \
+                mock.patch.object(ortho, "add_range_legend") as key:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), iucn="lion")
+        assert os.path.exists(result) and "Skipping the IUCN range: bad zip" in caplog.text
+        key.assert_not_called()
+
+    def test_iucn_unknown_or_missing_stops_before_tiles(self, tmp_path):
+        with mock.patch.object(ortho, "load_range", side_effect=ValueError("No IUCN range files in x")), \
+                mock.patch.object(ortho.GeoAxes, "add_image") as tiles:
+            with pytest.raises(ValueError, match="No IUCN range files"):
+                ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                output_dir=str(tmp_path), iucn="lion")
+        tiles.assert_not_called()
+
     def test_unknown_species_stops_before_tiles(self, tmp_path):
         with mock.patch.object(ortho, "resolve_taxon", side_effect=ValueError("GBIF knows no species called 'x'")), \
                 mock.patch.object(ortho.GeoAxes, "add_image") as tiles:
@@ -1956,6 +2002,7 @@ class TestGenerateOrthographicMapIntegration:
         ("malaria, aedes", {"malaria": "pf", "aedes": "both"}),
         ("malaria:vivax, aedes:tiger", {"malaria": "pv", "aedes": "tiger"}),
         ("species: Red Fox, plates", {"species": "red fox", "plates": True}),
+        ("iucn:Panthera leo, species:lion", {"iucn": "panthera leo", "species": "lion"}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected
@@ -1963,6 +2010,8 @@ class TestGenerateOrthographicMapIntegration:
     def test_extra_layer_species_needs_a_name(self):
         with pytest.raises(ValueError, match="Name the species"):
             ortho.parse_extra_layers("species:")
+        with pytest.raises(ValueError, match="after 'iucn:'"):
+            ortho.parse_extra_layers("iucn: ")
 
     def test_unknown_extra_layer(self):
         with pytest.raises(ValueError, match="Unknown layer"):

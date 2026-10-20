@@ -177,6 +177,8 @@ class MapRequest(BaseModel):
     aedes: str | None = None
     species: str | None = None
     species_years: str | None = None
+    iucn: str | None = None
+    iucn_alpha: float | None = None
     route: list[str] | None = None
     route_legend: bool | None = None
 
@@ -402,7 +404,8 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "radius": {"default": ortho.DEFAULT_RADIUS_KM, "min": ortho.MIN_RADIUS_KM, "max": ortho.MAX_RADIUS_KM},
         "alpha": {"classification": ortho.CLASSIFICATION_ALPHA, "climate_mean": ortho.CLIMATE_MEAN_ALPHA,
                   "elevation": 0.8, "vegetation": 0.7, "biome": 0.6, "soil": 0.6, "borders": 0.55,
-                  "basins": 0.5, "permafrost": 0.7, "population": 0.7, "livestock": 0.7, "malaria": 0.75},
+                  "basins": 0.5, "permafrost": 0.7, "population": 0.7, "livestock": 0.7, "malaria": 0.75,
+                  "iucn": 0.45},
         "periods": PERIODS,
         "soil_properties": {name: prop.title for name, prop in SOIL_PROPERTIES.items()},
         "soil_depths": list(SOIL_DEPTHS),

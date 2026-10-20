@@ -181,6 +181,10 @@ function buildRequest() {
     req.species = $("species").value.trim();
     if ($("species-years").value.trim()) req.species_years = $("species-years").value.trim();
   }
+  if ($("iucn").value.trim()) {
+    req.iucn = $("iucn").value.trim();
+    req.iucn_alpha = changed("iucn-alpha", options.alpha.iucn);
+  }
   const borders = $("borders").value.trim();
   if (borders) {
     req.borders = borders;
@@ -343,6 +347,8 @@ function fillForm(req) {
   if (req.aedes) pick("aedes", req.aedes, "Aedes species");
   set("species", req.species);
   set("species-years", req.species_years);
+  set("iucn", req.iucn);
+  set("iucn-alpha", req.iucn_alpha);
   $("borders").value = req.borders ?? "";
   if (req.borders_source) pick("borders-source", req.borders_source, "borders source");
   set("borders-alpha", req.borders_alpha);
@@ -691,7 +697,7 @@ async function init() {
   $("vegetation-alpha").value = options.alpha.vegetation;
   $("biome-alpha").value = options.alpha.biome;
   $("borders-alpha").value = options.alpha.borders;
-  for (const name of ["basins", "permafrost", "population", "livestock", "malaria"]) {
+  for (const name of ["basins", "permafrost", "population", "livestock", "malaria", "iucn"]) {
     $(`${name}-alpha`).value = options.alpha[name];
   }
   [$("malaria-year").min, $("malaria-year").max] = options.malaria_years;

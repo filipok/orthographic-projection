@@ -70,6 +70,7 @@ from gbif import (
     GbifDataError, add_occurrences_legend, draw_occurrences, gbif_attribution, load_occurrences, parse_years,
     resolve_taxon,
 )
+from iucn import IucnDataError, add_range_legend, draw_range, iucn_attribution, load_range
 from livestock import (
     LIVESTOCK_ATTRIBUTION, SPECIES as LIVESTOCK_SPECIES, LivestockDataError, add_livestock_legend,
     add_livestock_overlay, load_livestock, resolve_species,
@@ -623,6 +624,7 @@ def validate_render_options(
     biome_alpha: float = 0.6, borders_alpha: float = 0.55, basins_alpha: float = 0.5,
     permafrost_alpha: float = 0.7, population_alpha: float = 0.7, livestock_alpha: float = 0.7,
     earthquakes: float | None = None, cyclones: int | None = None, malaria_alpha: float = 0.75,
+    iucn_alpha: float = 0.45,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -665,7 +667,7 @@ def validate_render_options(
         raise ValueError(f"borders_alpha must be between 0 and 1, got {borders_alpha}")
     for name, value in (("basins_alpha", basins_alpha), ("permafrost_alpha", permafrost_alpha),
                         ("population_alpha", population_alpha), ("livestock_alpha", livestock_alpha),
-                        ("malaria_alpha", malaria_alpha)):
+                        ("malaria_alpha", malaria_alpha), ("iucn_alpha", iucn_alpha)):
         if not 0.0 <= value <= 1.0:
             raise ValueError(f"{name} must be between 0 and 1, got {value}")
     if earthquakes is not None and not MIN_MAGNITUDE <= earthquakes <= MAX_MAGNITUDE:
@@ -760,6 +762,9 @@ def generate_orthographic_map(
     aedes: str | None = None,
     species: str | None = None,
     species_years: str | None = None,
+    iucn: str | None = None,
+    iucn_data: str | None = None,
+    iucn_alpha: float = 0.45,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -989,6 +994,11 @@ def generate_orthographic_map(
         wild, from GBIF, by its scientific or common name (``"Panthera leo"``,
         ``"red fox"``); *species_years* (``"1990-2020"`` or ``"2015"``) keeps
         the records of those years.
+    iucn : str, optional
+        Draw the IUCN Red List range of a species (or genus, family …), from
+        range files the user downloaded from IUCN into *iucn_data* (default
+        ``~/.cache/ortho_tiles/iucn``), shaded by presence, origin and
+        season; *iucn_alpha* sets its opacity.
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -1007,7 +1017,7 @@ def generate_orthographic_map(
         land_cover_year=land_cover_year, zoom=zoom, radius_km=radius_km, tile_provider=tile_provider,
         lat=lat, beside=beside, biome_alpha=biome_alpha, borders_alpha=borders_alpha, basins_alpha=basins_alpha,
         permafrost_alpha=permafrost_alpha, population_alpha=population_alpha, livestock_alpha=livestock_alpha,
-        earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha,
+        earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha, iucn_alpha=iucn_alpha,
     )
     population_year = resolve_population_year(population) if population is not None else None
     livestock_species = resolve_species(livestock) if livestock else None
@@ -1022,6 +1032,12 @@ def generate_orthographic_map(
             taxon = resolve_taxon(species)
         except GbifDataError as e:
             logger.warning("Skipping the species records: %s", e)
+    species_range = None
+    if iucn:
+        try:
+            species_range = load_range(iucn, iucn_data)
+        except IucnDataError as e:
+            logger.warning("Skipping the IUCN range: %s", e)
     wind_period = resolve_wind_period(wind) if wind is not None else None
     land_cover_codes = resolve_land_cover_classes(land_cover_classes or [])
     land_cover = land_cover or bool(land_cover_codes) or land_cover_year is not None
@@ -1438,6 +1454,9 @@ def generate_orthographic_map(
     if mosquitoes:
         for ax in axes:
             draw_aedes(ax, mosquitoes)
+    if species_range is not None:
+        for ax in axes:
+            draw_range(ax, species_range, alpha=iucn_alpha)
     sightings = None
     if taxon is not None:
         try:
@@ -1682,6 +1701,8 @@ def generate_orthographic_map(
         keys.append(add_malaria_legend(near, malaria_parasite, malaria_year, x=key_x))
     if mosquitoes:
         keys.append(add_aedes_legend(near, mosquitoes, x=key_x))
+    if species_range is not None:
+        keys.append(add_range_legend(near, species_range, alpha=iucn_alpha, x=key_x))
     if sightings is not None:
         keys.append(add_occurrences_legend(near, sightings, x=key_x))
     if crop_layer is not None:
@@ -1738,6 +1759,8 @@ def generate_orthographic_map(
         credits.append(MALARIA_ATTRIBUTION)
     if mosquitoes:
         credits.append(AEDES_ATTRIBUTION)
+    if species_range is not None:
+        credits.append(iucn_attribution(species_range))
     if sightings is not None:
         credits.append(gbif_attribution(sightings))
     if crop_layer is not None:
@@ -2181,7 +2204,8 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
     """The keyword arguments for a comma-separated list of :data:`EXTRA_LAYERS`.
 
     ``livestock:ANIMAL``, ``malaria:pf`` or ``malaria:pv`` and ``aedes:SPECIES`` choose
-    which kind; ``species:NAME`` draws the GBIF records of a species.
+    which kind; ``species:NAME`` draws the GBIF records of a species and
+    ``iucn:NAME`` its IUCN range.
 
     Raises ``ValueError`` for a name it does not know.
     """
@@ -2198,6 +2222,11 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             if not name:
                 raise ValueError("Name the species after 'species:', e.g. species:red fox.")
             chosen["species"] = name
+        elif item.startswith("iucn:"):
+            name = item.split(":", 1)[1].strip()
+            if not name:
+                raise ValueError("Name the species after 'iucn:', e.g. iucn:Panthera leo.")
+            chosen["iucn"] = name
         elif item.startswith("aedes:"):
             kind = item.split(":", 1)[1].strip()
             resolve_aedes(kind)
@@ -2207,7 +2236,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen[key] = value
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
-                             "malaria:pv, aedes:SPECIES, species:NAME.")
+                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME.")
     return chosen
 
 
@@ -2215,7 +2244,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -2676,6 +2705,16 @@ def build_cli_parser() -> argparse.ArgumentParser:
                            "for more records.")
     wild.add_argument("--species-years", metavar="YEARS",
                       help="Only the records of these years: FROM-TO or YEAR (e.g. 1990-2020).")
+
+    ranges = parser.add_argument_group("Species ranges (IUCN Red List)")
+    ranges.add_argument("--iucn", metavar="NAME",
+                        help="Draw the IUCN Red List range of a species, genus or family ('Panthera leo', 'lion', "
+                             "'Felidae'), from range files you downloaded from IUCN; shaded by presence, origin "
+                             "and season.")
+    ranges.add_argument("--iucn-data", metavar="PATH",
+                        help="Folder, zip or .shp of IUCN range files (default: ~/.cache/ortho_tiles/iucn).")
+    ranges.add_argument("--iucn-alpha", type=float, default=0.45, metavar="ALPHA",
+                        help="Opacity of the IUCN range (0-1, default: 0.45).")
 
     winds = parser.add_argument_group("Winds (NCEP/NCAR Reanalysis)")
     winds.add_argument(
@@ -3151,6 +3190,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         logger.warning("--species-years is ignored because no --species was given.")
     elif args.species:
         parse_years(args.species_years)
+    if args.iucn_data and not args.iucn:
+        logger.warning("--iucn-data is ignored because no --iucn was given.")
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
@@ -3235,7 +3276,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             biome_alpha=args.biome_alpha, borders_alpha=args.borders_alpha, basins_alpha=args.basins_alpha,
             permafrost_alpha=args.permafrost_alpha, population_alpha=args.population_alpha,
             livestock_alpha=args.livestock_alpha, earthquakes=args.earthquakes, cyclones=args.cyclones,
-            malaria_alpha=args.malaria_alpha,
+            malaria_alpha=args.malaria_alpha, iucn_alpha=args.iucn_alpha,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -3305,6 +3346,9 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         aedes=args.aedes,
         species=args.species,
         species_years=args.species_years,
+        iucn=args.iucn,
+        iucn_data=args.iucn_data,
+        iucn_alpha=args.iucn_alpha,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,

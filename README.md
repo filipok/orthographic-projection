@@ -190,6 +190,7 @@ The main script is [ortho.py](ortho.py).
 - Optional population density (2000–2020) and livestock density (cattle, sheep, goats, pigs, chickens and more)
 - Optional malaria parasite rate, *P. falciparum* or *P. vivax*, for any year from 2000 to 2025, and where the dengue mosquitoes *Aedes aegypti* and *Ae. albopictus* have been recorded
 - Optional records of any species, genus or family from GBIF, by scientific or common name, for all years or a span of years
+- Optional IUCN Red List range of a species, genus or family, from range files you download from IUCN: where it lives, where it may still live, where it was introduced and where it has died out
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
@@ -328,7 +329,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -411,6 +412,9 @@ python ortho.py --lat 0 --lon -70 --aedes
 # Where a species has been recorded (see "Species Records")
 python ortho.py --lat 0 --lon 20 --species lion
 python ortho.py --lat 52 --lon 0 --radius 900 --species "red fox" --species-years 2000-2025
+
+# A species' IUCN range, from range files you downloaded (see "Species Ranges")
+python ortho.py --lat 10 --lon 30 --iucn lion --species lion
 
 # The states of a year or a day: 1500, the Roman world in 117, Africa on 1 July 1914 (see "Historical Borders")
 python ortho.py --city Lisbon --borders 1500
@@ -527,6 +531,9 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--aedes [SPECIES]` | Draw where *Aedes* mosquitoes have been recorded, 1958–2014: `both`, `aegypti` or `albopictus` | off (`both` when given alone) |
 | `--species NAME` | Draw where a species, genus or family has been recorded in the wild (GBIF), by scientific or common name: `"Panthera leo"`, `"red fox"`, `Quercus` | — |
 | `--species-years YEARS` | Only the records of these years: `FROM-TO` or `YEAR` | all years |
+| `--iucn NAME` | Draw the IUCN Red List range of a species, genus or family, by scientific or common name: `"Panthera leo"`, `lion`, `Felidae` | — |
+| `--iucn-data PATH` | Folder, zip or `.shp` of IUCN range files | `~/.cache/ortho_tiles/iucn` |
+| `--iucn-alpha ALPHA` | Opacity of the IUCN range (0–1) | `0.45` |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
@@ -545,7 +552,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
 Historical borders, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
-Malaria and Aedes mosquitoes, Species records (GBIF), Winds, Polar ice, Crops, Routes and areas, Recipes.
+Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -1414,6 +1421,49 @@ python ortho.py --lat 45 --lon 10 --species Quercus
 The samples above are `python ortho.py --config recipes/africa_lion.toml` and
 `python ortho.py --config recipes/britain_red_fox.toml`.
 
+## Species Ranges
+
+`--iucn NAME` draws where a species lives according to the
+[IUCN Red List](https://www.iucnredlist.org/): the range its experts have mapped,
+rather than where people happened to record it. It pairs with `--species`:
+`--iucn lion --species lion` draws the range with the GBIF records on top.
+
+IUCN's terms do not allow its range data to be passed on, so this project
+neither downloads nor ships it. Get it yourself, free, for non-commercial use:
+
+1. Make an account at [iucnredlist.org](https://www.iucnredlist.org/) and log in.
+2. Either take a whole group (mammals, amphibians, reptiles, fishes …) from the
+   [spatial data download](https://www.iucnredlist.org/resources/spatial-data-download)
+   page, or search for a species or group and choose **Download → Range data –
+   Polygons (SHP)**. IUCN asks how you will use the data, then emails a zip.
+   Birds come from [BirdLife International](https://datazone.birdlife.org/) instead.
+3. Put the zip, as it is, in `~/.cache/ortho_tiles/iucn/` (any number of zips),
+   or point to it with `--iucn-data PATH`.
+
+- **Any name:** a scientific name as IUCN spells it (`"Lynx lynx"`), a genus
+  (`Panthera`), a family (`Felidae`) or an order. A common name (`lion`) or a
+  synonym is looked up in GBIF and its scientific name used; a near miss
+  (`"Panthera leon"`) is answered with the names it may mean.
+- **Kinds of range:** each part is shaded by IUCN's codes. Extant (resident),
+  breeding and non-breeding season and passage are solid; possibly extant and
+  possibly extinct are hatched; introduced and vagrant have their own colours;
+  where the species has died out is hatched grey. The key lists only the kinds
+  the range has and gives a species' Red List category.
+- **Read once:** the shapes are read straight from the zip (a species takes a
+  few seconds, a large family up to a minute), merged by kind, simplified to
+  about 1 km and kept under `~/.cache/ortho_tiles/iucn/ranges/`. New or changed
+  zips are read afresh.
+
+The credit names IUCN and the date of the data. IUCN's terms allow use for
+conservation, education and research, but not commercial use or sharing the
+maps without its permission, so this README has no sample image.
+
+```powershell
+python ortho.py --lat 10 --lon 30 --iucn lion --species lion
+python ortho.py --lat 50 --lon 10 --radius 2500 --iucn "Lynx lynx"
+python ortho.py --lat 40 --lon -100 --iucn Felidae
+```
+
 ## Polar Ice
 
 `--ice` (`ice=True` in the API, or the interactive prompt) draws the ice at both
@@ -1911,6 +1961,7 @@ to the attribution block.
 | Gridded Livestock of the World v4, 2015, 5 arc-minutes | Gilbert, M. et al., FAO | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Harvard Dataverse, e.g. cattle [doi:10.7910/DVN/LHBICE](https://doi.org/10.7910/DVN/LHBICE) |
 | Malaria Atlas Project, 2026 release: *P. falciparum* (PfPR2–10) and *P. vivax* parasite rates, 2000–2025, 5 km, used at ~10 km | Malaria Atlas Project, The Kids Research Institute Australia | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) ([open access policy](https://malariaatlas.org/open-access-policy/)) | [malariaatlas.org](https://malariaatlas.org/), WCS at data.malariaatlas.org |
 | Global compendium of *Aedes aegypti* and *Ae. albopictus* occurrence, 1958–2014 | Kraemer, M. U. G. et al. (2015) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2015.35](https://doi.org/10.1038/sdata.2015.35), data [doi:10.5061/dryad.47v3c](https://doi.org/10.5061/dryad.47v3c), read from GBIF |
+| IUCN Red List range polygons (spatial data), read from files each user downloads | IUCN | [IUCN Red List Terms and Conditions of Use](https://www.iucnredlist.org/terms/terms-of-use): non-commercial use; no reposting or redistribution, of the data or of works made from it, without IUCN's permission. Not shipped or downloaded here | [iucnredlist.org/resources/spatial-data-download](https://www.iucnredlist.org/resources/spatial-data-download) |
 | GBIF occurrence records, read as occurrence density maps (zoom 1, ~20 km cells) | GBIF.org and its data publishers | Per dataset: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) or [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); see [GBIF's terms](https://www.gbif.org/terms) | [gbif.org](https://www.gbif.org/), [maps API](https://techdocs.gbif.org/en/openapi/v2/maps) |
 | Cliopatria v0.2.1: borders of over 1,600 states and empires, 3400 BCE–2024 | Bennett, J. S. et al. (2025), Seshat Global History Databank | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-025-04516-9](https://doi.org/10.1038/s41597-025-04516-9), [github.com/Seshat-Global-History-Databank/cliopatria](https://github.com/Seshat-Global-History-Databank/cliopatria) |
 | CShapes 2.0: borders of states and dependent territories, 1886–2019 (Gleditsch & Ward system), from the `cshapes` R package | Schvitz, G. et al. (2022), ETH Zurich | No data licence stated; the article is CC BY-NC 4.0 and the R package GPL ≥ 2. Downloaded by each user, not shipped | [doi:10.1177/00220027211013563](https://doi.org/10.1177/00220027211013563), [icr.ethz.ch/data/cshapes](https://icr.ethz.ch/data/cshapes/) |
@@ -1962,6 +2013,7 @@ the globe:
 | `--malaria` | *Malaria: Malaria Atlas Project (2026 release), CC BY 3.0* |
 | `--aedes` | *Aedes records: Kraemer et al. (2015), global compendium of Aedes occurrence, via GBIF, CC0* |
 | `--species` | *Species records: GBIF.org occurrence data, retrieved YYYY-MM-DD* |
+| `--iucn` | *Range: IUCN (YYYY), The IUCN Red List of Threatened Species, spatial data of YYYY-MM-DD* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
 Keep this block (or credit the same sources elsewhere) when you share or publish
@@ -2034,6 +2086,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [malaria.py](malaria.py): the malaria parasite rate from the Malaria Atlas Project, in classed bands
 - [aedes.py](aedes.py): where the dengue mosquitoes have been recorded, from Kraemer et al.'s compendium on GBIF
 - [gbif.py](gbif.py): where any species has been recorded, from GBIF's occurrence density maps, with name lookup
+- [iucn.py](iucn.py): a species' IUCN Red List range, read from the range files the user downloaded
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)

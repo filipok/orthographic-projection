@@ -154,6 +154,11 @@ class TestMaps:
         assert (renders[0]["species"], renders[0]["species_years"]) == ("red fox", "1990-2020")
         assert "--species 'red fox' --species-years 1990-2020" in status["command"]
 
+    def test_iucn_range(self, client, renders):
+        _, status = _render(client, city="Lisbon", iucn="Lynx pardinus", iucn_alpha=0.6)
+        assert (renders[0]["iucn"], renders[0]["iucn_alpha"]) == ("Lynx pardinus", 0.6)
+        assert "--iucn 'Lynx pardinus' --iucn-alpha 0.6" in status["command"]
+
     def test_a_globe_beside(self, client, renders):
         _, status = _render(client, city="Lisbon", beside="Tokyo")
         assert renders[0]["beside"] == (35.6762, 139.6503) and renders[0]["beside_name"] == "Tokyo"
