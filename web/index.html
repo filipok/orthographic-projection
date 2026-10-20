@@ -15,21 +15,6 @@
   <main class="layout">
     <form id="map-form" class="controls" novalidate>
       <fieldset>
-        <legend>Recipe</legend>
-        <label class="field"><span>Start from a recipe</span>
-          <select id="recipe"><option value="">None: start from the form</option></select></label>
-        <label class="field"><span>Description</span>
-          <textarea id="recipe-description" rows="2" placeholder="What the map shows; saved as the recipe's comment"></textarea></label>
-        <div class="recipe-save editable">
-          <label class="field"><span>Save as, in recipes/</span>
-            <input id="recipe-name" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. my_monsoon"></label>
-          <button type="button" id="recipe-save" class="button">Save</button>
-          <button type="button" id="recipe-delete" class="button danger">Delete</button>
-        </div>
-        <p id="recipe-status" class="hint" role="status" hidden></p>
-      </fieldset>
-
-      <fieldset>
         <legend>Place</legend>
         <div class="segmented" role="radiogroup" aria-label="Place">
           <label><input type="radio" name="place" value="city" checked> City</label>
@@ -246,6 +231,21 @@
         <label class="field slider" data-show="borders" hidden><span>Opacity <output for="borders-alpha"></output></span>
           <input id="borders-alpha" type="range" min="0" max="1" step="0.05"></label>
       </details>
+
+      <fieldset>
+        <legend>Recipe</legend>
+        <label class="field"><span>Start from a recipe</span>
+          <select id="recipe"><option value="">None: start from the form</option></select></label>
+        <label class="field"><span>Description</span>
+          <textarea id="recipe-description" rows="2" placeholder="What the map shows; saved as the recipe's comment"></textarea></label>
+        <div class="recipe-save editable">
+          <label class="field"><span>Save as, in recipes/</span>
+            <input id="recipe-name" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. my_monsoon"></label>
+          <button type="button" id="recipe-save" class="button">Save</button>
+          <button type="button" id="recipe-delete" class="button danger">Delete</button>
+        </div>
+        <p id="recipe-status" class="hint" role="status" hidden></p>
+      </fieldset>
 
       <details id="routes-box">
         <summary>Routes and areas (GeoJSON)</summary>
