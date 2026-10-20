@@ -1,0 +1,9 @@
+# Urban centres around the Pearl River Delta in 2025: one metropolis of 43 million, from Guangzhou to
+# Shenzhen and Hong Kong (GHSL built-up areas of at least 50,000 people). Compare recipes/pearl_river_delta_1975.toml.
+lat = 22.8
+lon = 113.6
+provider = "osm_plain"
+radius = 150
+cities = 2025
+cities_min = 50000
+output = "orthographic_map_pearl_river_delta_osm_plain_z11_r150km_cities_2025.png"

@@ -129,6 +129,13 @@ The main script is [ortho.py](ortho.py).
 *Right: Red fox records since 2000, 900 km around southern England (plain OSM, zoom 7, GBIF).*
 
 <p align="center">
+  <img src="sample_pearl_river_delta_1975.png" alt="A disc 150 km around the Pearl River Delta in 1975 with red built-up areas: Guangzhou and Hong Kong, and a scatter of small towns between them, each named" width="48%">
+  <img src="sample_pearl_river_delta_2025.png" alt="The same disc in 2025: one continuous red built-up area from Guangzhou through Foshan, Dongguan and Shenzhen to Hong Kong, named Guangzhou, with Zhuhai and Macau and dozens of smaller named towns around it" width="48%">
+</p>
+
+*The Pearl River Delta in 1975 and 2025: urban centres of at least 50,000 people, the largest named (plain OSM, 150 km radius, GHSL).*
+
+<p align="center">
   <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
 </p>
 
@@ -191,6 +198,7 @@ The main script is [ortho.py](ortho.py).
 - Optional malaria parasite rate, *P. falciparum* or *P. vivax*, for any year from 2000 to 2025, and where the dengue mosquitoes *Aedes aegypti* and *Ae. albopictus* have been recorded
 - Optional records of any species, genus or family from GBIF, by scientific or common name, for all years or a span of years
 - Optional IUCN Red List range of a species, genus or family, from range files you download from IUCN: where it lives, where it may still live, where it was introduced and where it has died out
+- Optional big cities: built-up urban centres (metropolitan areas) as their real shape, the largest named, for any five-year step from 1975 to 2030
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
@@ -329,7 +337,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -415,6 +423,10 @@ python ortho.py --lat 52 --lon 0 --radius 900 --species "red fox" --species-year
 
 # A species' IUCN range, from range files you downloaded (see "Species Ranges")
 python ortho.py --lat 10 --lon 30 --iucn lion --species lion
+
+# Big cities, and how they grew (see "Cities")
+python ortho.py --lat 25 --lon 100 --cities
+python ortho.py --config recipes/pearl_river_delta_1975.toml
 
 # The states of a year or a day: 1500, the Roman world in 117, Africa on 1 July 1914 (see "Historical Borders")
 python ortho.py --city Lisbon --borders 1500
@@ -534,6 +546,8 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--iucn NAME` | Draw the IUCN Red List range of a species, genus or family, by scientific or common name: `"Panthera leo"`, `lion`, `Felidae` | — |
 | `--iucn-data PATH` | Folder, zip, `.shp` or `.gpkg` of IUCN or BirdLife range files | `~/.cache/ortho_tiles/iucn` |
 | `--iucn-alpha ALPHA` | Opacity of the IUCN range (0–1) | `0.45` |
+| `--cities [YEAR]` | Draw the built-up urban centres and name the largest, as of `YEAR` (1975–2030 every five years; 2030 projected) | off (`2025` when given alone) |
+| `--cities-min PEOPLE` | Show only centres of at least this many people | 1,000,000 on a whole globe, fewer on a closer map (down to 50,000) |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
@@ -552,7 +566,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
 Historical borders, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
-Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Winds, Polar ice, Crops, Routes and areas, Recipes.
+Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -1479,6 +1493,40 @@ python ortho.py --lat 30 --lon -60 --iucn osprey
 python ortho.py --lat 20 --lon 10 --iucn "white stork"
 ```
 
+## Cities
+
+`--cities` draws the world's big cities as they are built: the urban centres of
+the [GHS Urban Centre Database 2025](https://human-settlement.emergency.copernicus.eu/ghs_ucdb_2024.php)
+(European Commission, JRC). An urban centre is a continuous patch of 1 km cells
+with at least 1,500 people per km² and 50,000 people in all, so it follows the
+built-up metropolis rather than city limits: "Guangzhou" is the whole Pearl River
+Delta with Shenzhen, Foshan and Dongguan (43 million people), "Essen" the Ruhr.
+
+- **Shapes and names:** each centre is filled in red as its real outline; the
+  largest are named, biggest first, above a dot, in bold from 10 million. A name
+  that would overlap another or run off the globe is left out (at most 80).
+- **How many:** on a whole globe, the centres of over a million people (some 500
+  worldwide); on a closer map the bar falls with the radius, to GHSL's smallest
+  centres of 50,000 within a few hundred kilometres. `--cities-min 250000` sets it.
+- **Any year:** `--cities 1975` (or 1980 … 2025, and 2030 projected) shows each
+  centre's extent and population that year. A town that later merged into a
+  bigger centre is drawn as part of it, so the 1975 map shows the separate towns
+  that became one metropolis.
+
+The data (~35 MB, 11,686 centres) is downloaded once into
+`~/.cache/ortho_tiles/cities/`; each year's outlines are converted to degrees and
+simplified to about 200 m the first time that year is drawn.
+
+```powershell
+python ortho.py --lat 25 --lon 100 --cities
+python ortho.py --lat 51 --lon 5 --radius 800 --cities
+python ortho.py --lat 10 --lon 20 --cities 1975
+python ortho.py --lat 40 --lon -100 --cities 2030 --cities-min 500000
+```
+
+The samples above are `python ortho.py --config recipes/pearl_river_delta_1975.toml`
+and `python ortho.py --config recipes/pearl_river_delta_2025.toml`.
+
 ## Polar Ice
 
 `--ice` (`ice=True` in the API, or the interactive prompt) draws the ice at both
@@ -1976,6 +2024,7 @@ to the attribution block.
 | Gridded Livestock of the World v4, 2015, 5 arc-minutes | Gilbert, M. et al., FAO | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Harvard Dataverse, e.g. cattle [doi:10.7910/DVN/LHBICE](https://doi.org/10.7910/DVN/LHBICE) |
 | Malaria Atlas Project, 2026 release: *P. falciparum* (PfPR2–10) and *P. vivax* parasite rates, 2000–2025, 5 km, used at ~10 km | Malaria Atlas Project, The Kids Research Institute Australia | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) ([open access policy](https://malariaatlas.org/open-access-policy/)) | [malariaatlas.org](https://malariaatlas.org/), WCS at data.malariaatlas.org |
 | Global compendium of *Aedes aegypti* and *Ae. albopictus* occurrence, 1958–2014 | Kraemer, M. U. G. et al. (2015) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2015.35](https://doi.org/10.1038/sdata.2015.35), data [doi:10.5061/dryad.47v3c](https://doi.org/10.5061/dryad.47v3c), read from GBIF |
+| GHS Urban Centre Database 2025 (R2024A, v1.2), multi-temporal urban centres 1975–2030 | European Commission, Joint Research Centre (Mari Rivero, Melchiorri et al. 2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd](https://doi.org/10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd), [human-settlement.emergency.copernicus.eu](https://human-settlement.emergency.copernicus.eu/ghs_ucdb_2024.php) |
 | BirdLife bird species distribution maps (GeoPackage) and the HBW-BirdLife checklist, read from files each user requests | BirdLife International and Handbook of the Birds of the World | [BirdLife data terms of use](https://datazone.birdlife.org/about-our-science/terms-of-use): non-commercial use; no reposting or redistribution, of the data or of works made from it, without BirdLife's permission. Not shipped or downloaded here | [datazone.birdlife.org/species/requestdis](https://datazone.birdlife.org/species/requestdis) |
 | IUCN Red List range polygons (spatial data), read from files each user downloads | IUCN | [IUCN Red List Terms and Conditions of Use](https://www.iucnredlist.org/terms/terms-of-use): non-commercial use; no reposting or redistribution, of the data or of works made from it, without IUCN's permission. Not shipped or downloaded here | [iucnredlist.org/resources/spatial-data-download](https://www.iucnredlist.org/resources/spatial-data-download) |
 | GBIF occurrence records, read as occurrence density maps (zoom 1, ~20 km cells) | GBIF.org and its data publishers | Per dataset: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) or [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); see [GBIF's terms](https://www.gbif.org/terms) | [gbif.org](https://www.gbif.org/), [maps API](https://techdocs.gbif.org/en/openapi/v2/maps) |
@@ -2029,6 +2078,7 @@ the globe:
 | `--malaria` | *Malaria: Malaria Atlas Project (2026 release), CC BY 3.0* |
 | `--aedes` | *Aedes records: Kraemer et al. (2015), global compendium of Aedes occurrence, via GBIF, CC0* |
 | `--species` | *Species records: GBIF.org occurrence data, retrieved YYYY-MM-DD* |
+| `--cities` | *Urban centres: GHS-UCDB R2024A (European Commission, JRC), CC BY 4.0* |
 | `--iucn` | *Range: IUCN (YYYY), The IUCN Red List of Threatened Species, spatial data of YYYY-MM-DD*, or for birds *Range: BirdLife International and Handbook of the Birds of the World (YYYY), Bird species distribution maps of the world, version YYYY.N* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
 
@@ -2103,6 +2153,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [aedes.py](aedes.py): where the dengue mosquitoes have been recorded, from Kraemer et al.'s compendium on GBIF
 - [gbif.py](gbif.py): where any species has been recorded, from GBIF's occurrence density maps, with name lookup
 - [iucn.py](iucn.py): a species' range from the IUCN Red List or, for birds, BirdLife, read from the files the user downloaded
+- [cities.py](cities.py): big cities, the GHSL urban centres with their names, outlines and populations from 1975 to 2030
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)

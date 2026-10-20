@@ -70,6 +70,10 @@ from gbif import (
     GbifDataError, add_occurrences_legend, draw_occurrences, gbif_attribution, load_occurrences, parse_years,
     resolve_taxon,
 )
+from cities import (
+    CITIES_ATTRIBUTION, YEARS as CITIES_YEARS, CitiesDataError, add_cities_legend, default_min_population,
+    draw_cities, load_cities, resolve_cities_year,
+)
 from iucn import IucnDataError, add_range_legend, draw_range, iucn_attribution, load_range
 from livestock import (
     LIVESTOCK_ATTRIBUTION, SPECIES as LIVESTOCK_SPECIES, LivestockDataError, add_livestock_legend,
@@ -765,6 +769,8 @@ def generate_orthographic_map(
     iucn: str | None = None,
     iucn_data: str | None = None,
     iucn_alpha: float = 0.45,
+    cities: int | None = None,
+    cities_min: int | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -999,6 +1005,11 @@ def generate_orthographic_map(
         range files the user downloaded from IUCN into *iucn_data* (default
         ``~/.cache/ortho_tiles/iucn``), shaded by presence, origin and
         season; *iucn_alpha* sets its opacity.
+    cities : int, optional
+        Draw the built-up urban centres of this year (1975-2030 every five
+        years; GHSL) and name the largest; *cities_min* is the fewest people
+        a centre shown has (default: a million on a whole globe, fewer on a
+        closer map).
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -1038,6 +1049,9 @@ def generate_orthographic_map(
             species_range = load_range(iucn, iucn_data)
         except IucnDataError as e:
             logger.warning("Skipping the IUCN range: %s", e)
+    cities_year = resolve_cities_year(cities) if cities is not None else None
+    if cities_min is not None and cities_min < 0:
+        raise ValueError(f"cities_min must be a number of people, got {cities_min}")
     wind_period = resolve_wind_period(wind) if wind is not None else None
     land_cover_codes = resolve_land_cover_classes(land_cover_classes or [])
     land_cover = land_cover or bool(land_cover_codes) or land_cover_year is not None
@@ -1457,6 +1471,16 @@ def generate_orthographic_map(
     if species_range is not None:
         for ax in axes:
             draw_range(ax, species_range, alpha=iucn_alpha)
+    towns = None
+    town_floor = cities_min if cities_min is not None else default_min_population(radius_km)
+    towns_shown = 0
+    if cities_year is not None:
+        try:
+            towns = load_cities(cities_year)
+        except (CitiesDataError, OSError) as e:
+            logger.warning("Skipping the cities: %s", e)
+        else:
+            towns_shown = max(len(draw_cities(ax, towns, town_floor)) for ax in axes)
     sightings = None
     if taxon is not None:
         try:
@@ -1703,6 +1727,8 @@ def generate_orthographic_map(
         keys.append(add_aedes_legend(near, mosquitoes, x=key_x))
     if species_range is not None:
         keys.append(add_range_legend(near, species_range, alpha=iucn_alpha, x=key_x))
+    if towns is not None:
+        keys.append(add_cities_legend(near, towns, town_floor, towns_shown, x=key_x))
     if sightings is not None:
         keys.append(add_occurrences_legend(near, sightings, x=key_x))
     if crop_layer is not None:
@@ -1761,6 +1787,8 @@ def generate_orthographic_map(
         credits.append(AEDES_ATTRIBUTION)
     if species_range is not None:
         credits.append(iucn_attribution(species_range))
+    if towns is not None:
+        credits.append(CITIES_ATTRIBUTION)
     if sightings is not None:
         credits.append(gbif_attribution(sightings))
     if crop_layer is not None:
@@ -2196,7 +2224,7 @@ EXTRA_LAYERS: dict[str, tuple[str, Any]] = {
     "volcanoes": ("volcanoes", True), "rivers": ("rivers", True), "basins": ("basins", True),
     "cyclones": ("cyclones", FIRST_CYCLONE_YEAR), "time-zones": ("time_zones", True),
     "permafrost": ("permafrost", True), "population": ("population", LATEST_POPULATION_YEAR),
-    "malaria": ("malaria", "pf"), "aedes": ("aedes", "both"),
+    "malaria": ("malaria", "pf"), "aedes": ("aedes", "both"), "cities": ("cities", 2025),
 }
 
 
@@ -2227,6 +2255,8 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             if not name:
                 raise ValueError("Name the species after 'iucn:', e.g. iucn:Panthera leo.")
             chosen["iucn"] = name
+        elif item.startswith("cities:"):
+            chosen["cities"] = resolve_cities_year(item.split(":", 1)[1])
         elif item.startswith("aedes:"):
             kind = item.split(":", 1)[1].strip()
             resolve_aedes(kind)
@@ -2236,7 +2266,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen[key] = value
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
-                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME.")
+                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR.")
     return chosen
 
 
@@ -2244,7 +2274,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975 …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -2713,6 +2743,14 @@ def build_cli_parser() -> argparse.ArgumentParser:
                              "and season.")
     ranges.add_argument("--iucn-data", metavar="PATH",
                         help="Folder, zip, .shp or .gpkg of range files (default: ~/.cache/ortho_tiles/iucn).")
+    towns = parser.add_argument_group("Cities (GHSL urban centres)")
+    towns.add_argument("--cities", nargs="?", const=2025, type=int, metavar="YEAR",
+                       help="Draw the built-up urban centres (metropolitan areas) and name the largest, as of "
+                            f"YEAR ({CITIES_YEARS[0]}-{CITIES_YEARS[-1]} every five years, 2030 projected; "
+                            "default: 2025). The GHSL data (~35 MB) is downloaded once.")
+    towns.add_argument("--cities-min", type=int, metavar="PEOPLE",
+                       help="Show only centres of at least this many people (default: 1,000,000 on a whole globe, "
+                            "fewer on a closer map, down to 50,000).")
     ranges.add_argument("--iucn-alpha", type=float, default=0.45, metavar="ALPHA",
                         help="Opacity of the IUCN range (0-1, default: 0.45).")
 
@@ -3192,6 +3230,10 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         parse_years(args.species_years)
     if args.iucn_data and not args.iucn:
         logger.warning("--iucn-data is ignored because no --iucn was given.")
+    if args.cities is not None:
+        resolve_cities_year(args.cities)
+    elif args.cities_min is not None:
+        logger.warning("--cities-min is ignored because no --cities was given.")
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
@@ -3349,6 +3391,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         iucn=args.iucn,
         iucn_data=args.iucn_data,
         iucn_alpha=args.iucn_alpha,
+        cities=args.cities,
+        cities_min=args.cities_min,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,

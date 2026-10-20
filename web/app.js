@@ -185,6 +185,10 @@ function buildRequest() {
     req.iucn = $("iucn").value.trim();
     req.iucn_alpha = changed("iucn-alpha", options.alpha.iucn);
   }
+  if ($("cities-year").value) {
+    req.cities = Number($("cities-year").value);
+    if ($("cities-min").value) req.cities_min = Number($("cities-min").value);
+  }
   const borders = $("borders").value.trim();
   if (borders) {
     req.borders = borders;
@@ -349,6 +353,8 @@ function fillForm(req) {
   set("species-years", req.species_years);
   set("iucn", req.iucn);
   set("iucn-alpha", req.iucn_alpha);
+  if (req.cities != null) pick("cities-year", String(req.cities), "cities year");
+  set("cities-min", req.cities_min);
   $("borders").value = req.borders ?? "";
   if (req.borders_source) pick("borders-source", req.borders_source, "borders source");
   set("borders-alpha", req.borders_alpha);
@@ -708,6 +714,8 @@ async function init() {
   $("cyclones-since").min = options.first_cyclone_year;
   $("cyclones-since").value = options.first_cyclone_year;
   $("population").append(...options.population_years.slice().reverse().map((y) => option(String(y))));
+  $("cities-year").append(...options.cities_years.slice().reverse().map((y) => option(String(y),
+    y === 2030 ? "2030 (projected)" : String(y))));
   $("livestock").append(...options.livestock.map((name) => option(name, name[0].toUpperCase() + name.slice(1))));
   $("aedes").append(...options.aedes.map((name) => option(name, name === "both" ? "Both species" : `Aedes ${name}`)));
   $("soil-alpha").value = options.alpha.soil;

@@ -1032,7 +1032,7 @@ class TestRunCLIValidation:
             rivers=False, basins=False, basins_alpha=0.5, cyclones=None, time_zones=False, permafrost=False,
             permafrost_alpha=0.7, population=None, population_alpha=0.7, livestock=None, livestock_alpha=0.7,
             malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None, species=None, species_years=None,
-            iucn=None, iucn_data=None, iucn_alpha=0.45,
+            iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1476,6 +1476,17 @@ class TestRunCLIValidation:
             ortho.run_cli(args)
         assert "--species-years is ignored" in caplog.text
 
+    def test_cities_passed_to_renderer(self, caplog):
+        args = self._make_args(city="paris", cities=1990, cities_min=200000)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert (render.call_args.kwargs["cities"], render.call_args.kwargs["cities_min"]) == (1990, 200000)
+        args = self._make_args(city="paris", cities_min=200000)
+        with mock.patch.object(ortho, "generate_orthographic_map"), mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert "--cities-min is ignored" in caplog.text
+
     def test_iucn_passed_to_renderer(self, caplog):
         args = self._make_args(city="paris", iucn="lion", iucn_data="~/ranges", iucn_alpha=0.3)
         with mock.patch.object(ortho, "generate_orthographic_map") as render, \
@@ -1497,6 +1508,7 @@ class TestRunCLIValidation:
         ({"aedes": "vexans"}, "Unknown Aedes"),
         ({"species": "lion", "species_years": "2020-1990"}, "Species years"),
         ({"iucn": "lion", "iucn_alpha": -0.1}, "iucn_alpha"),
+        ({"cities": 1977}, "Cities are mapped for"),
         ({"earthquakes": 4.0}, "earthquakes must be a magnitude"),
         ({"cyclones": 1970}, "cyclones must start"),
         ({"basins": True, "basins_alpha": 2.0}, "basins_alpha"),
@@ -1918,6 +1930,29 @@ class TestGenerateOrthographicMapIntegration:
         assert os.path.exists(result) and "Skipping the IUCN range: bad zip" in caplog.text
         key.assert_not_called()
 
+    @pytest.mark.parametrize("radius, floor", [(None, 1_000_000), (800, 50_000), (2500, 250_000)])
+    def test_cities_drawn_with_key_and_credit(self, tmp_path, radius, floor):
+        towns = mock.Mock()
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_cities", return_value=towns) as load, \
+                mock.patch.object(ortho, "draw_cities", return_value=[1, 2, 3]) as draw, \
+                mock.patch.object(ortho, "add_cities_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=50, lon=5, output_filename="m.png", zoom=1 if radius is None else 6,
+                                            dpi=20, output_dir=str(tmp_path), cities=1975, radius_km=radius)
+        assert load.call_args.args == (1975,) and draw.call_args.args[1:] == (towns, floor)
+        assert key.call_args.args[1:] == (towns, floor, 3)
+        assert attribution.call_args.args[1][-1] == ortho.CITIES_ATTRIBUTION
+
+    def test_cities_unavailable_still_saves_map(self, tmp_path, caplog):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_cities", side_effect=ortho.CitiesDataError("offline")), \
+                mock.patch.object(ortho, "add_cities_legend") as key:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), cities=2025, cities_min=10)
+        assert os.path.exists(result) and "Skipping the cities: offline" in caplog.text
+        key.assert_not_called()
+
     def test_iucn_unknown_or_missing_stops_before_tiles(self, tmp_path):
         with mock.patch.object(ortho, "load_range", side_effect=ValueError("No IUCN range files in x")), \
                 mock.patch.object(ortho.GeoAxes, "add_image") as tiles:
@@ -2003,6 +2038,8 @@ class TestGenerateOrthographicMapIntegration:
         ("malaria:vivax, aedes:tiger", {"malaria": "pv", "aedes": "tiger"}),
         ("species: Red Fox, plates", {"species": "red fox", "plates": True}),
         ("iucn:Panthera leo, species:lion", {"iucn": "panthera leo", "species": "lion"}),
+        ("cities, plates", {"cities": 2025, "plates": True}),
+        ("cities:1975", {"cities": 1975}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected

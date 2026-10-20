@@ -179,6 +179,8 @@ class MapRequest(BaseModel):
     species_years: str | None = None
     iucn: str | None = None
     iucn_alpha: float | None = None
+    cities: int | None = None
+    cities_min: int | None = None
     route: list[str] | None = None
     route_legend: bool | None = None
 
@@ -412,6 +414,7 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "land_cover_years": [FIRST_LAND_COVER_YEAR, LATEST_LAND_COVER_YEAR],
         "first_ice_year": FIRST_ICE_YEAR,
         "population_years": list(ortho.POPULATION_YEARS),
+        "cities_years": list(ortho.CITIES_YEARS),
         "livestock": list(ortho.LIVESTOCK_SPECIES),
         "malaria_years": [ortho.FIRST_MALARIA_YEAR, ortho.LATEST_MALARIA_YEAR],
         "aedes": list(ortho.AEDES_CHOICES),

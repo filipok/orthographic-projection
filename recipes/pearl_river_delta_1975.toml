@@ -1,0 +1,9 @@
+# Urban centres around the Pearl River Delta in 1975: Guangzhou, Hong Kong and scattered towns
+# (GHSL built-up areas of at least 50,000 people). Compare recipes/pearl_river_delta_2025.toml.
+lat = 22.8
+lon = 113.6
+provider = "osm_plain"
+radius = 150
+cities = 1975
+cities_min = 50000
+output = "orthographic_map_pearl_river_delta_osm_plain_z11_r150km_cities_1975.png"
