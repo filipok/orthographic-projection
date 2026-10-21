@@ -1035,6 +1035,7 @@ class TestRunCLIValidation:
             malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None, species=None, species_years=None,
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
             indicator=None, indicator_year=None, indicator_alpha=0.75, industry=None,
+            shipping=None, shipping_alpha=0.85, air_routes=None,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1497,6 +1498,24 @@ class TestRunCLIValidation:
             ortho.run_cli(args)
         assert render.call_args.kwargs["industry"] == "petrochemical"
 
+    def test_shipping_and_air_routes_passed_to_renderer(self, caplog):
+        args = self._make_args(city="paris", shipping="fishing", shipping_alpha=0.6, air_routes="LHR, airline:BA")
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert (kwargs["shipping"], kwargs["shipping_alpha"], kwargs["air_routes"]) == ("fishing", 0.6,
+                                                                                         "LHR, airline:BA")
+        args = self._make_args(city="paris", shipping_alpha=0.6)
+        with mock.patch.object(ortho, "generate_orthographic_map"), mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert "--shipping-alpha is ignored" in caplog.text
+
+    def test_cli_parses_shipping_and_air_routes(self):
+        args = ortho.build_cli_parser().parse_args(["--city", "paris", "--shipping", "--air-routes", "all"])
+        assert (args.shipping, args.shipping_alpha, args.air_routes) == ("commercial", 0.85, "all")
+        assert ortho.build_cli_parser().parse_args(["--shipping", "passenger"]).shipping == "passenger"
+
     def test_cities_passed_to_renderer(self, caplog):
         args = self._make_args(city="paris", cities=1990, cities_min=200000)
         with mock.patch.object(ortho, "generate_orthographic_map") as render, \
@@ -1532,6 +1551,9 @@ class TestRunCLIValidation:
         ({"cities": 1977}, "Cities are mapped for"),
         ({"indicator": "happiness"}, "Unknown indicator"),
         ({"industry": "smelting"}, "Unknown industry"),
+        ({"shipping": "submarines"}, "Unknown kind of ships"),
+        ({"shipping": "all", "shipping_alpha": 1.5}, "shipping_alpha"),
+        ({"air_routes": "airline:"}, "Name an airline"),
         ({"indicator": "fertility", "indicator_year": 1900}, "Indicator years run from 1960"),
         ({"indicator": "fertility", "indicator_alpha": 2.0}, "indicator_alpha"),
         ({"earthquakes": 4.0}, "earthquakes must be a magnitude"),
@@ -2011,6 +2033,61 @@ class TestGenerateOrthographicMapIntegration:
         credit.assert_called_once()
         assert "Industry: Climate TRACE" in attribution.call_args.args[1]
 
+    def test_shipping_drawn_with_key_and_credit(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "add_shipping_overlay") as overlay, \
+                mock.patch.object(ortho, "add_shipping_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(10, 10), shipping="oil and gas",
+                                            shipping_alpha=0.5)
+        assert overlay.call_count == 2 and overlay.call_args.args[1] == "oil-gas"
+        assert overlay.call_args.kwargs["alpha"] == 0.5
+        assert key.call_args.args[1] == "oil-gas" and key.call_args.kwargs["alpha"] == 0.5
+        assert ortho.SHIPPING_ATTRIBUTION in attribution.call_args.args[1]
+
+    def test_shipping_unavailable_draws_nothing(self, tmp_path, caplog):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "add_shipping_overlay", side_effect=ortho.ShippingDataError("offline")), \
+                mock.patch.object(ortho, "add_shipping_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), shipping="commercial")
+        assert os.path.exists(result) and "Skipping the ship traffic: offline" in caplog.text
+        key.assert_not_called()
+        assert ortho.SHIPPING_ATTRIBUTION not in attribution.call_args.args[1]
+
+    def test_air_routes_drawn_with_key_and_credit(self, tmp_path):
+        flights = mock.Mock()
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_air_routes", return_value=flights) as loaded, \
+                mock.patch.object(ortho, "draw_air_routes", side_effect=[7, 9]) as draw, \
+                mock.patch.object(ortho, "add_air_routes_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(10, 10), air_routes="LHR")
+        assert loaded.call_args.args[0] == ortho.resolve_air_routes("LHR")
+        assert draw.call_count == 2
+        assert key.call_args.args[1:] == (flights, 9)
+        assert ortho.AIR_ROUTES_ATTRIBUTION in attribution.call_args.args[1]
+
+    def test_unknown_airport_stops_before_tiles(self, tmp_path):
+        with mock.patch.object(ortho, "load_air_routes", side_effect=ValueError("No airport 'ZZZ'")), \
+                mock.patch.object(ortho.GeoAxes, "add_image") as tiles:
+            with pytest.raises(ValueError, match="No airport"):
+                ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                output_dir=str(tmp_path), air_routes="ZZZ")
+        tiles.assert_not_called()
+
+    def test_air_routes_unavailable_draws_nothing(self, tmp_path, caplog):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_air_routes", side_effect=ortho.AirRoutesDataError("offline")), \
+                mock.patch.object(ortho, "draw_air_routes") as draw:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), air_routes="all")
+        assert os.path.exists(result) and "Skipping the air routes: offline" in caplog.text
+        draw.assert_not_called()
+
     def test_industry_unavailable_draws_nothing(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
                 mock.patch.object(ortho, "load_plants", side_effect=ortho.IndustryDataError("offline")), \
@@ -2134,6 +2211,8 @@ class TestGenerateOrthographicMapIntegration:
         ("cities:1975", {"cities": 1975}),
         ("indicator:Life-Expectancy, cities", {"indicator": "life-expectancy", "cities": 2025}),
         ("industry:petrochemical", {"industry": "petrochemical"}),
+        ("shipping, air-routes", {"shipping": "commercial", "air_routes": "all"}),
+        ("shipping:Fishing, air-routes:lhr+jfk", {"shipping": "fishing", "air_routes": "lhr+jfk"}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected

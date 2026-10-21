@@ -1,0 +1,7 @@
+# The airline network as great-circle arcs, wider and stronger the more airlines fly a route
+# (OpenFlights, 2014): Europe's mesh, the North Atlantic and the Gulf hubs.
+lat = 40
+lon = 10
+provider = "osm_plain"
+air_routes = "all"
+output = "orthographic_map_europe_osm_plain_z3_air_routes_all.png"

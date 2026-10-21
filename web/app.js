@@ -191,6 +191,11 @@ function buildRequest() {
     req.indicator_alpha = changed("indicator-alpha", options.alpha.indicator);
   }
   if ($("industry").value.trim()) req.industry = $("industry").value.trim();
+  if ($("shipping").value) {
+    req.shipping = $("shipping").value;
+    req.shipping_alpha = changed("shipping-alpha", options.alpha.shipping);
+  }
+  if ($("air-routes").value.trim()) req.air_routes = $("air-routes").value.trim();
   if ($("cities-year").value) {
     req.cities = Number($("cities-year").value);
     if ($("cities-min").value) req.cities_min = Number($("cities-min").value);
@@ -360,6 +365,9 @@ function fillForm(req) {
   set("iucn", req.iucn);
   set("iucn-alpha", req.iucn_alpha);
   set("industry", req.industry);
+  if (req.shipping) pick("shipping", req.shipping, "kind of ships");
+  set("shipping-alpha", req.shipping_alpha);
+  set("air-routes", req.air_routes);
   set("indicator", req.indicator);
   set("indicator-year", req.indicator_year);
   set("indicator-alpha", req.indicator_alpha);
@@ -713,7 +721,7 @@ async function init() {
   $("vegetation-alpha").value = options.alpha.vegetation;
   $("biome-alpha").value = options.alpha.biome;
   $("borders-alpha").value = options.alpha.borders;
-  for (const name of ["basins", "permafrost", "population", "livestock", "malaria", "iucn", "indicator"]) {
+  for (const name of ["basins", "permafrost", "population", "livestock", "malaria", "iucn", "indicator", "shipping"]) {
     $(`${name}-alpha`).value = options.alpha[name];
   }
   [$("malaria-year").min, $("malaria-year").max] = options.malaria_years;
@@ -725,6 +733,7 @@ async function init() {
   $("cyclones-since").value = options.first_cyclone_year;
   $("population").append(...options.population_years.slice().reverse().map((y) => option(String(y))));
   $("industry-list").append(...Object.entries(options.industry).map(([name, about]) => option(name, about)));
+  $("shipping").append(...Object.entries(options.shipping).map(([name, label]) => option(name, label)));
   $("indicator-list").append(...Object.entries(options.indicators).map(([name, title]) => option(name, title)));
   $("cities-year").append(...options.cities_years.slice().reverse().map((y) => option(String(y),
     y === 2030 ? "2030 (projected)" : String(y))));

@@ -74,6 +74,14 @@ from indicators import (
     EUROSTAT_PRESETS, PRESETS as INDICATOR_PRESETS, IndicatorDataError, add_indicator_legend, class_breaks,
     draw_indicator, indicator_attribution, load_areas, load_values, resolve_indicator, resolve_indicator_year,
 )
+from air_routes import (
+    AirRoutesDataError, AIR_ROUTES_ATTRIBUTION, add_air_routes_legend, draw_air_routes, load_air_routes,
+    resolve_air_routes,
+)
+from shipping import (
+    KINDS as SHIP_KINDS, SHIPPING_ATTRIBUTION, ShippingDataError, add_shipping_legend, add_shipping_overlay,
+    resolve_ship_kind,
+)
 from industry import (
     GROUPS as INDUSTRY_GROUPS, SECTORS as INDUSTRY_SECTORS, IndustryDataError, add_industry_legend, draw_industry,
     industry_attribution, load_plants, resolve_sectors,
@@ -636,7 +644,7 @@ def validate_render_options(
     biome_alpha: float = 0.6, borders_alpha: float = 0.55, basins_alpha: float = 0.5,
     permafrost_alpha: float = 0.7, population_alpha: float = 0.7, livestock_alpha: float = 0.7,
     earthquakes: float | None = None, cyclones: int | None = None, malaria_alpha: float = 0.75,
-    iucn_alpha: float = 0.45, indicator_alpha: float = 0.75,
+    iucn_alpha: float = 0.45, indicator_alpha: float = 0.75, shipping_alpha: float = 0.85,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -680,7 +688,7 @@ def validate_render_options(
     for name, value in (("basins_alpha", basins_alpha), ("permafrost_alpha", permafrost_alpha),
                         ("population_alpha", population_alpha), ("livestock_alpha", livestock_alpha),
                         ("malaria_alpha", malaria_alpha), ("iucn_alpha", iucn_alpha),
-                        ("indicator_alpha", indicator_alpha)):
+                        ("indicator_alpha", indicator_alpha), ("shipping_alpha", shipping_alpha)):
         if not 0.0 <= value <= 1.0:
             raise ValueError(f"{name} must be between 0 and 1, got {value}")
     if earthquakes is not None and not MIN_MAGNITUDE <= earthquakes <= MAX_MAGNITUDE:
@@ -784,6 +792,9 @@ def generate_orthographic_map(
     indicator_year: int | None = None,
     indicator_alpha: float = 0.75,
     industry: str | None = None,
+    shipping: str | None = None,
+    shipping_alpha: float = 0.85,
+    air_routes: str | None = None,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -1035,6 +1046,16 @@ def generate_orthographic_map(
         emissions, the largest named: comma-separated sectors
         (``"refineries,steel"``, see :data:`industry.SECTORS`) or groups
         (``"petrochemical"``, ``"heavy"``, ``"mining"``, ``"all"``).
+    shipping : str, optional
+        Colour the sea by how busy it is with ships (World Bank and IMF,
+        from AIS 2015-2021): ``"commercial"``, ``"all"``, ``"fishing"``,
+        ``"passenger"``, ``"oil-gas"`` or ``"leisure"`` (see
+        :data:`shipping.KINDS`); *shipping_alpha* sets its opacity.
+    air_routes : str, optional
+        Draw air routes (OpenFlights, 2014) as great-circle arcs, wider for
+        more airlines: ``"all"`` for the whole network, or airports by code
+        or city (``"LHR"``, ``"London"``) and airlines (``"airline:BA"``),
+        comma-separated.
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -1054,7 +1075,7 @@ def generate_orthographic_map(
         lat=lat, beside=beside, biome_alpha=biome_alpha, borders_alpha=borders_alpha, basins_alpha=basins_alpha,
         permafrost_alpha=permafrost_alpha, population_alpha=population_alpha, livestock_alpha=livestock_alpha,
         earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha, iucn_alpha=iucn_alpha,
-        indicator_alpha=indicator_alpha,
+        indicator_alpha=indicator_alpha, shipping_alpha=shipping_alpha,
     )
     population_year = resolve_population_year(population) if population is not None else None
     livestock_species = resolve_species(livestock) if livestock else None
@@ -1077,6 +1098,13 @@ def generate_orthographic_map(
             logger.warning("Skipping the IUCN range: %s", e)
     cities_year = resolve_cities_year(cities) if cities is not None else None
     industry_sectors = resolve_sectors(industry) if industry else ()
+    ship_kind = resolve_ship_kind(shipping) if shipping else None
+    flights = None
+    if air_routes:
+        try:
+            flights = load_air_routes(resolve_air_routes(air_routes))
+        except AirRoutesDataError as e:
+            logger.warning("Skipping the air routes: %s", e)
     statistic = None
     if indicator:
         stat_year = resolve_indicator_year(indicator_year)
@@ -1517,6 +1545,15 @@ def generate_orthographic_map(
             stat_breaks = class_breaks(list(statistic.values.values()), bool(statistic.indicator.log))
             stat_counts = [draw_indicator(ax, statistic, nations, stat_breaks, alpha=indicator_alpha)
                            for ax in axes][0]
+    ships_drawn = False
+    if ship_kind is not None:
+        try:
+            for ax in axes:
+                add_shipping_overlay(ax, ship_kind, alpha=shipping_alpha, regrid_shape=regrid_shape)
+        except (ShippingDataError, OSError) as e:
+            logger.warning("Skipping the ship traffic: %s", e)
+        else:
+            ships_drawn = True
     factories: list = []
     factory_counts: dict[str, int] = {}
     for sector in industry_sectors:
@@ -1731,6 +1768,9 @@ def generate_orthographic_map(
                     transform=ccrs.PlateCarree(), zorder=10)
 
     # Step 7c: Route overlays
+    flights_shown = 0
+    if flights is not None:
+        flights_shown = max(draw_air_routes(ax, flights) for ax in axes)
     if routes:
         for ax in axes:
             draw_routes(ax, routes)
@@ -1789,6 +1829,10 @@ def generate_orthographic_map(
         keys.append(add_cities_legend(near, towns, town_floor, towns_shown, x=key_x))
     if factories:
         keys.append(add_industry_legend(near, factories, factory_counts, x=key_x))
+    if ships_drawn and ship_kind is not None:
+        keys.append(add_shipping_legend(near, ship_kind, alpha=shipping_alpha, x=key_x))
+    if flights is not None:
+        keys.append(add_air_routes_legend(near, flights, flights_shown, x=key_x))
     if sightings is not None:
         keys.append(add_occurrences_legend(near, sightings, x=key_x))
     if crop_layer is not None:
@@ -1853,6 +1897,10 @@ def generate_orthographic_map(
         credits.append(CITIES_ATTRIBUTION)
     if factories:
         credits.append(industry_attribution(factories))
+    if ships_drawn:
+        credits.append(SHIPPING_ATTRIBUTION)
+    if flights is not None:
+        credits.append(AIR_ROUTES_ATTRIBUTION)
     if sightings is not None:
         credits.append(gbif_attribution(sightings))
     if crop_layer is not None:
@@ -2289,6 +2337,7 @@ EXTRA_LAYERS: dict[str, tuple[str, Any]] = {
     "cyclones": ("cyclones", FIRST_CYCLONE_YEAR), "time-zones": ("time_zones", True),
     "permafrost": ("permafrost", True), "population": ("population", LATEST_POPULATION_YEAR),
     "malaria": ("malaria", "pf"), "aedes": ("aedes", "both"), "cities": ("cities", 2025),
+    "shipping": ("shipping", "commercial"), "air-routes": ("air_routes", "all"),
 }
 
 
@@ -2327,6 +2376,12 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             sectors = item.split(":", 1)[1].strip()
             resolve_sectors(sectors)
             chosen["industry"] = sectors
+        elif item.startswith("shipping:"):
+            chosen["shipping"] = resolve_ship_kind(item.split(":", 1)[1])
+        elif item.startswith("air-routes:"):
+            spec = item.split(":", 1)[1].strip()
+            resolve_air_routes(spec)
+            chosen["air_routes"] = spec or "all"
         elif item.startswith("cities:"):
             chosen["cities"] = resolve_cities_year(item.split(":", 1)[1])
         elif item.startswith("aedes:"):
@@ -2338,7 +2393,8 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen[key] = value
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
-                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, indicator:NAME, industry:SECTORS.")
+                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, indicator:NAME, industry:SECTORS, "
+                             "shipping:KIND, air-routes:AIRPORTS.")
     return chosen
 
 
@@ -2346,7 +2402,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, indicator:life-expectancy, industry:petrochemical …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, indicator:life-expectancy, industry:petrochemical, shipping:fishing, air-routes:LHR …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -2846,6 +2902,18 @@ def build_cli_parser() -> argparse.ArgumentParser:
                              "named: comma-separated sectors (" + ", ".join(INDUSTRY_SECTORS) + ") or groups ("
                              + ", ".join(INDUSTRY_GROUPS) + "). Each sector is downloaded once.")
 
+    traffic = parser.add_argument_group("Shipping and air routes (World Bank and IMF, OpenFlights)")
+    traffic.add_argument("--shipping", nargs="?", const="commercial", metavar="KIND",
+                         help="Colour the sea by how busy it is with ships, from their AIS positions in 2015-2021: "
+                              + ", ".join(SHIP_KINDS) + " (default: commercial). Each kind is downloaded once "
+                              "(20-510 MB) and read into a cache of up to ~85 MB.")
+    traffic.add_argument("--shipping-alpha", type=float, default=0.85, metavar="ALPHA",
+                         help="Opacity of the ship traffic (0-1, default: 0.85).")
+    traffic.add_argument("--air-routes", metavar="AIRPORTS",
+                         help="Draw air routes as great-circle arcs, wider the more airlines fly them (OpenFlights, "
+                              "2014): 'all' for the whole network, or comma-separated airports by code or city "
+                              "(LHR, EGLL, London) and airlines (airline:BA, airline:Lufthansa).")
+
     winds = parser.add_argument_group("Winds (NCEP/NCAR Reanalysis)")
     winds.add_argument(
         "--wind",
@@ -3333,6 +3401,12 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         logger.warning("--indicator-year is ignored because no --indicator was given.")
     if args.industry:
         resolve_sectors(args.industry)
+    if args.shipping:
+        resolve_ship_kind(args.shipping)
+    elif args.shipping_alpha != 0.85:
+        logger.warning("--shipping-alpha is ignored because no --shipping was given.")
+    if args.air_routes:
+        resolve_air_routes(args.air_routes)
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
@@ -3418,6 +3492,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             permafrost_alpha=args.permafrost_alpha, population_alpha=args.population_alpha,
             livestock_alpha=args.livestock_alpha, earthquakes=args.earthquakes, cyclones=args.cyclones,
             malaria_alpha=args.malaria_alpha, iucn_alpha=args.iucn_alpha, indicator_alpha=args.indicator_alpha,
+            shipping_alpha=args.shipping_alpha,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -3496,6 +3571,9 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         indicator_year=args.indicator_year,
         indicator_alpha=args.indicator_alpha,
         industry=args.industry,
+        shipping=args.shipping,
+        shipping_alpha=args.shipping_alpha,
+        air_routes=args.air_routes,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,

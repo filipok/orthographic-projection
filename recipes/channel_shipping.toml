@@ -1,0 +1,8 @@
+# The English Channel and the southern North Sea, the world's busiest strait: commercial ships keep to the
+# lanes of its traffic separation schemes, to Rotterdam, Antwerp, Hamburg and the Thames (World Bank and IMF).
+lat = 51.5
+lon = 2
+provider = "osm_plain"
+radius = 600
+shipping = "commercial"
+output = "orthographic_map_english_channel_osm_plain_r600km_shipping_commercial.png"

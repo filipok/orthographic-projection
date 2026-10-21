@@ -152,6 +152,22 @@ The main script is [ortho.py](ortho.py).
 *Right: Heavy industry from Rotterdam to the Ruhr (plain OSM, 300 km radius, Climate TRACE).*
 
 <p align="center">
+  <img src="sample_world_shipping.png" alt="Globe centred on the Arabian Sea with the sea coloured by commercial ship traffic, blue for occasional to orange for the busiest: lanes from Suez and the Gulf past Sri Lanka to the Malacca Strait, fans of lanes across the Indian Ocean to the Cape and Australia, and the Mediterranean, Black Sea and China seas thick with ships" width="48%">
+  <img src="sample_channel_shipping.png" alt="A disc 600 km around the Strait of Dover with commercial ship traffic: orange lanes of the traffic separation schemes through the Channel and up the North Sea to Rotterdam and the German Bight, ferries across the Irish Sea, and lighter traffic between" width="48%">
+</p>
+
+*Left: Commercial ship traffic from Suez to the Malacca Strait (plain OSM, zoom 3, World Bank and IMF).*<br>
+*Right: The lanes of the Channel and the North Sea (plain OSM, 600 km radius, World Bank and IMF).*
+
+<p align="center">
+  <img src="sample_world_air_routes.png" alt="Globe centred on the Mediterranean with the airline network as thin magenta great-circle arcs, wider the more airlines fly them: a dense mesh over Europe, a broad band across the North Atlantic to New York and Toronto, and hubs at Moscow, Istanbul, Dubai and Doha, the busiest airports named" width="48%">
+  <img src="sample_heathrow_air_routes.png" alt="Globe centred on the North Atlantic with every route out of London Heathrow as a great circle: over Greenland and Canada to North America, south over Africa, and north-east over Scandinavia and Siberia to Asia, the destinations named" width="48%">
+</p>
+
+*Left: The airline network, wider for routes more airlines fly (plain OSM, zoom 3, OpenFlights 2014).*<br>
+*Right: Every route out of London Heathrow (plain OSM, zoom 3, OpenFlights 2014).*
+
+<p align="center">
   <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
 </p>
 
@@ -217,6 +233,8 @@ The main script is [ortho.py](ortho.py).
 - Optional big cities: built-up urban centres (metropolitan areas) as their real shape, the largest named, for any five-year step from 1975 to 2030
 - Optional statistics: each country shaded by a World Bank figure (GDP, life expectancy, CO₂ per person, internet use and 1,400 more), or each European region by a Eurostat one (unemployment, GDP, population density by NUTS 2 or 3 region), for any year
 - Optional industry: refineries, petrochemical and chemical plants, steelworks, aluminium, cement, glass, paper, mines and fossil-fuel power stations worldwide, as circles sized by their emissions, the largest named
+- Optional shipping lanes: the sea coloured by how busy it is with commercial ships, fishing boats, ferries, oil and gas vessels or leisure craft, from their AIS positions in 2015–2021
+- Optional air routes: the airline network, or the routes from chosen airports or of chosen airlines, as great-circle arcs wider for routes more airlines fly
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
@@ -355,7 +373,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `air-routes`, `air-routes:LHR+JFK` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -453,6 +471,12 @@ python ortho.py --lat 50 --lon 12 --radius 2200 --indicator eurostat:unemploymen
 # Industry: refineries, crackers, steelworks … sized by emissions (see "Industry")
 python ortho.py --lat 30 --lon 60 --industry petrochemical
 python ortho.py --lat 51.3 --lon 5.5 --radius 300 --industry heavy
+
+# Shipping lanes and air routes (see "Shipping and Air Routes")
+python ortho.py --lat 20 --lon 70 --shipping
+python ortho.py --lat 51.5 --lon 2 --radius 600 --shipping
+python ortho.py --lat 40 --lon 10 --air-routes all
+python ortho.py --lat 45 --lon -20 --air-routes LHR
 
 # The states of a year or a day: 1500, the Roman world in 117, Africa on 1 July 1914 (see "Historical Borders")
 python ortho.py --city Lisbon --borders 1500
@@ -578,6 +602,9 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--indicator-year YEAR` | Year of the figures; an area without one that year shows its latest from the nine years before | each area's latest |
 | `--indicator-alpha ALPHA` | Opacity of the statistics (0–1) | `0.75` |
 | `--industry SECTORS` | Draw industrial plants as circles sized by emissions, the largest named: comma-separated sectors (`refineries`, `petrochemicals`, `steel`, `cement`, `power` …) or groups (`petrochemical`, `heavy`, `mining`, `all`) | — |
+| `--shipping [KIND]` | Colour the sea by how busy it is with ships (AIS 2015–2021): `commercial` (default), `all`, `fishing`, `passenger`, `oil-gas` or `leisure` | — |
+| `--shipping-alpha ALPHA` | Opacity of the ship traffic (0–1) | `0.85` |
+| `--air-routes AIRPORTS` | Draw air routes as great-circle arcs: `all`, or airports by code or city (`LHR`, `EGLL`, `London`) and airlines (`airline:BA`), comma-separated | — |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
@@ -596,7 +623,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
 Historical borders, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
-Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Winds, Polar ice, Crops, Routes and areas, Recipes.
+Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Shipping and air routes (World Bank and IMF, OpenFlights), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -1658,6 +1685,59 @@ python ortho.py --lat -15 --lon 25 --industry mining
 The samples above are `python ortho.py --config recipes/world_petrochemical.toml`
 and `python ortho.py --config recipes/rhine_ruhr_heavy_industry.toml`.
 
+## Shipping and Air Routes
+
+`--shipping` colours the sea by how busy it is with ships, from the
+[Global Shipping Traffic Density](https://datacatalog.worldbank.org/search/dataset/0037580)
+grids of the World Bank and the IMF: every ship's hourly AIS position from
+January 2015 to February 2021, counted in cells of ~500 m. The lanes stand out
+from the empty ocean, down to the traffic separation schemes of a strait.
+
+| Kind | Ships | Download |
+|---|---|---|
+| `commercial` (default) | Cargo ships and tankers | 460 MB |
+| `all` | Every ship | 510 MB |
+| `fishing` | Fishing boats | 97 MB |
+| `passenger` | Passenger ships and ferries | 22 MB |
+| `oil-gas` | Oil and gas vessels | 21 MB |
+| `leisure` | Leisure craft | 28 MB |
+
+Each kind is downloaded once into `~/.cache/ortho_tiles/shipping/` and read
+through once (about a minute, without unpacking its 9.8 GB grid) into 0.01°
+tiles for close maps and a 0.04° grid for whole globes, ~85 MB in all; the zip
+is then deleted. The colours rank the traffic on the map, from occasional (the
+quieter half of the sea with ships is left clear) to the busiest lanes, as the
+counts differ a hundredfold between seas: European and Chinese waters, seen by
+many shore stations, are crowded everywhere. `--shipping-alpha` sets the
+opacity.
+
+`--air-routes` draws the airline network from
+[OpenFlights](https://openflights.org/data): 67,663 routes between 3,321
+airports on 548 airlines, as of June 2014 (OpenFlights' last update, so newer
+routes are missing and some ended long ago). Each airport pair is one
+great-circle arc, wider and stronger the more airlines fly it; routes only a
+codeshare partner sells are left out. Give `all` for the whole network, or
+airports by IATA code (`LHR`), ICAO code (`EGLL`) or city (`London`, all its
+airports) to draw only the routes from them, each in its own colour, and
+`airline:BA` (IATA or ICAO code, or the full name) for an airline's routes;
+airports and airlines together give that airline's routes from those
+airports. The airports are dotted by how many places they link to and the
+busiest named. The three files (~4 MB) are downloaded once.
+
+```powershell
+python ortho.py --lat 20 --lon 70 --shipping
+python ortho.py --lat 51.5 --lon 2 --radius 600 --shipping
+python ortho.py --lat 60 --lon 0 --radius 1500 --shipping fishing
+python ortho.py --lat 40 --lon 10 --air-routes all
+python ortho.py --lat 45 --lon -20 --air-routes LHR
+python ortho.py --lat 30 --lon 60 --air-routes "DXB, DOH, IST"
+python ortho.py --lat 50 --lon 10 --air-routes airline:Lufthansa
+```
+
+The samples above are `python ortho.py --config recipes/world_shipping.toml`,
+`recipes/channel_shipping.toml`, `recipes/world_air_routes.toml` and
+`recipes/heathrow_air_routes.toml`.
+
 ## Polar Ice
 
 `--ice` (`ice=True` in the API, or the interactive prompt) draws the ice at both
@@ -2155,6 +2235,8 @@ to the attribution block.
 | Gridded Livestock of the World v4, 2015, 5 arc-minutes | Gilbert, M. et al., FAO | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Harvard Dataverse, e.g. cattle [doi:10.7910/DVN/LHBICE](https://doi.org/10.7910/DVN/LHBICE) |
 | Malaria Atlas Project, 2026 release: *P. falciparum* (PfPR2–10) and *P. vivax* parasite rates, 2000–2025, 5 km, used at ~10 km | Malaria Atlas Project, The Kids Research Institute Australia | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) ([open access policy](https://malariaatlas.org/open-access-policy/)) | [malariaatlas.org](https://malariaatlas.org/), WCS at data.malariaatlas.org |
 | Global compendium of *Aedes aegypti* and *Ae. albopictus* occurrence, 1958–2014 | Kraemer, M. U. G. et al. (2015) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2015.35](https://doi.org/10.1038/sdata.2015.35), data [doi:10.5061/dryad.47v3c](https://doi.org/10.5061/dryad.47v3c), read from GBIF |
+| Global Shipping Traffic Density: hourly AIS positions of ships, January 2015 – February 2021, 0.005° | World Bank, from the IMF's World Seaborne Trade Monitoring System | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [datacatalog.worldbank.org](https://datacatalog.worldbank.org/search/dataset/0037580) |
+| OpenFlights airport, airline and route databases (routes as of June 2014) | OpenFlights.org | [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) | [openflights.org/data](https://openflights.org/data), [GitHub](https://github.com/jpatokal/openflights) |
 | Climate TRACE emissions inventory: individual plants with location, type and yearly emissions | Climate TRACE coalition | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) ([terms](https://climatetrace.org/terms)) | [climatetrace.org](https://climatetrace.org/data), [API](https://api.climatetrace.org/v6/swagger/index.html) |
 | World Development Indicators, read from the World Bank's API | World Bank | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [data.worldbank.org/indicator](https://data.worldbank.org/indicator), [API](https://datahelpdesk.worldbank.org/knowledgebase/articles/889392) |
 | Natural Earth 1:50m countries (for `--indicator`) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
@@ -2216,6 +2298,8 @@ the globe:
 | `--species` | *Species records: GBIF.org occurrence data, retrieved YYYY-MM-DD* |
 | `--cities` | *Urban centres: GHS-UCDB R2024A (European Commission, JRC), CC BY 4.0* |
 | `--industry` | *Industry: Climate TRACE (climatetrace.org), CC BY 4.0, retrieved YYYY-MM-DD* |
+| `--shipping` | *Shipping: Global Shipping Traffic Density (World Bank, IMF, AIS 2015-2021), CC BY 4.0* |
+| `--air-routes` | *Air routes: OpenFlights (openflights.org), June 2014, ODbL* |
 | `--indicator` | *Statistics: World Bank, World Development Indicators (CODE), CC BY 4.0, retrieved YYYY-MM-DD; countries: Natural Earth*, or *Statistics: Eurostat (DATASET), retrieved YYYY-MM-DD; regions: © EuroGeographics for the administrative boundaries* |
 | `--iucn` | *Range: IUCN (YYYY), The IUCN Red List of Threatened Species, spatial data of YYYY-MM-DD*, or for birds *Range: BirdLife International and Handbook of the Birds of the World (YYYY), Bird species distribution maps of the world, version YYYY.N* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
@@ -2294,6 +2378,8 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [cities.py](cities.py): big cities, the GHSL urban centres with their names, outlines and populations from 1975 to 2030
 - [indicators.py](indicators.py): statistics by country (World Bank) or European region (Eurostat), in classes, with the country and NUTS region shapes
 - [industry.py](industry.py): industrial plants worldwide from Climate TRACE, as circles sized by emissions
+- [shipping.py](shipping.py): ship traffic from the World Bank and IMF's AIS density grids, read once into cached tiles
+- [air_routes.py](air_routes.py): the OpenFlights airline network as great-circle arcs
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)

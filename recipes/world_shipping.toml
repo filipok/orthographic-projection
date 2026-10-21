@@ -1,0 +1,7 @@
+# Commercial shipping from the Mediterranean to the Pacific, from ships' AIS positions in 2015-2021
+# (World Bank and IMF): Suez, the Gulf, the Cape and the Malacca Strait, ranked from occasional to busiest.
+lat = 20
+lon = 70
+provider = "osm_plain"
+shipping = "commercial"
+output = "orthographic_map_indian_ocean_osm_plain_z3_shipping_commercial.png"

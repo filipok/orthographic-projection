@@ -1,0 +1,7 @@
+# Every route out of London Heathrow (OpenFlights, 2014), as great circles: over Greenland to the
+# Americas' west coast, over Siberia to East Asia.
+lat = 45
+lon = -20
+provider = "osm_plain"
+air_routes = "LHR"
+output = "orthographic_map_heathrow_osm_plain_z3_air_routes_lhr.png"
