@@ -300,8 +300,16 @@ class TestCreateTileSource:
         np.testing.assert_array_equal(first, second)
         assert (tmp_path / "nasa" / "1_1_2.npy").exists()
 
+    def test_night_lights_are_black_marble_in_their_own_folder(self, tmp_path):
+        src = ortho.create_tile_source("nasa_night", cache_dir=str(tmp_path)).tile_source
+        assert isinstance(src, ortho.CachedNASANight)
+        assert src._cache_dir == tmp_path / "nasa_night" and src.max_age_days == 365
+        assert src._image_url((4, 2, 3)) == ("https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/"
+                                             "default/2016-01-01/GoogleMapsCompatible_Level8/3/2/4.png")
+        assert ortho.max_zoom(100, 0, "nasa_night") == 8 and ortho.zoom_for_radius(100, 0, "nasa_night") == 8
+
     def test_invalid_raises(self):
-        with pytest.raises(ValueError, match="Unsupported.*nasa"):
+        with pytest.raises(ValueError, match="Unsupported.*nasa_night"):
             ortho.create_tile_source("bing")
 
 
@@ -1035,7 +1043,7 @@ class TestRunCLIValidation:
             malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None, species=None, species_years=None,
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
             indicator=None, indicator_year=None, indicator_alpha=0.75, industry=None,
-            shipping=None, shipping_alpha=0.85, air_routes=None,
+            shipping=None, shipping_alpha=0.85, ports=None, air_routes=None,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1511,6 +1519,21 @@ class TestRunCLIValidation:
             ortho.run_cli(args)
         assert "--shipping-alpha is ignored" in caplog.text
 
+    def test_ports_passed_to_renderer(self):
+        args = self._make_args(city="paris", ports="tankers")
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["ports"] == "tankers"
+
+    def test_cli_parses_ports(self):
+        assert ortho.build_cli_parser().parse_args(["--city", "paris", "--ports"]).ports == "all"
+        assert ortho.build_cli_parser().parse_args(["--ports", "container"]).ports == "container"
+        assert ortho.build_cli_parser().parse_args(["--city", "paris"]).ports is None
+
+    def test_cli_parses_night_lights(self):
+        assert ortho.build_cli_parser().parse_args(["--provider", "nasa_night"]).provider == "nasa_night"
+
     def test_cli_parses_shipping_and_air_routes(self):
         args = ortho.build_cli_parser().parse_args(["--city", "paris", "--shipping", "--air-routes", "all"])
         assert (args.shipping, args.shipping_alpha, args.air_routes) == ("commercial", 0.85, "all")
@@ -1552,6 +1575,7 @@ class TestRunCLIValidation:
         ({"indicator": "happiness"}, "Unknown indicator"),
         ({"industry": "smelting"}, "Unknown industry"),
         ({"shipping": "submarines"}, "Unknown kind of ships"),
+        ({"ports": "yachts"}, "Unknown kind of port traffic"),
         ({"shipping": "all", "shipping_alpha": 1.5}, "shipping_alpha"),
         ({"air_routes": "airline:"}, "Name an airline"),
         ({"indicator": "fertility", "indicator_year": 1900}, "Indicator years run from 1960"),
@@ -1732,6 +1756,10 @@ class TestGenerateOrthographicMapIntegration:
     def test_osm_is_credited(self, tmp_path):
         credits = self._render_credits(tmp_path, tile_provider="osm")
         assert credits == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
+    def test_night_lights_credited(self, tmp_path):
+        credits = self._render_credits(tmp_path, tile_provider="nasa_night")
+        assert credits == ["Imagery: NASA Black Marble 2016 (VIIRS night lights), via NASA GIBS (ESDIS)"]
 
     def test_nasa_is_credited(self, tmp_path):
         credits = self._render_credits(tmp_path, tile_provider="nasa")
@@ -2057,6 +2085,51 @@ class TestGenerateOrthographicMapIntegration:
         key.assert_not_called()
         assert ortho.SHIPPING_ATTRIBUTION not in attribution.call_args.args[1]
 
+    def test_ports_drawn_with_key_and_credit(self, tmp_path):
+        harbours = mock.Mock()
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_ports", return_value=harbours) as loaded, \
+                mock.patch.object(ortho, "draw_ports", side_effect=[4, 6]) as draw, \
+                mock.patch.object(ortho, "add_ports_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(10, 10), ports="Containers")
+        assert loaded.call_args.args[0] == "container"
+        assert draw.call_count == 2
+        assert key.call_args.args[1:] == (harbours, 6)
+        assert ortho.PORTS_ATTRIBUTION in attribution.call_args.args[1]
+
+    def test_ports_unavailable_draws_nothing(self, tmp_path, caplog):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_ports", side_effect=ortho.PortsDataError("offline")), \
+                mock.patch.object(ortho, "draw_ports") as draw, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), ports="all")
+        assert os.path.exists(result) and "Skipping the ports: offline" in caplog.text
+        draw.assert_not_called()
+        assert ortho.PORTS_ATTRIBUTION not in attribution.call_args.args[1]
+
+    def test_cities_named_before_ports(self, tmp_path):
+        order = []
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_ports", return_value=mock.Mock()), \
+                mock.patch.object(ortho, "load_cities", return_value=mock.Mock()), \
+                mock.patch.object(ortho, "draw_ports", side_effect=lambda *a: order.append("ports") or 0), \
+                mock.patch.object(ortho, "draw_cities", side_effect=lambda *a: order.append("cities") or []), \
+                mock.patch.object(ortho, "add_ports_legend"), mock.patch.object(ortho, "add_cities_legend"):
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), ports="all", cities=2025)
+        assert order == ["cities", "ports"]
+
+    def test_night_lights_fall_back_on_a_dark_globe(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho.GeoAxes, "add_feature") as features:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), tile_provider="nasa_night")
+        colours = [c.kwargs.get("facecolor") for c in features.call_args_list[:2]]
+        assert colours == list(ortho.FALLBACK_COLOURS["nasa_night"])
+
     def test_air_routes_drawn_with_key_and_credit(self, tmp_path):
         flights = mock.Mock()
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
@@ -2213,6 +2286,8 @@ class TestGenerateOrthographicMapIntegration:
         ("industry:petrochemical", {"industry": "petrochemical"}),
         ("shipping, air-routes", {"shipping": "commercial", "air_routes": "all"}),
         ("shipping:Fishing, air-routes:lhr+jfk", {"shipping": "fishing", "air_routes": "lhr+jfk"}),
+        ("ports, shipping", {"ports": "all", "shipping": "commercial"}),
+        ("ports:Tankers", {"ports": "tanker"}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected

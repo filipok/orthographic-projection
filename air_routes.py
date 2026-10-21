@@ -34,7 +34,7 @@ from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
 
 from biomes import on_globe
-from cities import LabelSpace
+from cities import label_space
 
 logger = logging.getLogger(__name__)
 
@@ -365,7 +365,7 @@ def _draw_airports(ax: GeoAxes, routes: AirRoutes, scale: float, labels: bool, l
                transform=ccrs.PlateCarree(), zorder=7.7)
     if not labels:
         return
-    space = LabelSpace(ax)
+    space = label_space(ax)
     named = 0
     for i, size in zip(seen, sizes):
         if named >= limit:

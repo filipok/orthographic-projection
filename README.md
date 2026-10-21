@@ -168,6 +168,20 @@ The main script is [ortho.py](ortho.py).
 *Right: Every route out of London Heathrow (plain OSM, zoom 3, OpenFlights 2014).*
 
 <p align="center">
+  <img src="sample_europe_night.png" alt="Globe centred on the Balkans at night, NASA's Black Marble: Europe's cities as a web of lights from the Low Countries and the Ruhr to Italy and Moscow, the Nile valley a bright thread across the dark desert, the Gulf and India lit up, the seas and the Sahara black" width="48%">
+  <img src="sample_romania_night.png" alt="A disc 500 km around Romania at night, its cities filled in red and named with their diacritics, from Timișoara and Cluj-Napoca to Iași, Brașov, Bucharest, Galați and Constanța, and the ports of the Danube and the Black Sea as navy dots sized by the ships calling, Constanța the largest" width="48%">
+</p>
+
+*Left: Europe at night (NASA Black Marble 2016, zoom 4).*<br>
+*Right: Romania's cities and ports at night (Black Marble, 500 km radius, GHSL cities, IMF PortWatch).*
+
+<p align="center">
+  <img src="sample_east_asia_ports.png" alt="Globe centred on the South China Sea with the container ports as navy dots sized by the container ships calling a year, Shanghai, Singapore, Busan and Hong Kong the largest, over the commercial shipping lanes from the Strait of Malacca to Japan and across the Pacific" width="48%">
+</p>
+
+*The container ports of East Asia over the shipping lanes (plain OSM, zoom 3, IMF PortWatch, World Bank and IMF).*
+
+<p align="center">
   <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
 </p>
 
@@ -234,6 +248,8 @@ The main script is [ortho.py](ortho.py).
 - Optional statistics: each country shaded by a World Bank figure (GDP, life expectancy, CO₂ per person, internet use and 1,400 more), or each European region by a Eurostat one (unemployment, GDP, population density by NUTS 2 or 3 region), for any year
 - Optional industry: refineries, petrochemical and chemical plants, steelworks, aluminium, cement, glass, paper, mines and fossil-fuel power stations worldwide, as circles sized by their emissions, the largest named
 - Optional shipping lanes: the sea coloured by how busy it is with commercial ships, fishing boats, ferries, oil and gas vessels or leisure craft, from their AIS positions in 2015–2021
+- Optional ports: 2,065 seaports as dots sized by the ships calling a year (2019–2025), of every kind or only container ships, tankers, bulk carriers, general cargo or ro-ro ships, the busiest named
+- Night lights: NASA's Black Marble, the Earth at night, as a base map
 - Optional air routes: the airline network, or the routes from chosen airports or of chosen airlines, as great-circle arcs wider for routes more airlines fly
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
@@ -285,6 +301,7 @@ The interactive menu exposes these providers:
 - `google`: Google road map (API key required)
 - `google_satellite`: Google satellite imagery (API key required; not available to EEA-billed projects, see below)
 - `nasa`: NASA Blue Marble satellite imagery with shaded relief and ocean-floor bathymetry; free, public domain, no key
+- `nasa_night`: NASA Black Marble, the Earth at night (city lights of 2016); free, public domain, no key
 
 `nasa` is the free satellite option. It comes from NASA's Global Imagery Browse
 Services (GIBS): the Blue Marble: Next Generation true-colour land composite
@@ -292,6 +309,14 @@ Services (GIBS): the Blue Marble: Next Generation true-colour land composite
 zoom 8, far more than a globe needs. It needs no account or key, has no regional
 limits, and is cached like OSM (for a year, since the imagery never changes).
 Like Google satellite, it has no place names baked in, so it suits turned globes.
+
+`nasa_night` is NASA's Black Marble, also from GIBS: the night-time lights the
+VIIRS instrument on the Suomi NPP satellite saw on cloud-free, moonless nights
+of 2016 (~500 m), over a dark blue land and a black sea, up to zoom 8. Cities,
+roads, gas flares and fishing fleets show as lights; it is free, public domain,
+cached for a year in `~/.cache/ortho_tiles/nasa_night/`, and goes well with
+`--cities`, `--ports` and `--industry`. Where a tile cannot be downloaded the
+globe stays dark rather than turning pale blue.
 
 `osm_plain` is the standard OSM map with forests, woods, meadows, grassland,
 heath, farmland and sand deserts drawn as plain land. OSM shades these green,
@@ -373,7 +398,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `air-routes`, `air-routes:LHR+JFK` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -472,11 +497,16 @@ python ortho.py --lat 50 --lon 12 --radius 2200 --indicator eurostat:unemploymen
 python ortho.py --lat 30 --lon 60 --industry petrochemical
 python ortho.py --lat 51.3 --lon 5.5 --radius 300 --industry heavy
 
-# Shipping lanes and air routes (see "Shipping and Air Routes")
+# Shipping lanes and air routes (see "Shipping, Ports and Air Routes")
 python ortho.py --lat 20 --lon 70 --shipping
 python ortho.py --lat 51.5 --lon 2 --radius 600 --shipping
 python ortho.py --lat 40 --lon 10 --air-routes all
 python ortho.py --lat 45 --lon -20 --air-routes LHR
+
+# The Earth at night, and ports (see "Supported Tile Providers" and "Shipping, Ports and Air Routes")
+python ortho.py --lat 45 --lon 18 --provider nasa_night --zoom 4
+python ortho.py --lat 45.4 --lon 26.5 --radius 500 --provider nasa_night --cities --ports
+python ortho.py --lat 25 --lon 118 --ports container --shipping
 
 # The states of a year or a day: 1500, the Roman world in 117, Africa on 1 July 1914 (see "Historical Borders")
 python ortho.py --city Lisbon --borders 1500
@@ -529,7 +559,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--city CITY` | Pre-defined city (case-insensitive) | — |
 | `--lat LAT` | Custom latitude (-90 to 90) | — |
 | `--lon LON` | Custom longitude (-180 to 180) | — |
-| `--provider` | Tile provider: `osm`, `osm_plain`, `google`, `google_satellite`, `nasa` | `osm` |
+| `--provider` | Tile provider: `osm`, `osm_plain`, `google`, `google_satellite`, `nasa`, `nasa_night` (the Earth at night) | `osm` |
 | `--zoom ZOOM` | Tile zoom level: 1–4 for the whole globe; with `--radius`, up to one above its default | `3`, or chosen from `--radius` and the latitude |
 | `--dpi DPI` | Output resolution, 10–1200. The figure is 20 in, so 300 DPI = 6,000 px | `300` |
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
@@ -604,6 +634,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--industry SECTORS` | Draw industrial plants as circles sized by emissions, the largest named: comma-separated sectors (`refineries`, `petrochemicals`, `steel`, `cement`, `power` …) or groups (`petrochemical`, `heavy`, `mining`, `all`) | — |
 | `--shipping [KIND]` | Colour the sea by how busy it is with ships (AIS 2015–2021): `commercial` (default), `all`, `fishing`, `passenger`, `oil-gas` or `leisure` | — |
 | `--shipping-alpha ALPHA` | Opacity of the ship traffic (0–1) | `0.85` |
+| `--ports [KIND]` | Draw the ports as dots sized by the ships calling a year (2019–2025), the busiest named: `all` (default), `container`, `tanker`, `dry-bulk`, `general-cargo` or `roro` | — |
 | `--air-routes AIRPORTS` | Draw air routes as great-circle arcs: `all`, or airports by code or city (`LHR`, `EGLL`, `London`) and airlines (`airline:BA`), comma-separated | — |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
@@ -623,7 +654,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
 Historical borders, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
-Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Shipping and air routes (World Bank and IMF, OpenFlights), Winds, Polar ice, Crops, Routes and areas, Recipes.
+Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Shipping, ports and air routes (World Bank and IMF, OpenFlights), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -845,7 +876,7 @@ The suite runs fully offline. `tests/conftest.py` blocks any connection to a non
 - Output uses `bbox_inches="tight"` and `transparent=True`, so the resulting PNG has minimal padding around the globe.
 - Google tile backends depend on Cartopy tile services and may be subject to provider availability or usage limits.
 - If some or all map tiles fail to download, the map is still saved: missing tiles are left transparent so the fallback land/ocean features show through, and a warning says how many tiles failed.
-- OSM tiles are cached in `~/.cache/ortho_tiles/osm/` and reused for 7 days, as the OSM tile usage policy asks; NASA tiles are cached in `~/.cache/ortho_tiles/nasa/` for a year; terrain and vegetation tiles in `terrarium/` and `gibs/` for good. Use `--cache-dir` to change the location or `--no-cache` to skip it. Failed downloads are never cached. Google tiles are never cached, because Google's terms don't allow it. In code, pass `tile_cache_dir=configure_tile_cache()` to `generate_orthographic_map`; the default is no cache.
+- OSM tiles are cached in `~/.cache/ortho_tiles/osm/` and reused for 7 days, as the OSM tile usage policy asks; NASA tiles are cached in `~/.cache/ortho_tiles/nasa/` and `nasa_night/` for a year; terrain and vegetation tiles in `terrarium/` and `gibs/` for good. Use `--cache-dir` to change the location or `--no-cache` to skip it. Failed downloads are never cached. Google tiles are never cached, because Google's terms don't allow it. In code, pass `tile_cache_dir=configure_tile_cache()` to `generate_orthographic_map`; the default is no cache.
 - When a pre-defined city is selected, a red marker and bold label are drawn at the centre point. Custom-coordinate renders omit the marker.
 - Every render includes two concentric geodesic circles at 2,500 km and 5,000 km from the centre, computed on the WGS-84 ellipsoid. The circles are drawn as white dashed rings with distance labels at the top of each circle as drawn on the globe. A radius map draws round-numbered circles inside its edge instead.
 
@@ -1574,6 +1605,19 @@ The data (~35 MB, 11,686 centres) is downloaded once into
 `~/.cache/ortho_tiles/cities/`; each year's outlines are converted to degrees and
 simplified to about 200 m the first time that year is drawn.
 
+GHSL's file lost every letter outside Latin-1 from its names: 329 came out as
+`Gala?i`, `Klaip?da` or, for names in other scripts, `?????`. They are restored
+once from [GeoNames](https://www.geonames.org) (places of 5,000 people and more,
+~6 MB, CC BY 4.0) by matching each name against the places near its centre, a
+`?` standing for one lost letter: `Galați`, `Klaipėda`, `Điện Biên Phủ`. A name
+lost entirely takes the romanised name of the place it matches or lies within
+~10 km of (`Gomel`); 75 small centres that match nothing are drawn but not
+named. Names GHSL spelt without their accents get them too (`Brasov` becomes
+`Brașov`, `Krakow` `Kraków`), except where the language has another script
+(no `Chóngfú` for `Chongfu`). Romanian and Moldovan names take ș and ț with a
+comma below. When cities, plants and ports are drawn together, the cities are
+named first and the other names fit around them.
+
 ```powershell
 python ortho.py --lat 25 --lon 100 --cities
 python ortho.py --lat 51 --lon 5 --radius 800 --cities
@@ -1685,7 +1729,7 @@ python ortho.py --lat -15 --lon 25 --industry mining
 The samples above are `python ortho.py --config recipes/world_petrochemical.toml`
 and `python ortho.py --config recipes/rhine_ruhr_heavy_industry.toml`.
 
-## Shipping and Air Routes
+## Shipping, Ports and Air Routes
 
 `--shipping` colours the sea by how busy it is with ships, from the
 [Global Shipping Traffic Density](https://datacatalog.worldbank.org/search/dataset/0037580)
@@ -1724,6 +1768,19 @@ airports and airlines together give that airline's routes from those
 airports. The airports are dotted by how many places they link to and the
 busiest named. The three files (~4 MB) are downloaded once.
 
+`--ports` draws the world's seaports from the IMF's
+[PortWatch](https://portwatch.imf.org): 2,065 ports, each a navy dot sized by
+the yearly average of ships calling there in 2019–2025, counted from their AIS
+positions, and the busiest named (Singapore, Shanghai, Rotterdam … down to
+Constanța's ~3,400 ships a year). Give a kind to size them by those ships only
+and leave out the ports they don't call at: `container`, `tanker`, `dry-bulk`,
+`general-cargo` or `roro` (car carriers and ferries). The table (~0.5 MB) is
+downloaded once into `~/.cache/ortho_tiles/ports/` and again after a year. IMF
+data may be reused with credit, as the map's credit line gives it (IMF
+[terms](https://www.imf.org/external/terms.htm), "Special Terms for Statistical
+Data"). PortWatch writes names in English (`Constantza`, `Odessa`); with
+`--cities` the city's own name is shown instead where the two would overlap.
+
 ```powershell
 python ortho.py --lat 20 --lon 70 --shipping
 python ortho.py --lat 51.5 --lon 2 --radius 600 --shipping
@@ -1732,11 +1789,14 @@ python ortho.py --lat 40 --lon 10 --air-routes all
 python ortho.py --lat 45 --lon -20 --air-routes LHR
 python ortho.py --lat 30 --lon 60 --air-routes "DXB, DOH, IST"
 python ortho.py --lat 50 --lon 10 --air-routes airline:Lufthansa
+python ortho.py --lat 25 --lon 118 --ports container --shipping --shipping-alpha 0.6
+python ortho.py --lat 53 --lon 4 --radius 500 --ports tanker
 ```
 
 The samples above are `python ortho.py --config recipes/world_shipping.toml`,
-`recipes/channel_shipping.toml`, `recipes/world_air_routes.toml` and
-`recipes/heathrow_air_routes.toml`.
+`recipes/channel_shipping.toml`, `recipes/world_air_routes.toml`,
+`recipes/heathrow_air_routes.toml`, `recipes/east_asia_ports.toml`,
+`recipes/europe_night.toml` and `recipes/romania_night.toml`.
 
 ## Polar Ice
 
@@ -2236,12 +2296,14 @@ to the attribution block.
 | Malaria Atlas Project, 2026 release: *P. falciparum* (PfPR2–10) and *P. vivax* parasite rates, 2000–2025, 5 km, used at ~10 km | Malaria Atlas Project, The Kids Research Institute Australia | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) ([open access policy](https://malariaatlas.org/open-access-policy/)) | [malariaatlas.org](https://malariaatlas.org/), WCS at data.malariaatlas.org |
 | Global compendium of *Aedes aegypti* and *Ae. albopictus* occurrence, 1958–2014 | Kraemer, M. U. G. et al. (2015) | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | [doi:10.1038/sdata.2015.35](https://doi.org/10.1038/sdata.2015.35), data [doi:10.5061/dryad.47v3c](https://doi.org/10.5061/dryad.47v3c), read from GBIF |
 | Global Shipping Traffic Density: hourly AIS positions of ships, January 2015 – February 2021, 0.005° | World Bank, from the IMF's World Seaborne Trade Monitoring System | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [datacatalog.worldbank.org](https://datacatalog.worldbank.org/search/dataset/0037580) |
+| PortWatch ports database: 2,065 ports with the ships calling a year by kind, 2019–2025 average, from AIS | International Monetary Fund (PortWatch, with the University of Oxford) | IMF data, free reuse with attribution ([terms](https://www.imf.org/external/terms.htm), Special Terms for Statistical Data) | [portwatch.imf.org](https://portwatch.imf.org/datasets/acc668d199d1472abaaf2467133d4ca4) |
 | OpenFlights airport, airline and route databases (routes as of June 2014) | OpenFlights.org | [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) | [openflights.org/data](https://openflights.org/data), [GitHub](https://github.com/jpatokal/openflights) |
 | Climate TRACE emissions inventory: individual plants with location, type and yearly emissions | Climate TRACE coalition | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) ([terms](https://climatetrace.org/terms)) | [climatetrace.org](https://climatetrace.org/data), [API](https://api.climatetrace.org/v6/swagger/index.html) |
 | World Development Indicators, read from the World Bank's API | World Bank | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [data.worldbank.org/indicator](https://data.worldbank.org/indicator), [API](https://datahelpdesk.worldbank.org/knowledgebase/articles/889392) |
 | Natural Earth 1:50m countries (for `--indicator`) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | Eurostat regional statistics, read from Eurostat's API | Eurostat | Reuse allowed with acknowledgement ([Eurostat copyright notice](https://ec.europa.eu/eurostat/about-us/policies/copyright)) | [Eurostat database](https://ec.europa.eu/eurostat/data/database), [API](https://wikis.ec.europa.eu/display/EUROSTATHELP/API+Statistics+-+data+query) |
 | NUTS regions (2024, 2021, 2016) at 1:10 million, from GISCO | Eurostat GISCO; © EuroGeographics for the administrative boundaries | Free with attribution; see [GISCO's terms](https://ec.europa.eu/eurostat/web/gisco/geodata/administrative-units) | [GISCO NUTS](https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/territorial-units-statistics) |
+| GeoNames places of 5,000 people and more (cities5000), used to restore the urban centres' names | GeoNames | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [geonames.org](https://www.geonames.org), [download.geonames.org/export/dump](https://download.geonames.org/export/dump/) |
 | GHS Urban Centre Database 2025 (R2024A, v1.2), multi-temporal urban centres 1975–2030 | European Commission, Joint Research Centre (Mari Rivero, Melchiorri et al. 2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd](https://doi.org/10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd), [human-settlement.emergency.copernicus.eu](https://human-settlement.emergency.copernicus.eu/ghs_ucdb_2024.php) |
 | BirdLife bird species distribution maps (GeoPackage) and the HBW-BirdLife checklist, read from files each user requests | BirdLife International and Handbook of the Birds of the World | [BirdLife data terms of use](https://datazone.birdlife.org/about-our-science/terms-of-use): non-commercial use; no reposting or redistribution, of the data or of works made from it, without BirdLife's permission. Not shipped or downloaded here | [datazone.birdlife.org/species/requestdis](https://datazone.birdlife.org/species/requestdis) |
 | IUCN Red List range polygons (spatial data), read from files each user downloads | IUCN | [IUCN Red List Terms and Conditions of Use](https://www.iucnredlist.org/terms/terms-of-use): non-commercial use; no reposting or redistribution, of the data or of works made from it, without IUCN's permission. Not shipped or downloaded here | [iucnredlist.org/resources/spatial-data-download](https://www.iucnredlist.org/resources/spatial-data-download) |
@@ -2251,6 +2313,7 @@ to the attribution block.
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
 | OpenStreetMap tiles | OpenStreetMap contributors | Data [ODbL](https://www.openstreetmap.org/copyright); attribution required by the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) | [openstreetmap.org](https://www.openstreetmap.org/) |
+| NASA Black Marble 2016 (VIIRS day/night band night lights, layer `VIIRS_Black_Marble`) via GIBS | NASA Earth Observatory; NASA ESDIS | Public domain (NASA open data, CC0); acknowledgement requested | [NASA GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api) |
 | NASA Blue Marble (Next Generation, shaded relief and bathymetry) via GIBS | NASA Earth Observatory; NASA ESDIS | Public domain (NASA open data, CC0); acknowledgement requested | [NASA GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api) |
 | Google map / satellite tiles (Map Tiles API, API key required) | Google | Proprietary, [Google Maps terms](https://cloud.google.com/maps-platform/terms) | [google.com/maps](https://www.google.com/maps) |
 
@@ -2261,6 +2324,7 @@ the globe:
 |---|---|
 | `osm`, `osm_plain` tiles | *Map tiles © OpenStreetMap contributors* |
 | `nasa` tiles | *Imagery: NASA Blue Marble, via NASA GIBS (ESDIS)* |
+| `nasa_night` tiles | *Imagery: NASA Black Marble 2016 (VIIRS night lights), via NASA GIBS (ESDIS)* |
 | `google`, `google_satellite` tiles | *Google Maps* plus the copyright string returned by the Map Tiles API |
 | `--koppen` overlay | *Climate data: Beck et al. (2018), CC BY 4.0* |
 | `--trewartha` overlay | *Climate data: CHELSA v2.1 (Karger et al. 2017), CC0; Trewartha classes computed*, plus the elevation credit |
@@ -2296,9 +2360,10 @@ the globe:
 | `--malaria` | *Malaria: Malaria Atlas Project (2026 release), CC BY 3.0* |
 | `--aedes` | *Aedes records: Kraemer et al. (2015), global compendium of Aedes occurrence, via GBIF, CC0* |
 | `--species` | *Species records: GBIF.org occurrence data, retrieved YYYY-MM-DD* |
-| `--cities` | *Urban centres: GHS-UCDB R2024A (European Commission, JRC), CC BY 4.0* |
+| `--cities` | *Urban centres: GHS-UCDB R2024A (European Commission, JRC), CC BY 4.0; names restored from GeoNames, CC BY 4.0* |
 | `--industry` | *Industry: Climate TRACE (climatetrace.org), CC BY 4.0, retrieved YYYY-MM-DD* |
 | `--shipping` | *Shipping: Global Shipping Traffic Density (World Bank, IMF, AIS 2015-2021), CC BY 4.0* |
+| `--ports` | *Ports: IMF PortWatch (portwatch.imf.org), ships calling 2019-2025* |
 | `--air-routes` | *Air routes: OpenFlights (openflights.org), June 2014, ODbL* |
 | `--indicator` | *Statistics: World Bank, World Development Indicators (CODE), CC BY 4.0, retrieved YYYY-MM-DD; countries: Natural Earth*, or *Statistics: Eurostat (DATASET), retrieved YYYY-MM-DD; regions: © EuroGeographics for the administrative boundaries* |
 | `--iucn` | *Range: IUCN (YYYY), The IUCN Red List of Threatened Species, spatial data of YYYY-MM-DD*, or for birds *Range: BirdLife International and Handbook of the Birds of the World (YYYY), Bird species distribution maps of the world, version YYYY.N* |
@@ -2375,10 +2440,11 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [aedes.py](aedes.py): where the dengue mosquitoes have been recorded, from Kraemer et al.'s compendium on GBIF
 - [gbif.py](gbif.py): where any species has been recorded, from GBIF's occurrence density maps, with name lookup
 - [iucn.py](iucn.py): a species' range from the IUCN Red List or, for birds, BirdLife, read from the files the user downloaded
-- [cities.py](cities.py): big cities, the GHSL urban centres with their names, outlines and populations from 1975 to 2030
+- [cities.py](cities.py): big cities, the GHSL urban centres with their names (restored from GeoNames), outlines and populations from 1975 to 2030
 - [indicators.py](indicators.py): statistics by country (World Bank) or European region (Eurostat), in classes, with the country and NUTS region shapes
 - [industry.py](industry.py): industrial plants worldwide from Climate TRACE, as circles sized by emissions
 - [shipping.py](shipping.py): ship traffic from the World Bank and IMF's AIS density grids, read once into cached tiles
+- [ports.py](ports.py): the IMF PortWatch ports as dots sized by the ships calling, the busiest named
 - [air_routes.py](air_routes.py): the OpenFlights airline network as great-circle arcs
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key

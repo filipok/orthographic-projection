@@ -64,7 +64,7 @@ class TestPage:
     def test_options(self, client):
         options = client.get("/api/options").json()
         assert "Paris" in options["cities"]
-        assert options["providers"] == ["osm", "osm_plain", "nasa"]          # no Google key set
+        assert options["providers"] == ["osm", "osm_plain", "nasa", "nasa_night"]          # no Google key set
         assert options["dpi"] == {"default": 150, "min": ortho.MIN_DPI, "max": 300}
         assert options["periods"][0] == ["year", "Year"] and len(options["periods"]) == 17
         assert "ph" in options["soil_properties"] and "wheat" in options["crops"]
@@ -160,6 +160,13 @@ class TestMaps:
         assert (renders[0]["indicator"], renders[0]["indicator_year"], renders[0]["indicator_alpha"]) == \
             ("life-expectancy", 2000, 0.5)
         assert "--indicator life-expectancy --indicator-year 2000 --indicator-alpha 0.5" in status["command"]
+
+    def test_ports(self, client, renders):
+        options = client.get("/api/options").json()
+        assert options["ports"]["container"] == "Container ships" and list(options["ports"])[0] == "all"
+        _, status = _render(client, city="Lisbon", ports="container", provider="nasa_night")
+        assert (renders[0]["ports"], renders[0]["tile_provider"]) == ("container", "nasa_night")
+        assert "--ports container" in status["command"] and "--provider nasa_night" in status["command"]
 
     def test_shipping_and_air_routes(self, client, renders):
         _, status = _render(client, city="Lisbon", shipping="fishing", shipping_alpha=0.6, air_routes="LIS")

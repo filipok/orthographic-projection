@@ -1,0 +1,9 @@
+# The container ports of East Asia, sized by the container ships calling a year (IMF PortWatch), over the
+# commercial shipping lanes (World Bank and IMF): Shanghai, Ningbo, Busan, Hong Kong, Singapore.
+lat = 25
+lon = 118
+provider = "osm_plain"
+ports = "container"
+shipping = "commercial"
+shipping_alpha = 0.6
+output = "orthographic_map_east_asia_osm_plain_z3_ports_container_shipping_commercial.png"

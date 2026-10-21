@@ -195,6 +195,7 @@ function buildRequest() {
     req.shipping = $("shipping").value;
     req.shipping_alpha = changed("shipping-alpha", options.alpha.shipping);
   }
+  if ($("ports").value) req.ports = $("ports").value;
   if ($("air-routes").value.trim()) req.air_routes = $("air-routes").value.trim();
   if ($("cities-year").value) {
     req.cities = Number($("cities-year").value);
@@ -367,6 +368,7 @@ function fillForm(req) {
   set("industry", req.industry);
   if (req.shipping) pick("shipping", req.shipping, "kind of ships");
   set("shipping-alpha", req.shipping_alpha);
+  if (req.ports) pick("ports", req.ports, "kind of port traffic");
   set("air-routes", req.air_routes);
   set("indicator", req.indicator);
   set("indicator-year", req.indicator_year);
@@ -696,7 +698,8 @@ $("copy").addEventListener("click", async () => {
 async function init() {
   options = await (await fetch("/api/options")).json();
   const names = { osm: "OpenStreetMap", osm_plain: "OpenStreetMap, plain land", google: "Google roadmap",
-                  google_satellite: "Google satellite", nasa: "NASA Blue Marble" };
+                  google_satellite: "Google satellite", nasa: "NASA Blue Marble",
+                  nasa_night: "NASA Black Marble (night lights)" };
   $("city").append(...options.cities.map((c) => option(c)));
   $("city").value = "Paris";
   $("city-list").append(...options.cities.map((c) => option(c)));
@@ -734,6 +737,7 @@ async function init() {
   $("population").append(...options.population_years.slice().reverse().map((y) => option(String(y))));
   $("industry-list").append(...Object.entries(options.industry).map(([name, about]) => option(name, about)));
   $("shipping").append(...Object.entries(options.shipping).map(([name, label]) => option(name, label)));
+  $("ports").append(...Object.entries(options.ports).map(([name, label]) => option(name, label)));
   $("indicator-list").append(...Object.entries(options.indicators).map(([name, title]) => option(name, title)));
   $("cities-year").append(...options.cities_years.slice().reverse().map((y) => option(String(y),
     y === 2030 ? "2030 (projected)" : String(y))));

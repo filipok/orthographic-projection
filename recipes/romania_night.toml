@@ -1,0 +1,9 @@
+# Romania and the Black Sea at night (NASA Black Marble): the cities named, from Timișoara to Iași and
+# Constanța, and the ports sized by the ships calling a year (IMF PortWatch).
+lat = 45.4
+lon = 26.5
+provider = "nasa_night"
+radius = 500
+cities = 2025
+ports = "all"
+output = "orthographic_map_romania_nasa_night_r500km_cities_2025_ports_all.png"

@@ -82,6 +82,10 @@ from shipping import (
     KINDS as SHIP_KINDS, SHIPPING_ATTRIBUTION, ShippingDataError, add_shipping_legend, add_shipping_overlay,
     resolve_ship_kind,
 )
+from ports import (
+    KINDS as PORT_KINDS, PORTS_ATTRIBUTION, PortsDataError, add_ports_legend, draw_ports, load_ports,
+    resolve_port_kind,
+)
 from industry import (
     GROUPS as INDUSTRY_GROUPS, SECTORS as INDUSTRY_SECTORS, IndustryDataError, add_industry_legend, draw_industry,
     industry_attribution, load_plants, resolve_sectors,
@@ -260,6 +264,23 @@ class CachedNASA(CachedOSM):
         return self.URL.format(x=x, y=y, z=z)
 
 
+class CachedNASANight(CachedNASA):
+    """NASA's Black Marble: the Earth at night from GIBS, cached like Blue Marble.
+
+    VIIRS night-time lights of 2016 (a cloud-free composite of the year's
+    moonless nights at ~500 m), over a dark blue land and sea, in Web
+    Mercator up to zoom 8. Public domain, no key.
+    """
+
+    URL = ("https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/"
+           "default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png")
+
+    @property
+    def _cache_dir(self) -> Path:  # pyright: ignore[reportIncompatibleMethodOverride]
+        assert self.cache_path is not None
+        return Path(self.cache_path) / "nasa_night"
+
+
 # OSM Carto's plain land colour, and the land cover fills osm_plain turns into it
 OSM_LAND_RGB = (0xf2, 0xef, 0xe9)
 OSM_FOREST_RGB = (0xad, 0xd1, 0x9e)     # forests and woods
@@ -370,6 +391,7 @@ TILE_PROVIDERS = [
     "google",
     "google_satellite",
     "nasa",
+    "nasa_night",
 ]
 
 GOOGLE_MAP_TYPES = {"google": "roadmap", "google_satellite": "satellite"}
@@ -380,7 +402,12 @@ TILE_ATTRIBUTIONS = {
     "osm": "Map tiles © OpenStreetMap contributors",
     "osm_plain": "Map tiles © OpenStreetMap contributors",
     "nasa": "Imagery: NASA Blue Marble, via NASA GIBS (ESDIS)",
+    "nasa_night": "Imagery: NASA Black Marble 2016 (VIIRS night lights), via NASA GIBS (ESDIS)",
 }
+
+# Land and sea drawn under the tiles, so a tile that fails to download is not
+# blank: the map's own colours where they differ from the light defaults
+FALLBACK_COLOURS = {"nasa_night": ("#04050f", "#0b0d18")}     # (sea, land) of Black Marble
 
 
 def _to_rgba(img: Any) -> np.ndarray:
@@ -533,6 +560,8 @@ def create_tile_source(
         tile_source = CachedOSMPlain(cache=cache_dir or False, **tile_kwargs)
     elif provider == "nasa":
         tile_source = CachedNASA(cache=cache_dir or False, **tile_kwargs)
+    elif provider == "nasa_night":
+        tile_source = CachedNASANight(cache=cache_dir or False, **tile_kwargs)
     elif provider in GOOGLE_MAP_TYPES:
         if cache_dir:
             logger.info("Google tiles are not cached (Google Maps Platform terms).")
@@ -566,7 +595,7 @@ MAX_DPI = 1200
 # Radius maps show less of the Earth, so they take finer tiles (see max_zoom).
 DEFAULT_ZOOM = 3
 MAX_GLOBE_ZOOM = 4
-MAX_TILE_ZOOM = {"nasa": 8}           # NASA's Blue Marble stops at zoom 8; the others go deeper
+MAX_TILE_ZOOM = {"nasa": 8, "nasa_night": 8}   # NASA's Blue and Black Marble stop at zoom 8; the others go deeper
 MAX_RADIUS_ZOOM = 12
 MAX_RELIEF_ZOOM = 10                  # terrain finer than this adds nothing at the output's size
 DEFAULT_RADIUS_KM = 2_500
@@ -794,6 +823,7 @@ def generate_orthographic_map(
     industry: str | None = None,
     shipping: str | None = None,
     shipping_alpha: float = 0.85,
+    ports: str | None = None,
     air_routes: str | None = None,
 ) -> str:
     """
@@ -812,11 +842,12 @@ def generate_orthographic_map(
     dpi : int
         Dots per inch for the output image. 300+ is high resolution.
     background_color : str
-        Ocean colour (the fallback ocean under the tiles). The PNG itself is
-        saved with a transparent background.
+        Ocean colour (the fallback ocean under the tiles; ``"nasa_night"``
+        uses its own dark sea and land). The PNG itself is saved with a
+        transparent background.
     tile_provider : str
         One of :data:`TILE_PROVIDERS`: ``"osm"``, ``"osm_plain"``, ``"google"``,
-        ``"google_satellite"``, ``"nasa"``.
+        ``"google_satellite"``, ``"nasa"``, ``"nasa_night"`` (the Earth at night).
     tile_kwargs : dict, optional
         Extra keyword arguments forwarded to the tile source constructor.
         Google providers accept ``api_key`` (default: ``$GOOGLE_MAPS_API_KEY``),
@@ -1051,6 +1082,11 @@ def generate_orthographic_map(
         from AIS 2015-2021): ``"commercial"``, ``"all"``, ``"fishing"``,
         ``"passenger"``, ``"oil-gas"`` or ``"leisure"`` (see
         :data:`shipping.KINDS`); *shipping_alpha* sets its opacity.
+    ports : str, optional
+        Draw the ports (IMF PortWatch) as dots sized by the ships calling a
+        year (2019-2025), the busiest named: ``"all"`` or the ports of one
+        kind of ship, ``"container"``, ``"tanker"``, ``"dry-bulk"``,
+        ``"general-cargo"`` or ``"roro"`` (see :data:`ports.KINDS`).
     air_routes : str, optional
         Draw air routes (OpenFlights, 2014) as great-circle arcs, wider for
         more airlines: ``"all"`` for the whole network, or airports by code
@@ -1099,6 +1135,12 @@ def generate_orthographic_map(
     cities_year = resolve_cities_year(cities) if cities is not None else None
     industry_sectors = resolve_sectors(industry) if industry else ()
     ship_kind = resolve_ship_kind(shipping) if shipping else None
+    harbours = None
+    if ports:
+        try:
+            harbours = load_ports(resolve_port_kind(ports))
+        except (PortsDataError, OSError) as e:
+            logger.warning("Skipping the ports: %s", e)
     flights = None
     if air_routes:
         try:
@@ -1227,10 +1269,11 @@ def generate_orthographic_map(
         max_regrid_shape,
     )
 
+    sea_colour, land_colour = FALLBACK_COLOURS.get(tile_provider.lower(), (background_color, "#f1efe6"))
     for ax in axes:
         # Fallback land/ocean so blank areas aren't white
-        ax.add_feature(cfeature.OCEAN, facecolor=background_color, edgecolor="none", zorder=0)
-        ax.add_feature(cfeature.LAND, facecolor="#f1efe6", edgecolor="none", zorder=0)
+        ax.add_feature(cfeature.OCEAN, facecolor=sea_colour, edgecolor="none", zorder=0)
+        ax.add_feature(cfeature.LAND, facecolor=land_colour, edgecolor="none", zorder=0)
 
         # Step 5: Register the tiles. Cartopy downloads them later, inside
         # savefig; failed tiles come out transparent (see BufferedTileSource).
@@ -1561,8 +1604,7 @@ def generate_orthographic_map(
             factories.append(load_plants(sector))
         except (IndustryDataError, OSError) as e:
             logger.warning("Skipping the %s: %s", INDUSTRY_SECTORS[sector].label.lower(), e)
-    if factories:
-        factory_counts = [draw_industry(ax, factories) for ax in axes][0]
+    # Cities are named first, then plants and ports where their names still fit
     towns = None
     town_floor = cities_min if cities_min is not None else default_min_population(radius_km)
     towns_shown = 0
@@ -1573,6 +1615,11 @@ def generate_orthographic_map(
             logger.warning("Skipping the cities: %s", e)
         else:
             towns_shown = max(len(draw_cities(ax, towns, town_floor)) for ax in axes)
+    if factories:
+        factory_counts = [draw_industry(ax, factories) for ax in axes][0]
+    harbours_shown = 0
+    if harbours is not None:
+        harbours_shown = max(draw_ports(ax, harbours) for ax in axes)
     sightings = None
     if taxon is not None:
         try:
@@ -1831,6 +1878,8 @@ def generate_orthographic_map(
         keys.append(add_industry_legend(near, factories, factory_counts, x=key_x))
     if ships_drawn and ship_kind is not None:
         keys.append(add_shipping_legend(near, ship_kind, alpha=shipping_alpha, x=key_x))
+    if harbours is not None:
+        keys.append(add_ports_legend(near, harbours, harbours_shown, x=key_x))
     if flights is not None:
         keys.append(add_air_routes_legend(near, flights, flights_shown, x=key_x))
     if sightings is not None:
@@ -1899,6 +1948,8 @@ def generate_orthographic_map(
         credits.append(industry_attribution(factories))
     if ships_drawn:
         credits.append(SHIPPING_ATTRIBUTION)
+    if harbours is not None:
+        credits.append(PORTS_ATTRIBUTION)
     if flights is not None:
         credits.append(AIR_ROUTES_ATTRIBUTION)
     if sightings is not None:
@@ -2337,7 +2388,7 @@ EXTRA_LAYERS: dict[str, tuple[str, Any]] = {
     "cyclones": ("cyclones", FIRST_CYCLONE_YEAR), "time-zones": ("time_zones", True),
     "permafrost": ("permafrost", True), "population": ("population", LATEST_POPULATION_YEAR),
     "malaria": ("malaria", "pf"), "aedes": ("aedes", "both"), "cities": ("cities", 2025),
-    "shipping": ("shipping", "commercial"), "air-routes": ("air_routes", "all"),
+    "shipping": ("shipping", "commercial"), "ports": ("ports", "all"), "air-routes": ("air_routes", "all"),
 }
 
 
@@ -2378,6 +2429,8 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen["industry"] = sectors
         elif item.startswith("shipping:"):
             chosen["shipping"] = resolve_ship_kind(item.split(":", 1)[1])
+        elif item.startswith("ports:"):
+            chosen["ports"] = resolve_port_kind(item.split(":", 1)[1])
         elif item.startswith("air-routes:"):
             spec = item.split(":", 1)[1].strip()
             resolve_air_routes(spec)
@@ -2394,7 +2447,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
                              "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, indicator:NAME, industry:SECTORS, "
-                             "shipping:KIND, air-routes:AIRPORTS.")
+                             "shipping:KIND, ports:KIND, air-routes:AIRPORTS.")
     return chosen
 
 
@@ -2402,7 +2455,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, indicator:life-expectancy, industry:petrochemical, shipping:fishing, air-routes:LHR …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -2902,13 +2955,17 @@ def build_cli_parser() -> argparse.ArgumentParser:
                              "named: comma-separated sectors (" + ", ".join(INDUSTRY_SECTORS) + ") or groups ("
                              + ", ".join(INDUSTRY_GROUPS) + "). Each sector is downloaded once.")
 
-    traffic = parser.add_argument_group("Shipping and air routes (World Bank and IMF, OpenFlights)")
+    traffic = parser.add_argument_group("Shipping, ports and air routes (World Bank and IMF, OpenFlights)")
     traffic.add_argument("--shipping", nargs="?", const="commercial", metavar="KIND",
                          help="Colour the sea by how busy it is with ships, from their AIS positions in 2015-2021: "
                               + ", ".join(SHIP_KINDS) + " (default: commercial). Each kind is downloaded once "
                               "(20-510 MB) and read into a cache of up to ~85 MB.")
     traffic.add_argument("--shipping-alpha", type=float, default=0.85, metavar="ALPHA",
                          help="Opacity of the ship traffic (0-1, default: 0.85).")
+    traffic.add_argument("--ports", nargs="?", const="all", metavar="KIND",
+                         help="Draw the ports as dots sized by the ships calling a year (IMF PortWatch, 2019-2025), "
+                              "the busiest named: " + ", ".join(PORT_KINDS) + " (default: all). Downloaded once "
+                              "(~0.5 MB).")
     traffic.add_argument("--air-routes", metavar="AIRPORTS",
                          help="Draw air routes as great-circle arcs, wider the more airlines fly them (OpenFlights, "
                               "2014): 'all' for the whole network, or comma-separated airports by code or city "
@@ -3405,6 +3462,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         resolve_ship_kind(args.shipping)
     elif args.shipping_alpha != 0.85:
         logger.warning("--shipping-alpha is ignored because no --shipping was given.")
+    if args.ports:
+        resolve_port_kind(args.ports)
     if args.air_routes:
         resolve_air_routes(args.air_routes)
     resolve_koppen_classes(args.koppen_class or [])
@@ -3573,6 +3632,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         industry=args.industry,
         shipping=args.shipping,
         shipping_alpha=args.shipping_alpha,
+        ports=args.ports,
         air_routes=args.air_routes,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,

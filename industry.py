@@ -44,7 +44,7 @@ from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
 
 from biomes import on_globe
-from cities import LabelSpace
+from cities import label_space
 from indicators import _tls
 
 logger = logging.getLogger(__name__)
@@ -277,7 +277,7 @@ def draw_industry(ax: GeoAxes, plants: list[Plants], labels: bool = True, limit:
                    edgecolors=[c for c, r in zip(colours, ring) if r], linewidths=1.8 * scale,
                    transform=ccrs.PlateCarree(), zorder=7.45)
     if labels:
-        space = LabelSpace(ax)
+        space = label_space(ax)
         named = 0
         for (tonnes, group, i), size in zip(everything, sizes):
             if named >= limit or tonnes <= 0:

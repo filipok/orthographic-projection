@@ -14,13 +14,25 @@ city limits ("Guangzhou" is the whole Pearl River Delta). The database names
 1975 to 2030 (2030 projected). The 35 MB file is downloaded once into
 ``~/.cache/ortho_tiles/cities/``; each year's outlines are turned from
 Mollweide metres into degrees, simplified to about 200 m, and cached.
+
+The database lost every letter outside Latin-1 from its names (``Gala?i``,
+``Klaip?da``, whole names in other scripts as ``?????``). They are restored
+from GeoNames (https://www.geonames.org, cities of 5,000 people and more,
+CC BY 4.0): a name is matched against the places near its centre, each ``?``
+standing for one such letter (``Galați``); a name lost entirely takes the
+romanised name of the place it matches, or of the nearest place within
+~10 km. Names that cannot be restored are left out of the labels, and names
+GHSL spelt without their accents take them (``Brasov``, ``Brașov``). The 6 MB
+GeoNames file is downloaded once and the restored names cached.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import re
 import sqlite3
+import unicodedata
 import zipfile
 from typing import NamedTuple
 
@@ -45,6 +57,10 @@ GPKG_NAME = "GHS_UCDB_MTUC_GLOBE_R2024A.gpkg"
 CENTRES_TABLE = "GHSL_UCDB_MTUC_GLOBE_R2024"
 OUTLINE_TABLE = "GHSL_UCDB_MTUC_{year}_GLOBE_R2024"
 DATA_VERSION = 1
+GEONAMES_URL = "https://download.geonames.org/export/dump/cities5000.zip"
+NAMES_VERSION = 1
+NEAR_DEGREES = 0.5                       # how far from a centre to look for its name in GeoNames
+NEAREST_DEGREES = 0.1                    # a name lost entirely takes the nearest place's this close
 YEARS = tuple(range(1975, 2031, 5))
 DEFAULT_YEAR = 2025
 PROJECTED_FROM = 2030                    # years from this one on are GHSL's projections
@@ -53,7 +69,8 @@ SIMPLIFY_DEGREES = 0.002                 # ~200 m
 CITY_COLOUR = "#b2182b"
 LABEL_MAX = 80
 
-CITIES_ATTRIBUTION = "Urban centres: GHS-UCDB R2024A (European Commission, JRC), CC BY 4.0"
+CITIES_ATTRIBUTION = ("Urban centres: GHS-UCDB R2024A (European Commission, JRC), CC BY 4.0; "
+                      "names restored from GeoNames, CC BY 4.0")
 
 
 class CitiesDataError(RuntimeError):
@@ -179,6 +196,131 @@ def _read_outlines(saved: dict[str, np.ndarray]) -> dict[int, shapely.Geometry]:
     return {int(i): shapely.from_wkb(blob[a:b]) for i, a, b in zip(saved["ids"], [0, *ends[:-1]], ends)}
 
 
+def _fold(name: str) -> str:
+    """*name* composed (NFC), with runs of spaces and hyphens as one space, for comparing names."""
+    return re.sub(r"[\s\-\u2010]+", " ", unicodedata.normalize("NFC", name)).strip()
+
+
+# Romanian and Moldovan s and t take a comma below, which GeoNames often writes as a cedilla
+_COMMA_BELOW = str.maketrans("şŞţŢ", "șȘțȚ")
+# Marks of scholarly transliteration (Kolhāpur, Ţarţūs, Al Ḩasakah), not of how a place's name is written
+_TRANSLITERATION = set("āēīōūĀĒĪŌŪḩḨḑḐḍḌṭṬṯṮẕẔẓẒṣṢḥḤ‘’ʻʼ")
+
+
+# Countries whose names are written in another script: GeoNames' accents there are a transliteration's
+# (Chóngfú, Wŏnsan, Umm Qaşr), so GHSL's plain spelling stays
+OTHER_SCRIPTS = frozenset((
+    "Afghanistan", "Armenia", "Bahrain", "Bangladesh", "Belarus", "Bhutan", "Bulgaria", "Cambodia", "China",
+    "Cyprus", "Egypt", "Eritrea", "Ethiopia", "Georgia", "Greece", "India", "Iran", "Iraq", "Israel", "Japan",
+    "Jordan", "Kazakhstan", "Kuwait", "Kyrgyzstan", "Laos", "Lebanon", "Libya", "Maldives", "Mongolia", "Myanmar",
+    "Nepal", "North Korea", "North Macedonia", "Oman", "Pakistan", "Palestine", "Qatar", "Russia", "Saudi Arabia",
+    "South Korea", "Sri Lanka", "Sudan", "Syria", "Taiwan", "Tajikistan", "Thailand", "Ukraine",
+    "United Arab Emirates", "Uzbekistan", "Yemen",
+))
+
+
+def _transliterated(name: str, cedilla: bool = True) -> bool:
+    """Whether *name* is spelt in a scholarly transliteration (also with a t cedilla, if *cedilla*)."""
+    return any(c in _TRANSLITERATION or (cedilla and c in "ţŢ") for c in name)
+
+
+def repair_names(names: list[str], countries: list[str], lon: np.ndarray, lat: np.ndarray,
+                 places: list[list[str]]) -> list[str]:
+    """*names* with the letters GHSL lost (each a ``?``) restored from the GeoNames *places* near each centre.
+
+    *places* are GeoNames rows (name, ASCII name, alternate names, lat, lon).
+    A name keeping some Latin letters is matched against each nearby place's
+    names, nearest first, a ``?`` standing for one letter outside Latin-1;
+    failing that against its ASCII name, a ``?`` standing for at most one
+    letter (``Gwadar``). A name lost entirely takes the romanised name of the
+    place it matches, or of the nearest place within :data:`NEAREST_DEGREES`.
+    Names that cannot be restored become ``""``. A name GHSL spelt without
+    its accents takes them from a nearby place spelt the same (``Brasov``
+    becomes ``Brașov``).
+    """
+    out = list(names)
+    if not places:
+        return [n if "?" not in n else "" for n in out]
+    plat = np.array([float(p[3]) for p in places])
+    plon = np.array([float(p[4]) for p in places])
+    for i, raw in enumerate(names):
+        if not raw or ("?" not in raw and not raw.isascii()):
+            continue
+        box = np.flatnonzero((np.abs(plat - lat[i]) < NEAR_DEGREES) & (np.abs(plon - lon[i]) < 2 * NEAR_DEGREES))
+        dist = np.hypot((plon[box] - lon[i]) * np.cos(np.radians(lat[i])), plat[box] - lat[i])
+        near = box[np.argsort(dist)][np.sort(dist) < NEAR_DEGREES]
+        if "?" not in raw:
+            if countries[i] in OTHER_SCRIPTS:
+                continue
+            plain = _fold(raw).casefold()
+            local = countries[i] in ("Romania", "Moldova")
+            accented = next((places[j][0] for j in near if not places[j][0].isascii()
+                             and _fold(places[j][1]).casefold() == plain
+                             and not _transliterated(places[j][0], cedilla=not local)), None)
+            if accented is not None:
+                out[i] = accented.translate(_COMMA_BELOW) if countries[i] in ("Romania", "Moldova") else accented
+            continue
+        name = _fold(raw)
+        latin = bool(re.search(r"[A-Za-z\u00c0-\u00ff]", name))
+        lost = re.compile(re.escape(name).replace(r"\?", r"[^\x00-\xff]"))
+        found = ""
+        for j in near:
+            forms = [places[j][0], *(a for a in places[j][2].split(",") if a)]
+            hit = next((f for f in forms if lost.fullmatch(_fold(f))), None)
+            if hit is not None:
+                found = hit if latin else places[j][0]
+                break
+        if not found and latin:
+            loose = re.compile(re.escape(name).replace(r"\?", "[A-Za-z]?"), re.IGNORECASE)
+            found = next((places[j][1] for j in near if loose.fullmatch(_fold(places[j][1]))), "")
+        if not found and not latin and len(near) and np.min(dist) < NEAREST_DEGREES:
+            found = places[near[0]][0]
+        if countries[i] in ("Romania", "Moldova"):
+            found = found.translate(_COMMA_BELOW)
+        out[i] = found
+    return out
+
+
+def _geonames(cache_dir: str) -> list[list[str]]:
+    """GeoNames' places of 5,000 people and more: (name, ASCII name, alternate names, lat, lon) each."""
+    zip_path = os.path.join(cache_dir, "geonames_cities5000.zip")
+    if not os.path.isfile(zip_path):
+        logger.info("Downloading GeoNames' place names (one-time, ~6 MB) …")
+        _download(GEONAMES_URL, zip_path, label="place names")
+    with zipfile.ZipFile(zip_path) as archive:
+        text = archive.read("cities5000.txt").decode("utf-8")
+    rows = [line.split("\t") for line in text.splitlines()]
+    return [[r[1], r[2], r[3], r[4], r[5]] for r in rows if len(r) > 5]
+
+
+def _restored_names(centres: dict[str, np.ndarray], cache_dir: str) -> list[str]:
+    """The centres' names with their lost letters restored (see :func:`repair_names`), cached once made.
+
+    Without GeoNames (offline), names that lost letters are left out of the labels for now.
+    """
+    names = centres["names"].tolist()
+    path = os.path.join(cache_dir, f"names_v{NAMES_VERSION}.npz")
+    try:
+        with np.load(path) as saved:
+            if len(saved["names"]) == len(names):
+                return saved["names"].tolist()
+    except (OSError, ValueError, KeyError):
+        pass
+    try:
+        places = _geonames(cache_dir)
+    except Exception as exc:                  # network, zip and file errors alike
+        logger.warning("Could not restore the city names GHSL garbled (%s); leaving them unnamed.", exc)
+        return [n if "?" not in n else "" for n in names]
+    fixed = repair_names(names, centres["countries"].tolist(), centres["lon"], centres["lat"], places)
+    np.savez_compressed(path + ".part.npz", names=np.array(fixed))
+    os.replace(path + ".part.npz", path)
+    try:
+        os.remove(os.path.join(cache_dir, "geonames_cities5000.zip"))
+    except OSError:
+        pass
+    return fixed
+
+
 def _cached(path: str, build) -> dict[str, np.ndarray]:
     if not os.path.isfile(path):
         data = build()
@@ -203,11 +345,12 @@ def load_cities(year: int = DEFAULT_YEAR, cache_dir: str | None = None) -> Citie
                                               lambda: _build_outlines(db, when, now)))
 
             shapes = outlines_of(year)
+        names = _restored_names(centres, cache_dir)
     except CitiesDataError:
         raise
     except Exception as exc:                  # SQLite, geometry and file errors alike
         raise CitiesDataError(f"Could not read the GHSL urban centres: {exc}") from exc
-    return Cities(year, centres["names"].tolist(), centres["countries"].tolist(), centres["lon"], centres["lat"],
+    return Cities(year, names, centres["countries"].tolist(), centres["lon"], centres["lat"],
                   centres["population"][:, YEARS.index(year)], [shapes.get(int(i)) for i in centres["ids"]])
 
 
@@ -263,6 +406,15 @@ class LabelSpace:
         return True
 
 
+def label_space(ax: GeoAxes) -> LabelSpace:
+    """The :class:`LabelSpace` every layer naming places on *ax* shares, so their names never overlap."""
+    space = getattr(ax, "_ortho_label_space", None)
+    if space is None:
+        space = LabelSpace(ax)
+        setattr(ax, "_ortho_label_space", space)
+    return space
+
+
 def draw_cities(ax: GeoAxes, cities: Cities, min_population: int, alpha: float = 0.6,
                 labels: bool = True, limit: int = LABEL_MAX) -> list[int]:
     """Fill the built-up extent of each centre of at least *min_population* on *ax* and name the largest.
@@ -280,7 +432,7 @@ def draw_cities(ax: GeoAxes, cities: Cities, min_population: int, alpha: float =
                           linewidth=0.4, alpha=alpha, zorder=7.3)
     if not labels:
         return shown
-    space = LabelSpace(ax)
+    space = label_space(ax)
     named = 0
     for i in shown:
         if named >= limit:
@@ -288,7 +440,7 @@ def draw_cities(ax: GeoAxes, cities: Cities, min_population: int, alpha: float =
         lon, lat = anchor(cities, i)
         x, y = ax.projection.transform_point(lon, lat, ccrs.PlateCarree())
         size = label_size(cities.population[i])
-        if not space.claim(x, y, cities.names[i], size):
+        if not cities.names[i] or not space.claim(x, y, cities.names[i], size):
             continue
         named += 1
         ax.plot(x, y, "o", transform=ax.projection, markersize=0.45 * size, markerfacecolor="white",

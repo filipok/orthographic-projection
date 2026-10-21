@@ -1,0 +1,7 @@
+# Europe, the Mediterranean and the Middle East at night: NASA's Black Marble, the lights of 2016
+# seen by the VIIRS satellite on moonless nights, from the Nile and the Gulf to the Ruhr and Moscow.
+lat = 45
+lon = 18
+provider = "nasa_night"
+zoom = 4
+output = "orthographic_map_europe_nasa_night_z4.png"

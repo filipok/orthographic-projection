@@ -247,11 +247,13 @@
       </details>
 
       <details>
-        <summary>Shipping and air routes (World Bank and IMF, OpenFlights)</summary>
+        <summary>Shipping, ports and air routes (World Bank and IMF, OpenFlights)</summary>
         <label class="field"><span>Ship traffic, from AIS positions 2015-2021 (each kind downloaded once, 20-510 MB)</span>
           <select id="shipping"><option value="">None</option></select></label>
         <label class="field slider" data-show="shipping" hidden><span>Opacity <output for="shipping-alpha"></output></span>
           <input id="shipping-alpha" type="range" min="0" max="1" step="0.05"></label>
+        <label class="field"><span>Ports, sized by the ships calling a year 2019-2025 (IMF PortWatch)</span>
+          <select id="ports"><option value="">None</option></select></label>
         <label class="field"><span>Air routes, 2014: all, or airports and airlines, comma-separated</span>
           <input id="air-routes" type="text" placeholder="all, LHR, London, airline:BA" autocomplete="off"
                  spellcheck="false"></label>

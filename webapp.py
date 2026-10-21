@@ -187,6 +187,7 @@ class MapRequest(BaseModel):
     industry: str | None = None
     shipping: str | None = None
     shipping_alpha: float | None = None
+    ports: str | None = None
     air_routes: str | None = None
     route: list[str] | None = None
     route_legend: bool | None = None
@@ -428,6 +429,7 @@ def map_options(settings: Settings) -> dict[str, Any]:
                        **{f"eurostat:{name}": f"{preset.title} (European regions)"
                           for name, preset in ortho.EUROSTAT_PRESETS.items()}},
         "shipping": {name: kind.label for name, kind in ortho.SHIP_KINDS.items()},
+        "ports": {name: kind.label for name, kind in ortho.PORT_KINDS.items()},
         "livestock": list(ortho.LIVESTOCK_SPECIES),
         "malaria_years": [ortho.FIRST_MALARIA_YEAR, ortho.LATEST_MALARIA_YEAR],
         "aedes": list(ortho.AEDES_CHOICES),
