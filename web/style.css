@@ -311,3 +311,74 @@ button, .button {
   .preview { position: static; }
   .stage img { max-height: none; }
 }
+
+/* --- Atlases ------------------------------------------------------------ */
+
+.masthead-link { margin-left: 0.5rem; color: var(--accent); font-weight: 600; text-decoration: none; }
+.masthead-link:hover { text-decoration: underline; }
+
+.atlas-edit {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.atlas-edit p { margin: 0; }
+.atlas-edit-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.atlas-layout {
+  display: grid;
+  grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  max-width: 88rem;
+  margin: 0 auto;
+  padding: 0.5rem 1.25rem 2rem;
+}
+@media (max-width: 52rem) {
+  .atlas-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+.atlas-side { display: grid; gap: 0.75rem; position: sticky; top: 1rem; }
+@media (max-width: 52rem) { .atlas-side { position: static; } }
+
+.button-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; }
+.button-row .field { flex: 1; min-width: 8rem; }
+.button-row .button { padding-block: 0.55rem; }
+
+.pages { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; counter-reset: none; }
+.page-card {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.8rem 1rem 0.9rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  min-width: 0;
+}
+.page-card.section { border-left-color: var(--accent); background: var(--accent-soft); }
+.page-card:target { outline: 2px solid var(--accent); outline-offset: 2px; }
+.page-head { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.page-number { font: 600 0.8rem/1 var(--sans); color: var(--muted); min-width: 4.5rem; font-variant-numeric: tabular-nums; }
+.page-head select { width: auto; padding-block: 0.3rem; }
+.page-head .spacer { flex: 1; }
+.page-head .link { font-size: 0.82rem; }
+.page-title { font-weight: 600; }
+.map-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.map-summary code { overflow-wrap: anywhere; }
+.page-fields { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0.6rem; }
+@media (max-width: 40rem) { .page-fields { grid-template-columns: minmax(0, 1fr); } }
+
+.add-pages { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.dirty-note { color: var(--warn-ink); background: var(--warn-bg); border-radius: 6px; padding: 0.3rem 0.6rem; }
+progress { width: 100%; accent-color: var(--accent); }

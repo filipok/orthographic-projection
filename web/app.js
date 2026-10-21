@@ -90,6 +90,7 @@ function buildRequest() {
     req.up_toward = $("up-toward").value.trim();
   }
   if ($("circles-from").value.trim()) req.circles_from = $("circles-from").value.trim();
+  if ($("no-circles").checked) req.no_circles = true;
 
   const climate = $("climate").value;
   if (climate === "koppen" || climate === "trewartha") {
@@ -294,6 +295,7 @@ function fillForm(req) {
   if (req.up_toward) { check("orient", "toward"); set("up-toward", req.up_toward); }
   else { check("orient", "bearing"); set("up", req.up ?? 0); }
   set("circles-from", req.circles_from);
+  $("no-circles").checked = Boolean(req.no_circles);
 
   let climate = "";
   for (const name of ["koppen", "trewartha"]) {
@@ -579,6 +581,49 @@ $("recipe-delete").addEventListener("click", async () => {
   }
 });
 
+// --- An atlas page's map: /?atlas=NAME&page=N fills the form from it and saves it back ---
+
+const atlasEdit = (() => {
+  const params = new URLSearchParams(location.search);
+  return params.get("atlas") && params.get("page") ? { name: params.get("atlas"), page: params.get("page") } : null;
+})();
+
+function atlasStatus(message, isError = false) {
+  $("atlas-edit-status").textContent = message;
+  $("atlas-edit-status").classList.toggle("error", isError);
+  $("atlas-edit-status").hidden = !message;
+}
+
+async function startAtlasEdit() {
+  const { name, page } = atlasEdit;
+  const back = `/atlas?name=${encodeURIComponent(name)}#page-${encodeURIComponent(page)}`;
+  $("atlas-edit-back").href = back;
+  $("atlas-edit-name").textContent = name;
+  $("atlas-edit").hidden = false;
+  try {
+    const found = await getJSON(`/api/atlases/${encodeURIComponent(name)}/maps/${encodeURIComponent(page)}`);
+    $("atlas-edit-page").textContent = page === "cover" ? "the cover" : `page ${page}, “${found.title}”`;
+    const missing = fillForm(found.request);
+    atlasStatus(missing.length ? `Not offered here, so left out: ${missing.join(", ")}.` : "", missing.length > 0);
+    sync();
+  } catch (e) {
+    atlasStatus(e.message, true);
+  }
+  $("atlas-edit-save").addEventListener("click", async () => {
+    if (!form.reportValidity()) return;
+    try {
+      await getJSON(`/api/atlases/${encodeURIComponent(name)}/maps/${encodeURIComponent(page)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildRequest()),
+      });
+      location.href = back;
+    } catch (e) {
+      atlasStatus(e.message, true);
+    }
+  });
+}
+
 // --- Rendering and following a map ------------------------------------------------------
 
 function showError(message) {
@@ -752,6 +797,10 @@ async function init() {
   restoreForm();
   loadedRecipe = $("recipe").value;
   sync();
+  if (atlasEdit) {
+    $("atlas-edit-save").hidden = !options.editable;
+    await startAtlasEdit();
+  }
 }
 
 init().catch((e) => {

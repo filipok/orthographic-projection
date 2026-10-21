@@ -226,8 +226,9 @@ The main script is [ortho.py](ortho.py).
 - Non-interactive CLI mode with `argparse` for scripting and automation, its options grouped by topic in `--help`
 - A local web app (FastAPI): the same maps from a form in the browser, with the matching command line for each map
 - Recipe files (`--config`): a map's settings in a small TOML file, one per sample map in [recipes/](recipes/)
+- Atlases (`atlas.py`): many maps bound into one PDF with a cover, contents, section pages, captions and questions, edited as a TOML file or in the web app; a Romanian school atlas (Romania, the EU, the world) is bundled
 - City marker and label overlay on the globe for named locations
-- Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii, or around another place (`--circles-from`)
+- Concentric geodesic distance circles (2,500 km and 5,000 km) drawn around the centre point with labelled radii, or around another place (`--circles-from`), or none (`--no-circles`)
 - Optional zoomed-in map: only the area within a chosen distance of the centre (2,500 km by default), as a disc, with finer tiles
 - Optional second globe centred on the antipode, so one image shows the whole Earth, or on any other place, to compare two side by side
 - Optional Köppen-Geiger climate classification overlay with compact legend, for all classes or only chosen ones
@@ -646,6 +647,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--up BEARING` | Compass bearing to put at the top, in degrees clockwise from north | `0` |
 | `--up-toward PLACE` | Put the direction toward a city or `LAT,LON` at the top (instead of `--up`) | — |
 | `--circles-from PLACE` | Measure the distance circles from a city or `LAT,LON` instead of the map's centre, marked with a hollow ring | the centre |
+| `--no-circles` | Leave out the distance circles | off |
 | `--config FILE` | Read settings from a TOML recipe file; the command line overrides it (see "Recipe Files") | — |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
@@ -782,6 +784,8 @@ last settings in the browser.
   naming each route. **Upload** checks a GeoJSON file of your own (as
   `--route` would, up to 5 MB) and saves it into `routes/` under a tidied name
   (`Silk Road.json` becomes `silk_road.geojson`), so recipes can use it.
+- **Atlases.** The **Atlases** link opens the atlas page, `/atlas`, which edits
+  the atlases in `atlases/` and builds their PDFs (see "Atlases (PDF)" below).
 
 - **Same checks as the CLI.** A request is checked by the same code as a command
   line (`ortho.prepare_render`), so a bad class name or period is refused with
@@ -817,7 +821,94 @@ last settings in the browser.
 | `ORTHO_WEB_KEEP` | Finished maps kept | `50` |
 | `ORTHO_WEB_RECIPES_DIR` | The recipes the form loads and saves | `recipes/` beside `webapp.py` |
 | `ORTHO_WEB_ROUTES_DIR` | The route files the form offers and uploads into | `routes/` beside `webapp.py` |
-| `ORTHO_WEB_READ_ONLY` | `1` to offer recipes and routes without saving, deleting or uploading any; set it on a server others can reach | off |
+| `ORTHO_WEB_ATLASES_DIR` | The atlases the atlas page edits and prints | `atlases/` beside `webapp.py` |
+| `ORTHO_WEB_READ_ONLY` | `1` to offer recipes, routes and atlases without saving, deleting or uploading any; set it on a server others can reach | off |
+
+### Atlases (PDF)
+
+`atlas.py` binds many maps into one printable PDF: a cover, the contents, a
+title page for each part, and a page for each map with its title, a caption
+and questions for the reader. An atlas is a TOML file;
+[atlases/romania_school.toml](atlases/romania_school.toml) is a school atlas in
+Romanian, in three parts: **România** (position, relief, rivers, climate,
+temperatures, precipitation, vegetation, soils, crops, population, cities,
+development regions, industry, night lights, the Vrancea earthquakes, and the
+borders of 1914 and 1938), **Uniunea Europeană** (the states, relief, climates,
+January temperatures, precipitation, biomes, population, cities, GDP and
+unemployment by region, night lights, shipping, Europe in 1914) and **Lumea**
+(the two hemispheres, the states, relief and the ocean floor, plate tectonics,
+climates, currents, biomes, population, cities, life expectancy, GDP, time zones,
+shipping, the polar regions): 49 pages, 47 maps.
+
+```powershell
+python atlas.py atlases/romania_school.toml           # draws the maps and writes atlas_romania_school.pdf
+python atlas.py atlases/romania_school.toml --proof   # lays out the pages without drawing any map
+python atlas.py atlases/romania_school.toml --check   # checks every map's options and lists the pages
+```
+
+An atlas file holds a few settings and then its pages in order:
+
+```toml
+title = "Atlas geografic școlar"
+subtitle = "România · Uniunea Europeană · Lumea"
+language = "ro"     # the labels ("Cuprins", "Întrebări și exerciții" …): "ro" or "en"
+paper = "a4"        # a4, a3 or letter
+dpi = 120           # the maps' resolution (50–300); a globe is 20 in, so 120 dpi is 2,400 px
+
+[cover.map]         # a map for the cover (optional)
+lat = 45.95
+lon = 24.95
+provider = "nasa"
+no-circles = true
+
+[[pages]]
+type = "section"    # a part's title page: "section"; a map: "map" (the default with a map); "text"
+title = "România"
+text = "What this part shows."
+
+[[pages]]
+title = "Harta fizică a României"
+text = """
+The caption below the map. A blank line starts a new paragraph.
+"""
+questions = ["Numește cele trei ramuri ale Carpaților Românești."]
+[pages.map]         # the map's options, exactly as a recipe has them
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+elevation = true
+rivers = true
+```
+
+- **Editing.** Change the text, reorder the `[[pages]]` tables, delete or add
+  pages. A map page takes a `[pages.map]` table, a `recipe = "../recipes/x.toml"`
+  (relative to the atlas), or both, the table's options on top of the recipe's.
+  `orientation` is `auto` (landscape when the map is wide, as two globes are),
+  `portrait` or `landscape`. The atlas sets `dpi` and the output for every map,
+  so a page's map may not.
+- **Checked first.** Every map is checked like a command line before anything is
+  drawn, and a mistake names its page: `romania_school.toml page 5 (Clima):
+  Unknown Köppen-Geiger class 'Zzz'`.
+- **Drawn once.** The maps are kept in `atlas_<name>_maps/`, each named after
+  its page and a hash of its options, so a build draws only the maps that are
+  new or changed: rewording a caption and building again takes seconds.
+  `--force` draws them all again; `--maps-dir` and `-o` choose other places.
+  The first build of the bundled atlas downloads every layer's data and takes a
+  long while.
+- **A map that cannot be drawn** (no network, say) gets a placeholder naming the
+  error; the rest of the PDF is written and the command exits with status 1.
+- **The web app** edits atlases too: open http://127.0.0.1:8000/atlas to edit
+  the settings, titles, text and questions, move, duplicate, add and delete
+  pages, and build the PDF (or a quick proof) to open or download. **Edit the
+  map in the form** opens a page's map in the map form, to change and render it
+  there, then **Save to the atlas**. Saving from the web app keeps the comment
+  at the top of the file but not the others. The API: `GET /api/atlases`,
+  `GET`/`PUT`/`DELETE /api/atlases/{name}`, `GET`/`PUT /api/atlases/{name}/maps/{page}`
+  (`page` is the page's number or `cover`), and `POST /api/atlases/{name}/pdf`
+  (`{"proof": true}` for a proof), followed like a map at `/api/maps/{id}`, with
+  the PDF at `/api/maps/{id}/pdf`.
 
 ## Programmatic Use
 
@@ -855,6 +946,7 @@ generate_orthographic_map(
     trewartha_classes=None,  # optional: e.g. ["Do"] or ["C"]; implies trewartha=True (not with koppen)
     up=0,                  # optional: compass bearing at the top (180 = south up)
     circles_from=None,     # optional: (lat, lon) to measure the distance circles from instead
+    distance_circles=True, # optional: False leaves the distance circles out
 )
 ```
 
@@ -2461,10 +2553,12 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [google_tiles.py](google_tiles.py): Google Map Tiles API client (API key, sessions, attribution)
 - [tile_fetch.py](tile_fetch.py): single-tile downloader shared by the tile sources
 - [webapp.py](webapp.py): the local web app (FastAPI): map requests, the render queue and the JSON API
+- [atlas.py](atlas.py): atlases: the atlas file, checking and drawing its maps, laying out the PDF, and the files for the web app
 - [web/](web/): the web app's page, script and styles
 - [LICENSE](LICENSE): MIT licence
 - [routes/](routes/): bundled route files
 - [recipes/](recipes/): recipe files for the sample maps (`--config`)
+- [atlases/](atlases/): atlas files (`atlas.py`): the Romanian school atlas
 - [requirements.txt](requirements.txt): minimum dependency versions
-- [pyproject.toml](pyproject.toml): project metadata and the `ortho` and `ortho-web` commands
+- [pyproject.toml](pyproject.toml): project metadata and the `ortho`, `ortho-web` and `ortho-atlas` commands
 - [tests/](tests/): unit test suite

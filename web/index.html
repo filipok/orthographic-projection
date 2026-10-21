@@ -9,11 +9,21 @@
 <body>
   <header class="masthead">
     <h1>Orthographic <span>globe maps</span></h1>
-    <p>The same renderer as <code>ortho.py</code>: choose a place and the layers, then render.</p>
+    <p>The same renderer as <code>ortho.py</code>: choose a place and the layers, then render.
+      <a href="/atlas" class="masthead-link">Atlases: many maps as one PDF →</a></p>
   </header>
 
   <main class="layout">
     <form id="map-form" class="controls" novalidate>
+      <div id="atlas-edit" class="atlas-edit" hidden>
+        <p>Editing the map of <strong id="atlas-edit-page"></strong> in the atlas
+          <strong id="atlas-edit-name"></strong>. Render it to try it out, then save it to the atlas.</p>
+        <div class="atlas-edit-actions">
+          <button type="button" id="atlas-edit-save" class="button">Save to the atlas</button>
+          <a id="atlas-edit-back" class="button" href="/atlas">Back to the atlas</a>
+        </div>
+        <p id="atlas-edit-status" class="hint" role="status" hidden></p>
+      </div>
       <fieldset>
         <legend>Place</legend>
         <div class="segmented" role="radiogroup" aria-label="Place">
@@ -57,6 +67,7 @@
           <input id="up-toward" type="text" list="city-list" placeholder="London or 51.5,-0.13"></label>
         <label class="field"><span>Distance circles from (blank for the centre)</span>
           <input id="circles-from" type="text" list="city-list" placeholder="a city or LAT,LON"></label>
+        <label class="check"><input id="no-circles" type="checkbox"> No distance circles</label>
       </fieldset>
 
       <fieldset>

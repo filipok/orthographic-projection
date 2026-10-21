@@ -9,6 +9,7 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
+import atlas  # noqa: E402
 import ortho  # noqa: E402
 import webapp  # noqa: E402
 
@@ -398,3 +399,130 @@ class TestRoutes:
     def test_a_map_with_an_unknown_route_is_refused(self, client, route):
         response = client.post("/api/maps", json={"city": "Lisbon", "route": [route]})
         assert response.status_code == 400 and "no route file" in response.json()["detail"]
+
+
+ATLAS = ('# A test atlas.\ntitle = "Test"\n\n[[pages]]\ntype = "section"\ntitle = "Part"\n\n'
+         '[[pages]]\ntitle = "Lisbon"\ntext = "Words."\nquestions = ["Why?"]\n[pages.map]\ncity = "Lisbon"\n'
+         'radius = 800\n')
+
+
+@pytest.fixture
+def atlas_store(tmp_path, monkeypatch):
+    """A client with an atlases folder of its own, holding one atlas, and a renderer that draws real PNGs."""
+    from PIL import Image
+
+    atlases_dir = tmp_path / "atlases"
+    atlases_dir.mkdir()
+    (atlases_dir / "test.toml").write_text(ATLAS, encoding="utf-8")
+    calls = []
+
+    def render(**kwargs):
+        calls.append(kwargs)
+        Image.new("RGBA", (60, 70), (90, 150, 200, 255)).save(kwargs["output_filename"])
+        return kwargs["output_filename"]
+
+    monkeypatch.setattr(ortho, "generate_orthographic_map", render)
+
+    def make(read_only=False, max_dpi=300):
+        settings = webapp.Settings(output_dir=str(tmp_path / "maps"), cache_dir=str(tmp_path / "tiles"),
+                                   atlases_dir=str(atlases_dir), read_only=read_only, max_dpi=max_dpi)
+        return TestClient(webapp.create_app(settings))
+    return make, atlases_dir, calls
+
+
+class TestAtlases:
+    def test_page_and_options(self, atlas_store):
+        with atlas_store[0]() as client:
+            page = client.get("/atlas")
+            assert page.status_code == 200 and 'id="pages"' in page.text
+            assert client.get("/static/atlas.js").status_code == 200
+            assert client.get("/api/options").json()["atlas"]["papers"] == ["a4", "a3", "letter"]
+
+    def test_listed_and_read(self, atlas_store):
+        with atlas_store[0]() as client:
+            assert client.get("/api/atlases").json() == [{"name": "test", "title": "Test", "pages": 2}]
+            data = client.get("/api/atlases/test").json()
+        assert data["atlas"]["title"] == "Test"
+        assert data["atlas"]["pages"][1] == {"type": "map", "title": "Lisbon", "text": "Words.", "questions": ["Why?"],
+                                             "orientation": "auto", "recipe": None,
+                                             "map": {"city": "Lisbon", "radius": 800}, "kept": []}
+
+    @pytest.mark.parametrize("url, status", [
+        ("/api/atlases/nothing", 404), ("/api/atlases/Bad.Name", 400),
+        ("/api/atlases/test/maps/1", 400), ("/api/atlases/test/maps/9", 400), ("/api/atlases/nothing/maps/1", 404),
+    ])
+    def test_unknown_names_and_pages(self, atlas_store, url, status):
+        with atlas_store[0]() as client:
+            assert client.get(url).status_code == status
+
+    def test_saved_checked_and_overwritten(self, atlas_store):
+        make, atlases_dir, _ = atlas_store
+        with make() as client:
+            data = client.get("/api/atlases/test").json()["atlas"]
+            data["pages"][1]["title"] = "Lisboa"
+            assert client.put("/api/atlases/copy", json={"atlas": data}).status_code == 200
+            assert client.put("/api/atlases/copy", json={"atlas": data}).status_code == 409
+            data["pages"][1]["map"]["koppen_class"] = ["Zzz"]
+            bad = client.put("/api/atlases/copy", json={"atlas": data, "overwrite": True})
+            assert bad.status_code == 400 and "Unknown Köppen-Geiger class 'Zzz'" in bad.json()["detail"]
+        assert atlas.load_atlas(str(atlases_dir / "copy.toml")).pages[1].title == "Lisboa"
+
+    def test_a_pages_map_in_the_form(self, atlas_store):
+        make, atlases_dir, _ = atlas_store
+        with make() as client:
+            found = client.get("/api/atlases/test/maps/2").json()
+            assert found == {"name": "test", "page": "2", "title": "Lisbon", "request": {"city": "Lisbon", "radius": 800}}
+            saved = client.put("/api/atlases/test/maps/2", json={"city": "Tokyo", "koppen": True, "dpi": 150})
+            assert saved.status_code == 200
+            assert client.put("/api/atlases/test/maps/2", json={"city": "Tokyo", "zoom": 99}).status_code == 400
+        text = (atlases_dir / "test.toml").read_text(encoding="utf-8")
+        assert text.startswith("# A test atlas.\n")
+        assert atlas.load_atlas(str(atlases_dir / "test.toml")).pages[1].map == {"city": "Tokyo", "koppen": True}
+
+    def test_built_into_a_pdf_drawing_only_new_maps(self, atlas_store):
+        make, _, calls = atlas_store
+        with make() as client:
+            job = client.post("/api/atlases/test/pdf", json={})
+            assert job.status_code == 202 and job.json()["command"].startswith("python atlas.py ")
+            client.app.state.maps.wait(job.json()["id"], timeout=30)
+            status = client.get(f"/api/maps/{job.json()['id']}").json()
+            assert status["status"] == "done" and status["progress"] == [1, 1] and status["image"] is None
+            pdf = client.get(status["pdf"])
+            assert pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf"
+            assert pdf.content.startswith(b"%PDF")
+            assert client.get(f"/api/maps/{status['id']}/image").status_code == 404
+            assert len(calls) == 1 and calls[0]["dpi"] == atlas.DEFAULT_ATLAS_DPI
+
+            again = client.post("/api/atlases/test/pdf", json={"proof": True}).json()
+            client.app.state.maps.wait(again["id"], timeout=30)
+            assert client.get(f"/api/maps/{again['id']}").json()["filename"] == "atlas_test_proof.pdf"
+            assert len(calls) == 1
+
+    def test_builds_are_refused_before_they_start(self, atlas_store):
+        make, atlases_dir, _ = atlas_store
+        with make(max_dpi=100) as client:
+            response = client.post("/api/atlases/test/pdf")
+            assert response.status_code == 400 and "up to 100 dpi" in response.json()["detail"]
+            assert client.post("/api/atlases/nothing/pdf").status_code == 404
+        (atlases_dir / "broken.toml").write_text('title = "B"\n[[pages]]\ntitle = "M"\n[pages.map]\nradius = 5\n',
+                                                 encoding="utf-8")
+        with make() as client:
+            response = client.post("/api/atlases/broken/pdf")
+            assert response.status_code == 400 and "page 1 (M)" in response.json()["detail"]
+
+    def test_deleted(self, atlas_store):
+        make, atlases_dir, _ = atlas_store
+        with make() as client:
+            assert client.delete("/api/atlases/test").status_code == 204
+            assert client.delete("/api/atlases/test").status_code == 404
+        assert not list(atlases_dir.iterdir())
+
+    def test_a_read_only_server_builds_but_changes_nothing(self, atlas_store):
+        make, atlases_dir, _ = atlas_store
+        with make(read_only=True) as client:
+            data = client.get("/api/atlases/test").json()["atlas"]
+            assert client.put("/api/atlases/test", json={"atlas": data, "overwrite": True}).status_code == 403
+            assert client.put("/api/atlases/test/maps/2", json={"city": "Tokyo"}).status_code == 403
+            assert client.delete("/api/atlases/test").status_code == 403
+            assert client.post("/api/atlases/test/pdf", json={"proof": True}).status_code == 202
+        assert (atlases_dir / "test.toml").read_text(encoding="utf-8") == ATLAS

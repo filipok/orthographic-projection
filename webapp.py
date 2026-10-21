@@ -19,8 +19,13 @@ Settings come from the environment, so the same code runs locally or hosted:
 - ``ORTHO_WEB_RECIPES_DIR``, ``ORTHO_WEB_ROUTES_DIR``: the recipes and route
   files the form loads and saves (default: the ``recipes`` and ``routes``
   folders beside this file).
-- ``ORTHO_WEB_READ_ONLY``: ``1`` to offer recipes and routes without saving,
-  deleting or uploading any (for a server others can reach).
+- ``ORTHO_WEB_ATLASES_DIR``: the atlases the atlas page edits and prints
+  (default: the ``atlases`` folder beside this file).
+- ``ORTHO_WEB_READ_ONLY``: ``1`` to offer recipes, routes and atlases without
+  saving, deleting or uploading any (for a server others can reach).
+
+An atlas (see :mod:`atlas`) is built into a PDF on the same worker as the
+maps, its maps kept between builds so that only changed maps are drawn again.
 """
 
 from __future__ import annotations
@@ -35,7 +40,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -47,6 +52,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
+import atlas as atlases
 import ortho
 import recipe_store
 from crops import CROP_NAMES
@@ -82,6 +88,7 @@ class Settings:
     keep: int = 50
     recipes_dir: str = str(HERE / "recipes")
     routes_dir: str = str(HERE / "routes")
+    atlases_dir: str = str(HERE / "atlases")
     read_only: bool = False
 
     @classmethod
@@ -95,6 +102,7 @@ class Settings:
             keep=int(env.get("ORTHO_WEB_KEEP", 50)),
             recipes_dir=env.get("ORTHO_WEB_RECIPES_DIR") or str(HERE / "recipes"),
             routes_dir=env.get("ORTHO_WEB_ROUTES_DIR") or str(HERE / "routes"),
+            atlases_dir=env.get("ORTHO_WEB_ATLASES_DIR") or str(HERE / "atlases"),
             read_only=env.get("ORTHO_WEB_READ_ONLY", "").strip().lower() in ("1", "true", "yes", "on"),
         )
 
@@ -119,6 +127,7 @@ class MapRequest(BaseModel):
     up: float | None = None
     up_toward: str | None = None
     circles_from: str | None = None
+    no_circles: bool | None = None
     koppen: bool | None = None
     koppen_class: list[str] | None = None
     trewartha: bool | None = None
@@ -252,12 +261,14 @@ def request_args(request: MapRequest, settings: Settings, output_dir: str) -> ar
 
 @dataclass
 class Job:
-    """One map: queued, then running, then done or failed."""
+    """One map, or one atlas's PDF: queued, then running, then done or failed."""
     id: str
     label: str
     filename: str
     command: str
     kwargs: dict[str, Any] = field(repr=False)
+    task: Callable[[Job], str] | None = field(default=None, repr=False)   # an atlas: builds it, gives the PDF
+    progress: list[int] | None = None                                     # an atlas: [maps done, maps]
     status: str = "queued"
     activity: str | None = None
     warnings: list[str] = field(default_factory=list)
@@ -280,7 +291,9 @@ class Job:
             "warnings": self.warnings,
             "error": self.error,
             "seconds": round(end - self.started, 1) if self.started else None,
-            "image": f"/api/maps/{self.id}/image" if self.status == "done" else None,
+            "image": f"/api/maps/{self.id}/image" if self.status == "done" and self.task is None else None,
+            "pdf": f"/api/maps/{self.id}/pdf" if self.status == "done" and self.task is not None else None,
+            "progress": self.progress,
         }
 
 
@@ -338,8 +351,42 @@ class MapQueue:
         job_dir = os.path.join(self.settings.output_dir, job_id)
         args = request_args(request, self.settings, job_dir)
         plan = ortho.prepare_render(args)
-        job = Job(job_id, plan.label, plan.kwargs["output_filename"],
-                  cli_command(request, args.dpi, self.settings.routes_dir), plan.kwargs)
+        return self._queue(Job(job_id, plan.label, plan.kwargs["output_filename"],
+                               cli_command(request, args.dpi, self.settings.routes_dir), plan.kwargs))
+
+    def submit_atlas(self, name: str, proof: bool = False) -> Job:
+        """Check atlas *name* and every map in it, and queue its PDF; ``ValueError`` if it is refused.
+
+        Its maps are kept in a folder of their own between builds, so a build
+        draws only the maps that changed; a *proof* draws none.
+        """
+        settings = self.settings
+        path = atlases.atlas_path(settings.atlases_dir, name)
+        if not path.is_file():
+            raise LookupError(f"There is no atlas {name!r}.")
+        book = atlases.load_atlas(str(path))
+        if book.dpi > settings.max_dpi:
+            raise ValueError(f"This server draws maps of up to {settings.max_dpi} dpi, not {book.dpi}.")
+        maps_dir = os.path.join(settings.output_dir, "atlases", name)
+        atlases.plan_maps(book, maps_dir, settings.cache_dir)          # refuse a bad map now, not mid-build
+        job_id = uuid.uuid4().hex[:12]
+        output = os.path.join(settings.output_dir, job_id, f"atlas_{name}{'_proof' if proof else ''}.pdf")
+
+        def build(job: Job) -> str:
+            def progress(done: int, total: int, _title: str) -> None:
+                job.progress = [done, total]
+
+            result = atlases.build_atlas(book, output, maps_dir, proof=proof, cache_dir=settings.cache_dir,
+                                         progress=progress)
+            job.warnings += [f"Could not draw the map of page {key}: {redact(error)}"
+                             for key, error in result.failures.items()]
+            return result.output
+
+        command = f"python atlas.py {shlex.quote(_shown_path(str(path)))}" + (" --proof" if proof else "")
+        return self._queue(Job(job_id, book.title, os.path.basename(output), command, {}, task=build))
+
+    def _queue(self, job: Job) -> Job:
+        job_id = job.id
         with self._lock:
             waiting = sum(j.status in ("queued", "running") for j in self._jobs.values())
             if waiting >= self.settings.max_queue:
@@ -374,7 +421,7 @@ class MapQueue:
         root = logging.getLogger()
         root.addHandler(handler)
         try:
-            job.path = ortho.generate_orthographic_map(**job.kwargs)
+            job.path = job.task(job) if job.task else ortho.generate_orthographic_map(**job.kwargs)
             job.status = "done"
         except Exception as e:  # anything the renderer raises is shown on the page
             logger.exception("Map %s failed", job.id)
@@ -437,6 +484,9 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "earthquakes": {"default": ortho.DEFAULT_MIN_MAGNITUDE, "min": ortho.MIN_MAGNITUDE, "max": ortho.MAX_MAGNITUDE},
         "crops": list(CROP_NAMES),
         "editable": not settings.read_only,
+        "atlas": {"papers": list(atlases.PAPER_SIZES), "languages": list(atlases.LABELS),
+                  "dpi": {"default": atlases.DEFAULT_ATLAS_DPI, "min": atlases.MIN_ATLAS_DPI,
+                          "max": min(atlases.MAX_ATLAS_DPI, settings.max_dpi)}},
     }
 
 
@@ -455,6 +505,21 @@ class RouteUpload(BaseModel):
 
     filename: str
     content: str
+
+
+class AtlasSave(BaseModel):
+    """An atlas to save, as ``GET /api/atlases/{name}`` gives it: its settings and its pages."""
+    model_config = ConfigDict(extra="forbid")
+
+    atlas: dict[str, Any]
+    overwrite: bool = False
+
+
+class AtlasBuild(BaseModel):
+    """Build an atlas's PDF; a proof lays out the pages without drawing the maps not drawn yet."""
+    model_config = ConfigDict(extra="forbid")
+
+    proof: bool = False
 
 
 # The options a recipe can give the form, in the order a saved recipe lists them
@@ -479,6 +544,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
         return FileResponse(WEB_DIR / "index.html")
+
+    @app.get("/atlas", include_in_schema=False)
+    def atlas_page() -> FileResponse:
+        return FileResponse(WEB_DIR / "atlas.html")
 
     @app.get("/api/options")
     def options() -> dict[str, Any]:
@@ -560,10 +629,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except recipe_store.RecipeError as e:
             raise HTTPException(400, str(e)) from None
 
+    def atlas_errors(call: Callable[[], Any]) -> Any:
+        try:
+            return call()
+        except (FileNotFoundError, LookupError) as e:
+            raise HTTPException(404, str(e)) from None
+        except FileExistsError as e:
+            raise HTTPException(409, str(e)) from None
+        except ValueError as e:                     # AtlasError, RecipeError and the renderer's checks
+            raise HTTPException(400, str(e)) from None
+
+    @app.get("/api/atlases")
+    def atlas_list() -> list[dict[str, Any]]:
+        return atlases.list_atlases(settings.atlases_dir)
+
+    @app.get("/api/atlases/{name}")
+    def atlas_read(name: str) -> dict[str, Any]:
+        return atlas_errors(lambda: atlases.read_atlas_json(settings.atlases_dir, settings.routes_dir, name,
+                                                            FORM_FIELDS))
+
+    @app.put("/api/atlases/{name}")
+    def atlas_save(name: str, body: AtlasSave) -> dict[str, str]:
+        writable()
+        path = atlas_errors(lambda: atlases.write_atlas(settings.atlases_dir, settings.routes_dir, name, body.atlas,
+                                                        FORM_FIELDS, body.overwrite, settings.cache_dir))
+        return {"name": name, "file": _shown_path(str(path))}
+
+    @app.delete("/api/atlases/{name}", status_code=204)
+    def atlas_delete(name: str) -> None:
+        writable()
+        atlas_errors(lambda: atlases.delete_atlas(settings.atlases_dir, name))
+
+    @app.get("/api/atlases/{name}/maps/{page}")
+    def atlas_map(name: str, page: str) -> dict[str, Any]:
+        """The whole map of a page (``cover`` or its number) as the form's request."""
+        request = atlas_errors(lambda: atlases.map_request(settings.atlases_dir, settings.routes_dir, name, page,
+                                                           FORM_FIELDS))
+        title = atlas_errors(lambda: atlases.page_title(settings.atlases_dir, name, page))
+        return {"name": name, "page": page, "title": title, "request": request}
+
+    @app.put("/api/atlases/{name}/maps/{page}")
+    def atlas_set_map(name: str, page: str, request: MapRequest) -> dict[str, str]:
+        writable()
+        path = atlas_errors(lambda: atlases.set_page_map(settings.atlases_dir, settings.routes_dir, name, page,
+                                                         request.given(), FORM_FIELDS, settings.cache_dir))
+        return {"name": name, "file": _shown_path(str(path))}
+
+    @app.post("/api/atlases/{name}/pdf", status_code=202)
+    def atlas_build(name: str, body: AtlasBuild | None = None) -> dict[str, Any]:
+        try:
+            job = atlas_errors(lambda: queue.submit_atlas(name, proof=bool(body and body.proof)))
+        except QueueFull as e:
+            raise HTTPException(503, str(e)) from None
+        return job.summary(queue.position(job))
+
+    @app.get("/api/maps/{job_id}/pdf")
+    def atlas_pdf(job_id: str, download: bool = False) -> FileResponse:
+        job = find(job_id)
+        if job.status != "done" or job.task is None or not job.path or not os.path.isfile(job.path):
+            raise HTTPException(404, "This atlas has no PDF yet.")
+        return FileResponse(job.path, media_type="application/pdf", filename=job.filename,
+                            content_disposition_type="attachment" if download else "inline")
+
     @app.get("/api/maps/{job_id}/image")
     def map_image(job_id: str, download: bool = False) -> FileResponse:
         job = find(job_id)
-        if job.status != "done" or not job.path or not os.path.isfile(job.path):
+        if job.status != "done" or job.task is not None or not job.path or not os.path.isfile(job.path):
             raise HTTPException(404, "This map has no image yet.")
         return FileResponse(job.path, media_type="image/png", filename=job.filename,
                             content_disposition_type="attachment" if download else "inline")
