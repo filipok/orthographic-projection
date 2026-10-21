@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atlas Editor</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="masthead">
+    <h1>Atlases <span>many maps, one PDF</span></h1>
+    <p>Edit an atlas's pages, their text and questions, and each page's map; then print it as a PDF
+      (<code>atlas.py</code> does the same from the command line).
+      <a href="/" class="masthead-link">← Single maps</a></p>
+  </header>
+
+  <main class="atlas-layout">
+    <aside class="atlas-side">
+      <fieldset>
+        <legend>Atlas</legend>
+        <label class="field"><span>Atlas in atlases/</span>
+          <select id="atlas-name"></select></label>
+        <div class="button-row editable">
+          <label class="field"><span>New atlas, or save this one as</span>
+            <input id="new-name" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. my_atlas"></label>
+          <button type="button" id="create" class="button">New</button>
+          <button type="button" id="save-as" class="button">Save as</button>
+        </div>
+        <button type="button" id="delete" class="button danger editable">Delete this atlas</button>
+      </fieldset>
+
+      <fieldset id="settings">
+        <legend>Cover and settings</legend>
+        <label class="field"><span>Title</span><input id="title" type="text"></label>
+        <label class="field"><span>Subtitle</span><input id="subtitle" type="text"></label>
+        <div class="row">
+          <label class="field"><span>Author</span><input id="author" type="text"></label>
+          <label class="field"><span>Edition</span><input id="edition" type="text"></label>
+        </div>
+        <div class="row">
+          <label class="field"><span>Labels</span><select id="language"></select></label>
+          <label class="field"><span>Paper</span><select id="paper"></select></label>
+          <label class="field"><span>Map dpi</span><input id="dpi" type="number" step="10"></label>
+        </div>
+        <div class="map-summary"><span>Cover map:</span> <code id="cover-summary">none</code></div>
+        <div class="button-row">
+          <button type="button" id="cover-edit" class="button editable">Edit the cover map</button>
+          <button type="button" id="cover-remove" class="button danger editable">Remove it</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Save and print</legend>
+        <button type="button" id="save" class="primary editable">Save the atlas</button>
+        <p id="dirty" class="hint dirty-note" hidden>Changes not saved yet.</p>
+        <div class="button-row">
+          <button type="button" id="build" class="button">Build the PDF</button>
+          <button type="button" id="proof" class="button">Proof (no new maps)</button>
+        </div>
+        <p class="hint">A build draws only the maps not drawn yet, or whose options changed; the first one
+          downloads the data and takes a while. A proof lays out every page at once, with a placeholder
+          for each map not drawn yet.</p>
+        <progress id="progress" max="1" value="0" hidden></progress>
+        <p id="status" class="hint" role="status" hidden></p>
+        <div class="actions" id="pdf-actions" hidden>
+          <a id="pdf-open" class="button" href="#" target="_blank" rel="noopener">Open the PDF</a>
+          <a id="pdf-download" class="button" href="#">Download</a>
+        </div>
+        <ul id="warnings" class="warnings" hidden></ul>
+      </fieldset>
+    </aside>
+
+    <section>
+      <ol id="pages" class="pages"></ol>
+      <p id="empty" class="hint" hidden>No pages yet: add a section, a map or a page of text.</p>
+      <div class="add-pages editable" style="margin-top: 0.75rem">
+        <button type="button" class="button" data-add="section">+ Section</button>
+        <button type="button" class="button" data-add="map">+ Map page</button>
+        <button type="button" class="button" data-add="text">+ Text page</button>
+      </div>
+    </section>
+  </main>
+
+  <template id="page-template">
+    <li class="page-card">
+      <div class="page-head">
+        <span class="page-number"></span>
+        <select class="page-type" aria-label="Page type">
+          <option value="map">Map</option>
+          <option value="section">Section</option>
+          <option value="text">Text</option>
+        </select>
+        <select class="page-orientation" aria-label="Orientation">
+          <option value="auto">Auto orientation</option>
+          <option value="portrait">Portrait</option>
+          <option value="landscape">Landscape</option>
+        </select>
+        <span class="spacer"></span>
+        <button type="button" class="link editable" data-act="up" aria-label="Move up">↑</button>
+        <button type="button" class="link editable" data-act="down" aria-label="Move down">↓</button>
+        <button type="button" class="link editable" data-act="copy">Duplicate</button>
+        <button type="button" class="link danger editable" data-act="remove">Delete</button>
+      </div>
+      <label class="field"><span>Title</span><input class="page-title" type="text"></label>
+      <div class="page-fields">
+        <label class="field"><span class="text-label">Text below the map</span>
+          <textarea class="page-text" rows="5" placeholder="A blank line starts a new paragraph"></textarea></label>
+        <label class="field page-questions-field"><span>Questions, one per line</span>
+          <textarea class="page-questions" rows="5"></textarea></label>
+      </div>
+      <div class="map-summary">
+        <span>Map:</span> <code class="page-map"></code>
+        <button type="button" class="link" data-act="map">Edit the map in the form →</button>
+      </div>
+    </li>
+  </template>
+
+  <script src="/static/atlas.js"></script>
+</body>
+</html>

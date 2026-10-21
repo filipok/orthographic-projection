@@ -678,6 +678,10 @@ class TestCLIParser:
         assert self._parse(["--city", "lisbon"]).beside is None
         assert self._parse(["--city", "lisbon", "--beside", "Tokyo"]).beside == "Tokyo"
 
+    def test_no_circles_flag(self):
+        assert self._parse(["--city", "nyc"]).no_circles is False
+        assert self._parse(["--city", "nyc", "--no-circles"]).no_circles is True
+
     def test_circles_from_flag(self):
         assert self._parse(["--city", "nyc"]).circles_from is None
         assert self._parse(["--city", "nyc", "--circles-from", "London"]).circles_from == "London"
@@ -1030,7 +1034,7 @@ class TestRunCLIValidation:
             output=None, output_dir=None, cache_dir=None,
             koppen=False, koppen_alpha=None, route=None, route_legend=False,
             both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
-            koppen_class=None, up=0.0, up_toward=None, circles_from=None, beside=None, temperature_over_sea=False, sea_temperature=None,
+            koppen_class=None, up=0.0, up_toward=None, circles_from=None, no_circles=False, beside=None, temperature_over_sea=False, sea_temperature=None,
             trewartha=False, trewartha_class=None,
             elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
@@ -1352,6 +1356,12 @@ class TestRunCLIValidation:
             ortho.run_cli(args)
         render.assert_not_called()
         assert message in caplog.text
+
+    def test_no_circles_reaches_the_renderer(self):
+        with mock.patch.object(ortho, "configure_tile_cache"):
+            assert ortho.prepare_render(self._make_args(city="paris")).kwargs["distance_circles"] is True
+            plan = ortho.prepare_render(self._make_args(city="paris", no_circles=True))
+        assert plan.kwargs["distance_circles"] is False
 
     def test_circles_from_the_centre_by_default(self):
         with mock.patch.object(ortho, "configure_tile_cache"):
@@ -3023,6 +3033,12 @@ class TestRadiusAndWindRendering:
         ax, _, _ = self._render(tmp_path, radius_km=1_000, zoom=8, up=45)
         half = ax.projection.x_limits[1] * np.sin(1_000_000 / ortho.EARTH_RADIUS_M)
         assert ax.get_extent(ax.projection) == pytest.approx((-half, half, -half, half))
+
+    def test_no_distance_circles(self, tmp_path):
+        ax, circles, _ = self._render(tmp_path, radius_km=2_500, zoom=6, circles_from=(52.52, 13.405),
+                                      distance_circles=False)
+        assert not circles.called
+        assert not [line for line in ax.lines if line.get_marker() == "o" and line.get_markerfacecolor() == "none"]
 
     def test_whole_globe_by_default(self, tmp_path):
         ax, circles, _ = self._render(tmp_path)

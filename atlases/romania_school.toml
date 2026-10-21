@@ -1,0 +1,997 @@
+# Atlas geografic școlar: România, Uniunea Europeană și lumea.
+#
+# Build it with:   python atlas.py atlases/romania_school.toml
+# Check the text:  python atlas.py atlases/romania_school.toml --proof   (no maps drawn, seconds)
+#
+# Every [[pages]] table is one page, in order. Edit the titles, the text and the questions,
+# move pages, delete them or add new ones; a [pages.map] table holds the map's options exactly
+# as a recipe does (see "Recipe Files" in the README). Only the maps whose options change are
+# drawn again. The web app (python webapp.py, then "Atlases") edits this file too.
+
+title = "Atlas geografic școlar"
+subtitle = "România · Uniunea Europeană · Lumea"
+edition = "Ediția 2026"
+language = "ro"
+paper = "a4"
+dpi = 120
+
+[cover.map]
+lat = 45.95
+lon = 24.95
+provider = "nasa"
+no-circles = true
+
+# ---------------------------------------------------------------------------------------------
+# Partea I: România
+# ---------------------------------------------------------------------------------------------
+
+[[pages]]
+type = "section"
+title = "România"
+text = """
+România se află în sud-estul Europei Centrale, la nord de Peninsula Balcanică, pe cursul
+inferior al Dunării și cu ieșire la Marea Neagră. Are o suprafață de 238.397 km² și peste
+19 milioane de locuitori.
+
+Hărțile din această parte arată poziția țării, relieful, apele, clima, vegetația, solurile,
+populația, orașele și economia, apoi felul în care s-a format teritoriul României.
+"""
+
+[[pages]]
+title = "Poziția geografică a României"
+text = """
+România se află în emisfera nordică și în emisfera estică, aproape la jumătatea distanței
+dintre Ecuator și Polul Nord: paralela de 45° latitudine nordică trece prin sudul țării, iar
+meridianul de 25° longitudine estică o străbate de la nord la sud. Cercurile arată distanțele
+de 2.500 km și 5.000 km față de București.
+"""
+questions = [
+    "În ce emisferă se află România față de Ecuator? Dar față de meridianul Greenwich?",
+    "Ce continente se află, cel puțin în parte, la mai puțin de 5.000 km de București?",
+    "Numește trei state aflate la mai puțin de 2.500 km de București.",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm"
+circles-from = "44.43,26.10"
+
+[[pages]]
+title = "Harta fizică a României"
+text = """
+Relieful României este variat și dispus aproape concentric: în centru se află Podișul
+Transilvaniei, înconjurat de arcul Carpaților; spre exterior urmează dealurile și podișurile,
+iar la margine câmpiile și Delta Dunării. Munții ocupă circa 31% din suprafață, dealurile și
+podișurile 36%, iar câmpiile 33%. Cel mai înalt vârf este Moldoveanu (2.544 m), în Munții
+Făgărașului.
+"""
+questions = [
+    "Numește cele trei ramuri ale Carpaților Românești.",
+    "Unde se află Câmpia Română față de Carpații Meridionali?",
+    "Ce înseamnă că relieful României este dispus „în trepte” și „concentric”?",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+elevation = true
+rivers = true
+
+[[pages]]
+title = "Apele: râurile, Dunărea și Marea Neagră"
+text = """
+Aproape toate râurile României se varsă în Dunăre, care formează cea mai mare parte a graniței
+de sud și se varsă în Marea Neagră prin Delta Dunării, pe trei brațe: Chilia, Sulina și
+Sfântu Gheorghe. Rețeaua de râuri este radială: ele coboară din Carpați spre toate zările.
+Dunărea parcurge 1.075 km pe teritoriul României sau la granița ei. În fața Dobrogei, Marea
+Neagră are o platformă continentală largă și puțin adâncă.
+"""
+questions = [
+    "Numește trei râuri care izvorăsc din Carpații Orientali.",
+    "Care sunt cele trei brațe ale Dunării în Deltă? Pe care dintre ele circulă navele mari?",
+    "De ce este importantă platforma continentală a Mării Negre?",
+]
+[pages.map]
+lat = 45.6
+lon = 26.0
+provider = "osm_plain"
+radius = 550
+no-circles = true
+rivers = true
+ocean-depth = true
+
+[[pages]]
+title = "Clima: tipurile de climat"
+text = """
+România are un climat temperat-continental, cu patru anotimpuri bine definite. În clasificarea
+Köppen-Geiger, cea mai mare parte a țării are un climat continental (grupa D), cu veri calde în
+sud și est și mai răcoroase în nord și vest. În munți clima devine tot mai rece, iar pe cele
+mai înalte culmi apare clima alpină (grupa E). Cheia de sub hartă numește fiecare clasă.
+"""
+questions = [
+    "Ce clasă climatică are regiunea în care locuiești?",
+    "Cum se schimbă clima odată cu altitudinea?",
+    "De ce sunt verile mai calde în Câmpia Română decât în Podișul Transilvaniei?",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+koppen = true
+
+[[pages]]
+title = "Temperatura medie anuală"
+text = """
+Temperatura medie anuală scade de la peste 11 °C în sudul Câmpiei Române și pe litoral la sub
+−2 °C pe cele mai înalte vârfuri ale Carpaților. Altitudinea contează cel mai mult: temperatura
+aerului scade, în medie, cu circa 6 °C la fiecare 1.000 m. Harta arată mediile din anii
+1981–2010.
+"""
+questions = [
+    "Care sunt cele mai calde regiuni ale țării? Explică de ce.",
+    "Compară temperatura medie din Câmpia de Vest cu cea din Podișul Moldovei.",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+temperature = "year"
+
+[[pages]]
+title = "Temperatura medie în ianuarie"
+text = """
+În ianuarie, temperatura medie este negativă aproape peste tot: între 0 °C și −4 °C în câmpii
+și podișuri, sub −10 °C pe culmile Carpaților. Litoralul Mării Negre are iernile cele mai
+blânde. Iarna, Crivățul, un vânt rece și uscat dinspre est, aduce geruri și viscole în Moldova,
+în Bărăgan și în Dobrogea.
+"""
+questions = [
+    "Unde sunt cele mai blânde ierni din România? De ce?",
+    "Ce este Crivățul și ce regiuni afectează?",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+temperature = "january"
+
+[[pages]]
+title = "Temperatura medie în iulie"
+text = """
+În iulie, cele mai mari temperaturi medii, de 22–23 °C, sunt în sudul Câmpiei Române și în
+Dobrogea, iar cele mai mici, sub 8 °C, pe vârfurile Carpaților. Diferența dintre luna cea mai
+caldă și cea mai rece depășește 20 °C în câmpie, semn al caracterului continental al climei.
+"""
+questions = [
+    "Calculează diferența dintre temperatura medie din iulie și cea din ianuarie pentru orașul tău.",
+    "De ce este mai mică această diferență pe litoral?",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+temperature = "july"
+
+[[pages]]
+title = "Precipitațiile anuale"
+text = """
+Cantitatea de precipitații crește cu altitudinea și scade, în general, de la vest la est.
+Munții primesc peste 1.000 mm pe an, iar culmile cele mai înalte și expuse vânturilor de vest,
+mai ales în Munții Apuseni, peste 1.200–1.400 mm. Dobrogea, litoralul și Delta Dunării, cu sub
+400–450 mm pe an, sunt cele mai uscate regiuni ale țării.
+"""
+questions = [
+    "De ce primește Dobrogea atât de puține precipitații?",
+    "Compară precipitațiile din Munții Apuseni cu cele din Câmpia Română.",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+precipitation = "year"
+
+[[pages]]
+title = "Vegetația și folosirea terenului"
+text = """
+Harta arată acoperirea terenului observată din satelit (MODIS, 2024): pădurile acoperă munții
+și dealurile înalte, iar terenurile agricole domină câmpiile și podișurile. Pădurile ocupă
+aproximativ 29% din suprafața țării. Vegetația este etajată după altitudine: stepă și
+silvostepă în câmpie, păduri de stejar pe dealuri, păduri de fag și apoi de molid la munte,
+pajiști alpine pe culmi.
+"""
+questions = [
+    "Ce tip de acoperire a terenului domină în Câmpia Română? Dar în Carpați?",
+    "Enumeră etajele de vegetație de la câmpie până pe vârful munților.",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+landcover = true
+
+[[pages]]
+title = "Solurile"
+text = """
+Solurile se formează în funcție de climă, rocă, relief și vegetație. În câmpiile din sud și
+est, sub fostele stepe și silvostepe, se află cernoziomurile (Chernozems), cele mai fertile
+soluri ale țării. Pe dealuri și podișuri predomină luvisolurile și solurile brune, iar la munte
+solurile acide (cambisoluri, podzoluri). Cheia numește grupele de sol după sistemul
+internațional WRB.
+"""
+questions = [
+    "De ce sunt cernoziomurile atât de fertile?",
+    "În ce regiuni ale României se află cele mai multe cernoziomuri?",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+soil = true
+
+[[pages]]
+title = "Agricultura: grâul, porumbul și floarea-soarelui"
+text = """
+România este unul dintre cei mai mari producători de porumb și de floarea-soarelui din
+Uniunea Europeană. Harta arată, pentru fiecare loc, care dintre cele trei culturi ocupă cea mai
+mare suprafață (CROPGRIDS, în jurul anului 2020). Câmpia Română, Câmpia de Vest, Dobrogea și
+Podișul Moldovei sunt principalele regiuni agricole.
+"""
+questions = [
+    "Ce condiții naturale favorizează cultura cerealelor în Câmpia Română?",
+    "Ce cultură domină în regiunea ta?",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+crop = ["wheat", "maize", "sunflower"]
+
+[[pages]]
+title = "Populația: densitatea"
+text = """
+La recensământul din 2021, România avea 19,05 milioane de locuitori, cu o densitate medie de
+aproximativ 80 de locuitori pe km². Cele mai dens populate sunt zonele din jurul marilor
+orașe, Valea Prahovei și Moldova; munții înalți și Delta Dunării sunt cele mai slab populate.
+Harta arată densitatea populației în 2020.
+"""
+questions = [
+    "Care sunt cele mai slab populate regiuni ale țării? Explică de ce.",
+    "De ce trăiesc mulți oameni în jurul Bucureștiului și pe Valea Prahovei?",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+population = 2020
+
+[[pages]]
+title = "Orașele"
+text = """
+Harta arată centrele urbane și populația lor estimată în 2025 (GHSL). Bucureștiul, capitala,
+este de departe cel mai mare oraș, cu peste 1,7 milioane de locuitori în municipiu; urmează
+Cluj-Napoca, Iași, Constanța, Timișoara, Brașov, Craiova și Galați, fiecare cu peste 200.000
+de locuitori. Peste jumătate dintre români trăiesc în orașe.
+"""
+questions = [
+    "Numește cinci orașe-reședință de județ aflate pe Dunăre.",
+    "Ce oraș mare se află cel mai aproape de localitatea ta?",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+cities = 2025
+
+[[pages]]
+title = "Regiunile de dezvoltare: PIB pe locuitor"
+text = """
+România are opt regiuni de dezvoltare, care corespund nivelului NUTS 2 al Uniunii Europene:
+Nord-Est, Sud-Est, Sud-Muntenia, Sud-Vest Oltenia, Vest, Nord-Vest, Centru și București-Ilfov.
+Harta compară produsul intern brut pe locuitor al fiecărei regiuni (Eurostat, în standarde de
+putere de cumpărare). București-Ilfov are cel mai mare PIB pe locuitor din țară, iar Nord-Est
+pe cel mai mic.
+"""
+questions = [
+    "În ce regiune de dezvoltare locuiești?",
+    "De ce are regiunea București-Ilfov cel mai mare PIB pe locuitor?",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+indicator = "eurostat:gdp-per-person"
+
+[[pages]]
+title = "Industria"
+text = """
+Cercurile arată marile uzine, cu atât mai mari cu cât emit mai multe gaze cu efect de seră
+(Climate TRACE). Printre cele mai mari sunt combinatul siderurgic de la Galați, rafinăriile din
+jurul Ploieștiului și de la Năvodari (Petromidia), fabricile de ciment și termocentralele pe
+lignit din Oltenia.
+"""
+questions = [
+    "Ce resursă naturală a favorizat construirea termocentralelor din Oltenia?",
+    "De ce a fost construit un combinat siderurgic la Galați?",
+]
+[pages.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_plain"
+radius = 450
+no-circles = true
+industry = "steel,refineries,petrochemicals,cement,power"
+
+[[pages]]
+title = "România noaptea"
+text = """
+Imaginea din satelit (NASA Black Marble) arată luminile orașelor noaptea: cu cât un loc este
+mai luminos, cu atât acolo trăiesc și lucrează mai mulți oameni. Porturile sunt desenate după
+numărul de nave care le vizitează într-un an; Constanța este cel mai mare port de la Marea
+Neagră.
+"""
+questions = [
+    "Identifică pe imagine Bucureștiul, Clujul-Napoca, Iașiul și Timișoara.",
+    "De ce apar Carpații și Delta Dunării întunecate?",
+]
+[pages.map]
+lat = 45.4
+lon = 26.5
+provider = "nasa_night"
+radius = 500
+no-circles = true
+cities = 2025
+ports = "all"
+
+[[pages]]
+title = "Cutremurele și zona seismică Vrancea"
+text = """
+Cele mai puternice cutremure din România se produc în zona Vrancea, la Curbura Carpaților, la
+adâncimi de 60–200 km. Cutremurele din 10 noiembrie 1940 (magnitudine 7,7) și din 4 martie 1977
+(7,4) au produs mari distrugeri, mai ales în București. Punctele arată cutremurele de
+magnitudine cel puțin 5 din 1900 încoace, colorate după adâncime; liniile sunt granițele
+plăcilor tectonice.
+"""
+questions = [
+    "Unde se produc cele mai multe cutremure din România?",
+    "Ce reguli de siguranță trebuie respectate în timpul unui cutremur?",
+]
+[pages.map]
+lat = 45.7
+lon = 26.6
+provider = "osm_plain"
+radius = 700
+no-circles = true
+earthquakes = 5
+plates = true
+
+[[pages]]
+title = "România în 1914"
+text = """
+În 1914, Regatul României cuprindea Muntenia, Oltenia, Moldova de la vest de Prut și Dobrogea
+(cu Cadrilaterul, din 1913). Transilvania, Banatul, Crișana, Maramureșul și Bucovina făceau
+parte din Austro-Ungaria, iar Basarabia din Imperiul Rus. Harta arată statele la 1 iulie 1914
+(CShapes 2.0).
+"""
+questions = [
+    "Ce provincii locuite de români se aflau în 1914 în afara Regatului României?",
+    "Ce state se învecinau cu Regatul României în 1914?",
+]
+[pages.map]
+lat = 46.0
+lon = 25.5
+provider = "osm_plain"
+radius = 900
+no-circles = true
+borders = "1914-07-01"
+
+[[pages]]
+title = "România Mare, după Unirea din 1918"
+text = """
+În 1918, provinciile locuite în majoritate de români s-au unit cu Regatul României: Basarabia
+(27 martie), Bucovina (28 noiembrie), apoi Transilvania, Banatul, Crișana și Maramureșul, la
+1 Decembrie 1918, la Alba Iulia: Marea Unire. Granițele au fost recunoscute prin tratatele de
+pace din 1919–1920. Harta arată statele la 1 ianuarie 1938.
+"""
+questions = [
+    "Compară această hartă cu cea din 1914. Ce provincii s-au unit cu România?",
+    "De ce este 1 Decembrie Ziua Națională a României?",
+]
+[pages.map]
+lat = 46.0
+lon = 25.5
+provider = "osm_plain"
+radius = 900
+no-circles = true
+borders = "1938-01-01"
+
+# ---------------------------------------------------------------------------------------------
+# Partea a II-a: Uniunea Europeană
+# ---------------------------------------------------------------------------------------------
+
+[[pages]]
+type = "section"
+title = "Uniunea Europeană"
+text = """
+Uniunea Europeană reunește 27 de state, cu aproximativ 450 de milioane de locuitori. România
+este membră a Uniunii din 1 ianuarie 2007, împreună cu Bulgaria.
+
+Hărțile din această parte prezintă statele Europei, relieful, clima, vegetația, populația,
+orașele și economia continentului, și Europa de la începutul secolului al XX-lea.
+"""
+
+[[pages]]
+title = "Statele Europei"
+text = """
+Statele membre ale Uniunii Europene sunt: Austria, Belgia, Bulgaria, Cehia, Cipru, Croația,
+Danemarca, Estonia, Finlanda, Franța, Germania, Grecia, Irlanda, Italia, Letonia, Lituania,
+Luxemburg, Malta, Polonia, Portugalia, România, Slovacia, Slovenia, Spania, Suedia, Țările de
+Jos și Ungaria. Harta arată granițele statelor Europei în 2019 (CShapes 2.0); Regatul Unit a
+părăsit Uniunea la 31 ianuarie 2020.
+"""
+questions = [
+    "Colorează pe hartă statele membre ale Uniunii Europene.",
+    "Care dintre vecinii României sunt membri ai Uniunii Europene?",
+    "Care este cel mai întins stat al Uniunii Europene?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+borders = "2019-06-01"
+
+[[pages]]
+title = "Harta fizică a Europei"
+text = """
+Europa are câmpii întinse în centru și în est (Câmpia Germano-Polonă, Câmpia Est-Europeană),
+munți tineri și înalți în sud (Alpii, Pirineii, Carpații, Munții Balcani) și munți vechi,
+tociți, în nord-vest (Alpii Scandinaviei, munții Scoției). Cel mai înalt vârf al Uniunii
+Europene este Mont Blanc (4.806 m), în Alpi.
+"""
+questions = [
+    "Numește trei lanțuri muntoase din sudul Europei.",
+    "Ce fluvii se varsă în Marea Nordului?",
+    "Prin câte state curge Dunărea?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+elevation = true
+rivers = true
+
+[[pages]]
+title = "Climatele Europei"
+text = """
+Vestul Europei are un climat temperat oceanic (Cfb), cu ierni blânde și veri răcoroase, datorită
+Oceanului Atlantic și Curentului Nord-Atlantic. Spre est clima devine continentală (Dfb), cu
+ierni tot mai reci. În jurul Mării Mediterane verile sunt calde și secetoase (climat
+mediteranean, Cs), iar în nordul extrem apar clima subpolară și tundra.
+"""
+questions = [
+    "Ce climat are vestul Franței? Dar sudul Italiei?",
+    "Cum influențează Oceanul Atlantic clima Europei de Vest?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+koppen = true
+
+[[pages]]
+title = "Temperatura medie în ianuarie"
+text = """
+În ianuarie, izotermele Europei nu urmează paralelele, ci coboară de la nord la sud: Atlanticul
+încălzește vestul continentului, iar iernile devin tot mai reci spre est. De aceea, coasta de
+vest a Norvegiei are ierni mai blânde decât București, deși se află cu 15–20 de grade de
+latitudine mai la nord.
+"""
+questions = [
+    "Compară temperatura medie din ianuarie de la Lisabona, Paris, Varșovia și București.",
+    "De ce nu îngheață porturile din vestul Norvegiei?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+temperature = "january"
+
+[[pages]]
+title = "Precipitațiile anuale în Europa"
+text = """
+Cele mai multe precipitații cad pe coastele de vest și pe munții expuși vânturilor din Atlantic:
+Norvegia, Scoția, Alpii și Alpii Dinarici primesc pe alocuri peste 2.000 mm pe an. Interiorul
+continentului și sud-estul primesc mai puțin, iar sud-estul Spaniei este cea mai uscată
+regiune a Europei.
+"""
+questions = [
+    "De ce primesc coastele de vest ale Europei mai multe precipitații decât interiorul?",
+    "Unde plouă mai mult: în Irlanda sau în Ungaria?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+precipitation = "year"
+
+[[pages]]
+title = "Biomii Europei"
+text = """
+Biomii sunt marile zone de vegetație ale Pământului. Europa este acoperită în cea mai mare parte
+de păduri temperate de foioase și mixte; în nord se întinde taigaua, pădurea de conifere, iar în
+extremul nord tundra. În jurul Mediteranei cresc păduri și tufărișuri mediteraneene, iar în
+sud-estul continentului, până în sudul și estul României, se întinde stepa.
+"""
+questions = [
+    "Ce biom acoperă cea mai mare parte a Europei Centrale?",
+    "Unde se află taigaua? Ce arbori cresc acolo?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+biomes = true
+
+[[pages]]
+title = "Populația Europei"
+text = """
+Cele mai dens populate regiuni ale Europei formează un culoar de la sudul Angliei prin Țările de
+Jos, Belgia și valea Rinului până în nordul Italiei, numit uneori „Banana albastră”. Nordul
+Scandinaviei, munții și interiorul Spaniei sunt slab populate. Harta arată densitatea
+populației în 2020.
+"""
+questions = [
+    "Numește trei regiuni foarte dens populate ale Europei.",
+    "De ce este slab populat nordul Scandinaviei?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+population = 2020
+
+[[pages]]
+title = "Marile orașe ale Europei"
+text = """
+Printre cele mai mari aglomerări urbane ale Uniunii Europene sunt Parisul, Madridul, Barcelona,
+Berlinul, Milano, Roma, Atena și Bucureștiul; în afara Uniunii, Londra, Moscova și Istanbulul
+sunt și mai mari. Harta arată centrele urbane și populația lor estimată în 2025 (GHSL).
+"""
+questions = [
+    "Care sunt capitalele statelor vecine cu România?",
+    "De ce s-au dezvoltat multe orașe mari pe malul mărilor sau al fluviilor?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+cities = 2025
+
+[[pages]]
+title = "PIB pe locuitor în regiunile Europei"
+text = """
+Harta compară produsul intern brut pe locuitor al regiunilor (Eurostat, NUTS 2), în standarde de
+putere de cumpărare, care țin seama de prețurile din fiecare țară. Cele mai bogate sunt regiunile
+capitalelor și ale marilor centre financiare: Luxemburg, Dublin, Bruxelles, Paris, München,
+Hamburg. Regiunea București-Ilfov se află peste media Uniunii, dar multe alte regiuni din estul
+Uniunii sunt încă sub ea.
+"""
+questions = [
+    "Care sunt cele mai bogate regiuni ale Uniunii Europene?",
+    "Ce diferențe observi între regiunile din vestul și din estul Uniunii?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+indicator = "eurostat:gdp-per-person"
+
+[[pages]]
+title = "Șomajul în regiunile Europei"
+text = """
+Rata șomajului arată ce parte din oamenii care vor să lucreze nu au un loc de muncă (Eurostat,
+NUTS 2, ultimele date). Șomajul este cel mai ridicat în sudul Spaniei, în sudul Italiei și în
+Grecia, și cel mai scăzut în Cehia, Polonia și sudul Germaniei.
+"""
+questions = [
+    "Compară rata șomajului din România cu cea din Spania.",
+    "Ce măsuri pot reduce șomajul într-o regiune?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+indicator = "eurostat:unemployment"
+
+[[pages]]
+title = "Europa noaptea"
+text = """
+Luminile văzute din satelit noaptea (NASA Black Marble) arată unde trăiesc oamenii și unde se
+concentrează activitățile economice: marile orașe, valea Rinului, Câmpia Padului, coastele. Se
+văd și granițele dintre regiunile mai dezvoltate și cele mai puțin dezvoltate.
+"""
+questions = [
+    "Identifică pe imagine Londra, Parisul, Madridul, Roma și Bucureștiul.",
+    "Ce regiuni ale Europei sunt cele mai întunecate? De ce?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "nasa_night"
+radius = 2500
+no-circles = true
+
+[[pages]]
+title = "Transportul maritim și porturile"
+text = """
+Cele mai aglomerate rute maritime ale Europei trec prin Canalul Mânecii, Marea Nordului și
+strâmtoarea Gibraltar. Rotterdam este cel mai mare port al Europei. Constanța este legată de
+Marea Nordului pe apă: prin Canalul Dunăre–Marea Neagră, Dunăre, Canalul Main–Dunăre și Rin.
+Porturile sunt desenate după numărul de nave care le vizitează într-un an.
+"""
+questions = [
+    "Pe ce cale navigabilă poate ajunge o navă de la Constanța la Rotterdam?",
+    "De ce sunt atât de aglomerate Canalul Mânecii și strâmtoarea Gibraltar?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+shipping = "commercial"
+ports = "all"
+
+[[pages]]
+title = "Europa în 1914"
+text = """
+În ajunul Primului Război Mondial, Europa era dominată de mari imperii: Imperiul German,
+Austro-Ungaria, Imperiul Rus și Imperiul Otoman, iar Regatul Unit și Franța stăpâneau imperii
+coloniale în afara Europei. Harta arată statele la 1 iulie 1914 (CShapes 2.0).
+"""
+questions = [
+    "Compară harta cu cea a statelor de astăzi. Ce state noi au apărut după 1918?",
+    "Din ce imperii făceau parte, în 1914, teritoriile Poloniei de astăzi?",
+]
+[pages.map]
+lat = 49.0
+lon = 14.0
+provider = "osm_plain"
+radius = 2500
+no-circles = true
+borders = "1914-07-01"
+
+# ---------------------------------------------------------------------------------------------
+# Partea a III-a: Lumea
+# ---------------------------------------------------------------------------------------------
+
+[[pages]]
+type = "section"
+title = "Lumea"
+text = """
+Pământul are o suprafață de aproximativ 510 milioane de km², din care aproape 71% este acoperită
+de apă. Uscatul formează continentele: Europa, Asia, Africa, America de Nord, America de Sud,
+Australia și Antarctida. Pe Pământ trăiesc peste 8 miliarde de oameni.
+
+Hărțile din această parte arată Pământul întreg, în două emisfere: statele, relieful, plăcile
+tectonice, clima, oceanele, vegetația, populația și economia lumii.
+"""
+
+[[pages]]
+title = "Planiglobul: emisfera estică și emisfera vestică"
+text = """
+Planiglobul arată tot Pământul în două emisfere, fotografiat din satelit (NASA Blue Marble).
+Emisfera estică (stânga) cuprinde Europa, Asia, Africa și Australia; emisfera vestică
+(dreapta) cuprinde cele două Americi. Cercul gol din dreapta marchează punctul opus centrului
+emisferei estice: antipodul lui.
+"""
+questions = [
+    "Numește oceanele care se văd în fiecare emisferă.",
+    "În ce ocean se află antipodul României?",
+]
+[pages.map]
+lat = 0
+lon = 70
+provider = "nasa"
+both-hemispheres = true
+no-circles = true
+
+[[pages]]
+title = "Statele lumii"
+text = """
+Pe Pământ există aproape 200 de state independente; 193 sunt membre ale Organizației Națiunilor
+Unite. Cele mai întinse state sunt Rusia, Canada, Statele Unite ale Americii, China și
+Brazilia. Harta arată granițele statelor în 2019 (CShapes 2.0).
+"""
+questions = [
+    "Numește cele mai întinse trei state ale lumii și continentele pe care se află.",
+    "Ce state se întind pe două continente?",
+]
+[pages.map]
+lat = 0
+lon = 70
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+borders = "2019-06-01"
+
+[[pages]]
+title = "Relieful uscatului și al fundului oceanelor"
+text = """
+Pe uscat, culorile arată altitudinea; în oceane, adâncimea. Cei mai înalți munți sunt
+Himalaya, cu vârful Everest (8.849 m), iar cea mai mare adâncime este în Groapa Marianelor
+(aproape 11.000 m). Pe fundul oceanelor se văd dorsalele, lanțuri muntoase submarine lungi de
+zeci de mii de kilometri.
+"""
+questions = [
+    "Numește cel mai înalt lanț muntos de pe fiecare continent.",
+    "Unde se află dorsala Atlanticului? Ce insulă mare se află chiar pe ea?",
+]
+[pages.map]
+lat = 0
+lon = 70
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+elevation = true
+ocean-depth = true
+
+[[pages]]
+title = "Plăcile tectonice, cutremurele și vulcanii"
+text = """
+Scoarța Pământului este împărțită în plăci tectonice care se mișcă cu câțiva centimetri pe an.
+Cele mai multe cutremure și cei mai mulți vulcani se află la marginile plăcilor, mai ales în jurul
+Oceanului Pacific, în „Cercul de Foc al Pacificului” (stânga). Punctele arată cutremurele de
+magnitudine cel puțin 6 din 1900 încoace; triunghiurile, vulcanii.
+"""
+questions = [
+    "De ce se produc atât de multe cutremure în Japonia și în Chile?",
+    "Ce se întâmplă la granița dintre două plăci care se apropie?",
+]
+[pages.map]
+lat = 0
+lon = 160
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+plates = true
+earthquakes = 6
+volcanoes = true
+
+[[pages]]
+title = "Climatele Pământului"
+text = """
+Clasificarea Köppen-Geiger împarte climatele în cinci grupe: tropicale (A), aride (B), temperate
+(C), continentale (D) și polare (E). Ele se succed de la Ecuator spre poli, dar munții, curenții
+oceanici și depărtarea de ocean le schimbă forma.
+"""
+questions = [
+    "Ce grupă de climat are cea mai mare întindere pe uscat?",
+    "De ce lipsește climatul continental (D) din emisfera sudică?",
+]
+[pages.map]
+lat = 0
+lon = 70
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+koppen = true
+
+[[pages]]
+title = "Curenții oceanici"
+text = """
+Curenții calzi (roșu) duc apa caldă de la Ecuator spre poli, iar cei reci (albastru) aduc apa
+rece spre Ecuator. Curentul Golfului și Curentul Nord-Atlantic încălzesc vestul Europei; curenții
+reci de lângă coastele de vest ale Africii și Americii de Sud favorizează deșerturile de coastă
+Namib și Atacama.
+"""
+questions = [
+    "Numește un curent cald și un curent rece din Oceanul Atlantic.",
+    "Cum influențează curenții reci clima coastelor pe lângă care trec?",
+]
+[pages.map]
+lat = 0
+lon = -30
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+currents = true
+
+[[pages]]
+title = "Biomii lumii"
+text = """
+De la Ecuator spre poli se succed pădurile tropicale umede, savanele, deșerturile, pădurile și
+tufărișurile mediteraneene, stepele și preriile, pădurile temperate, taigaua și tundra. Biomii
+urmează mai ales temperatura și cantitatea de precipitații.
+"""
+questions = [
+    "Unde se află cele mai mari păduri tropicale umede?",
+    "Ce biom acoperă cea mai mare parte a Rusiei și a Canadei?",
+]
+[pages.map]
+lat = 0
+lon = 70
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+biomes = true
+
+[[pages]]
+title = "Populația lumii"
+text = """
+Cei peste 8 miliarde de oameni sunt repartizați foarte inegal: aproape 60% trăiesc în Asia. Cele
+mai dens populate regiuni sunt Asia de Sud și de Est (India, China, Bangladesh, insula Java),
+Europa și valea Nilului; deșerturile, regiunile polare și pădurea amazoniană sunt aproape
+nelocuite. Harta arată densitatea populației în 2020.
+"""
+questions = [
+    "Numește trei regiuni foarte dens populate și trei aproape nelocuite.",
+    "De ce trăiesc atât de mulți oameni în valea Nilului?",
+]
+[pages.map]
+lat = 0
+lon = 70
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+population = 2020
+
+[[pages]]
+title = "Marile orașe ale lumii"
+text = """
+Peste jumătate din omenire trăiește astăzi în orașe. Printre cele mai mari aglomerări urbane,
+cu peste 20 de milioane de locuitori fiecare, sunt Tokyo, Delhi, Shanghai, Jakarta, Dhaka,
+Cairo, Ciudad de México și São Paulo. Harta arată orașele cu peste un milion de locuitori în 2025
+(GHSL).
+"""
+questions = [
+    "Pe ce continent se află cele mai multe orașe mari?",
+    "Numește trei orașe mari aflate pe malul oceanului.",
+]
+[pages.map]
+lat = 0
+lon = 70
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+cities = 2025
+
+[[pages]]
+title = "Speranța de viață"
+text = """
+Speranța de viață la naștere arată câți ani ar trăi, în medie, un copil născut astăzi. Ea
+depășește 80 de ani în Japonia, în Europa de Vest și în Australia, dar este sub 65 de ani în
+unele state din Africa Subsahariană. În România este de aproximativ 76 de ani (Banca Mondială).
+"""
+questions = [
+    "Ce factori influențează speranța de viață?",
+    "Compară speranța de viață din România cu cea din statele vecine.",
+]
+[pages.map]
+lat = 10
+lon = 20
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+indicator = "life-expectancy"
+
+[[pages]]
+title = "Produsul intern brut pe locuitor"
+text = """
+PIB-ul pe locuitor arată, în medie, valoarea bunurilor și serviciilor produse într-un an, pentru
+fiecare locuitor, în dolari americani (Banca Mondială). Diferențele dintre state sunt foarte
+mari: de la peste 50.000 de dolari în Statele Unite, Elveția sau Norvegia la sub 1.000 de
+dolari în unele state din Africa.
+"""
+questions = [
+    "Ce continent are cele mai multe state cu PIB pe locuitor scăzut?",
+    "Este PIB-ul pe locuitor o măsură completă a nivelului de trai? De ce?",
+]
+[pages.map]
+lat = 10
+lon = 20
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+indicator = "gdp-per-person"
+
+[[pages]]
+title = "Fusurile orare"
+text = """
+Pământul se rotește în jurul axei sale în 24 de ore, așa că este împărțit în 24 de fuse orare
+de câte 15° longitudine. România folosește ora Europei de Est: UTC+2 iarna și UTC+3 vara, cu o
+oră înaintea Europei Centrale.
+"""
+questions = [
+    "Când la București este ora 12:00, cât este ora la Londra? Dar la Tokyo?",
+    "De ce granițele fusurilor orare nu urmează exact meridianele?",
+]
+[pages.map]
+lat = 0
+lon = 70
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+time-zones = true
+
+[[pages]]
+title = "Transportul maritim mondial"
+text = """
+Aproximativ 80% din mărfurile lumii sunt transportate pe mare. Cele mai aglomerate rute trec prin
+strâmtori și canale: Malacca, Suez, Panama, Gibraltar, Ormuz, Bosfor și Canalul Mânecii. Harta
+arată cât de des trec navele comerciale prin fiecare loc (2015–2021).
+"""
+questions = [
+    "Ce canale scurtează drumul navelor între Europa și Asia? Dar între Atlantic și Pacific?",
+    "Ce strâmtoare leagă Marea Neagră de Marea Mediterană?",
+]
+[pages.map]
+lat = 0
+lon = 70
+provider = "osm_plain"
+both-hemispheres = true
+no-circles = true
+shipping = "commercial"
+
+[[pages]]
+title = "Regiunile polare"
+text = """
+Arctica (stânga) este un ocean acoperit iarna de gheață marină, înconjurat de continente;
+Groenlanda este acoperită de o calotă glaciară. Antarctida (dreapta) este un continent acoperit
+aproape în întregime de gheață, groasă în medie de aproximativ 2 km. Harta arată gheața marină
+la întinderea maximă de iarnă.
+"""
+questions = [
+    "Care este diferența dintre Arctica și Antarctida?",
+    "Ce s-ar întâmpla cu nivelul oceanului planetar dacă s-ar topi gheața Antarctidei?",
+]
+[pages.map]
+lat = 90
+lon = 0
+provider = "osm_plain"
+beside = "-90,0"
+no-circles = true
+ice = true

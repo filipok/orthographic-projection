@@ -8,6 +8,8 @@ build/
 # Generated map outputs
 orthographic_map_*.png
 test_*.png
+atlas_*.pdf
+atlas_*_maps/
 
 # Local resources
 Beck_KG_V1/

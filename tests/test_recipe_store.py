@@ -17,7 +17,7 @@ ROUTES = ROOT / "routes"
 # The web form's options, in the order it lists them (as webapp.MapRequest has them)
 FIELDS = [
     "city", "lat", "lon", "provider", "zoom", "dpi", "radius", "both_hemispheres", "beside", "up", "up_toward",
-    "circles_from", "koppen", "koppen_class", "trewartha", "trewartha_class", "temperature", "precipitation",
+    "circles_from", "no_circles", "koppen", "koppen_class", "trewartha", "trewartha_class", "temperature", "precipitation",
     "humidity", "temperature_over_sea", "sea_temperature", "koppen_alpha", "elevation", "elevation_alpha",
     "landcover", "landcover_class", "landcover_year", "ndvi", "vegetation_alpha", "biomes", "biome_class",
     "ecoregions", "realms", "realm_regions", "biome_alpha", "soil", "soil_class",

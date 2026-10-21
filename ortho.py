@@ -781,6 +781,7 @@ def generate_orthographic_map(
     precipitation: str | None = None,
     humidity: str | None = None,
     circles_from: tuple[float, float] | None = None,
+    distance_circles: bool = True,
     beside: tuple[float, float] | None = None,
     beside_name: str | None = None,
     beside_up: float | None = None,
@@ -916,6 +917,9 @@ def generate_orthographic_map(
         (lat, lon) to measure the distance circles from, marked with a hollow
         ring, instead of the centre. On a radius map the rings are spaced to
         cover the map as seen from there.
+    distance_circles : bool
+        When False, leave out the distance circles (and *circles_from*'s
+        ring), as a thematic map in an atlas may want.
     elevation : bool
         When True, colour the land by height and shade its relief (Mapzen
         terrain tiles, see :mod:`elevation`), above the map tiles and below
@@ -1792,8 +1796,8 @@ def generate_orthographic_map(
     # or from *circles_from*: 2 500 and 5 000 km on its globe, or round steps
     # across a radius map; 17 500 and 15 000 km on the far globe. A globe
     # beside the first gets its own, from its centre or *circles_from*.
-    ring_globes = [(near, lat, lon)]
-    if beside is not None:
+    ring_globes = [(near, lat, lon)] if distance_circles else []
+    if beside is not None and distance_circles:
         ring_globes.append((axes[1], beside[0], beside[1]))
     for ax, centre_lat, centre_lon in ring_globes:
         ring_lat, ring_lon = circles_from if circles_from is not None else (centre_lat, centre_lon)
@@ -1806,9 +1810,9 @@ def generate_orthographic_map(
         else:
             _draw_distance_circles(ax, ring_lon, ring_lat)
     ring_lat, ring_lon = circles_from if circles_from is not None else (lat, lon)
-    if far is not None:
+    if far is not None and distance_circles:
         _draw_distance_circles(far, ring_lon, ring_lat, radii_km=FAR_SIDE_RADII_KM)
-    if circles_from is not None:
+    if circles_from is not None and distance_circles:
         for ax in axes:  # a hollow ring where the circles are measured from
             ax.plot(ring_lon, ring_lat, marker="o", markersize=8, markeredgewidth=2,
                     markerfacecolor="none", markeredgecolor="white",
@@ -2612,6 +2616,11 @@ def build_cli_parser() -> argparse.ArgumentParser:
         metavar="PLACE",
         help="Centre the distance circles on PLACE, a city name or LAT,LON, instead of the map's centre.",
     )
+    layout.add_argument(
+        "--no-circles",
+        action="store_true",
+        help="Leave out the distance circles.",
+    )
 
     climate = parser.add_argument_group(
         "Climate (Köppen-Geiger, Trewartha or CHELSA means)",
@@ -3091,7 +3100,19 @@ def _recipe_tokens(
         parser.error(f"cannot read recipe {path}: {e.strerror or e}")
     except tomllib.TOMLDecodeError as e:
         parser.error(f"recipe {path} is not valid TOML: {e}")
+    return option_tokens(parser, recipe, f"recipe {path}", os.path.dirname(os.path.abspath(path)), cli_argv)
 
+
+def option_tokens(
+    parser: argparse.ArgumentParser, recipe: dict[str, Any], where: str, base: str, cli_argv: Sequence[str] = (),
+) -> list[str]:
+    """Turn the options in *recipe*, as a recipe file holds them, into command-line tokens for *parser*.
+
+    Route paths are relative to the folder *base*; *where* names the options
+    in error messages, which exit through ``parser.error``. Options the
+    command line *cli_argv* overrides are dropped, as :func:`_recipe_tokens`
+    describes.
+    """
     actions = _option_actions(parser)
     given = _given_dests(parser, cli_argv)
     # Location counts as one choice: city, or lat with lon
@@ -3101,7 +3122,6 @@ def _recipe_tokens(
         if dests & given:
             overridden |= dests
 
-    base = os.path.dirname(os.path.abspath(path))
     tokens: list[str] = []
     for key, value in recipe.items():
         name = key.replace("_", "-")
@@ -3109,22 +3129,22 @@ def _recipe_tokens(
         if action is None:
             close = difflib.get_close_matches(name, actions, n=1)
             hint = f" Did you mean {close[0]!r}?" if close else ""
-            parser.error(f"recipe {path}: unknown option {key!r}.{hint}")
+            parser.error(f"{where}: unknown option {key!r}.{hint}")
         if action.dest in overridden:
             continue
         option = f"--{name}"
         if action.nargs == 0:  # a flag such as --ice
             if not isinstance(value, bool):
-                parser.error(f"recipe {path}: {key} must be true or false")
+                parser.error(f"{where}: {key} must be true or false")
             if value:
                 tokens.append(option)
             continue
         values = value if isinstance(value, list) else [value]
         if len(values) > 1 and not isinstance(action, argparse._AppendAction):
-            parser.error(f"recipe {path}: {key} takes a single value, not a list")
+            parser.error(f"{where}: {key} takes a single value, not a list")
         for item in values:
             if isinstance(item, bool) or not isinstance(item, (str, int, float)):
-                parser.error(f"recipe {path}: {key} must be text or a number, got {item!r}")
+                parser.error(f"{where}: {key} must be text or a number, got {item!r}")
             if action.dest in _RECIPE_PATH_KEYS:
                 item = os.path.normpath(os.path.join(base, item))
             tokens.append(f"{option}={item}")  # "=" keeps values like -33.9 attached
@@ -3662,6 +3682,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         radius_km=args.radius,
         up=up,
         circles_from=circles_from,
+        distance_circles=not args.no_circles,
         beside=beside_centre,
         beside_name=beside.name if beside is not None else None,
         beside_up=beside_up,

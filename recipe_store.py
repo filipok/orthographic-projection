@@ -123,39 +123,40 @@ def _route_name(entry: str, recipe_dir: Path, routes_dir: str) -> str | None:
     return None
 
 
-def read_recipe(recipes_dir: str, routes_dir: str, name: str, fields: Collection[str]) -> dict[str, Any]:
-    """Recipe *name* as ``{"name", "description", "request", "kept"}``.
+def request_from_options(
+    data: dict[str, Any], base_dir: Path, routes_dir: str, fields: Collection[str], where: str,
+) -> tuple[dict[str, Any], list[tuple[str, Any]]]:
+    """Recipe options *data* as the form's request, and the entries the form leaves alone.
 
-    *request* holds the options among *fields* (the web form's), by argparse
-    name, periods spelled as the form does, the city as it is listed and
-    route files by name. *kept* names what the form leaves alone, which a save
-    keeps as it is.
+    *request* holds the options among *fields*, by argparse name, periods
+    spelled as the form does, the city as it is listed and route files (paths
+    relative to *base_dir*) by name. The entries the form leaves alone come
+    back as ``(key, value)``: routes outside the routes folder as one
+    ``("route", [paths])``. *where* names the file in error messages.
     """
-    path = _recipe_path(recipes_dir, name)
-    if not path.is_file():
-        raise RecipeNotFound(f"There is no recipe {name!r}.")
-    text, data = _load(path)
     actions = _actions()
     request: dict[str, Any] = {}
-    kept: list[str] = []
+    kept: list[tuple[str, Any]] = []
     for key, value in data.items():
         action = actions.get(key.replace("_", "-"))
         if action is None:
-            raise RecipeError(f"{path.name}: unknown option {key!r}.")
+            raise RecipeError(f"{where}: unknown option {key!r}.")
         dest = action.dest
         if dest == "route":
-            names = []
+            names, outside = [], []
             for entry in value if isinstance(value, list) else [value]:
-                route = _route_name(str(entry), path.parent, routes_dir)
+                route = _route_name(str(entry), base_dir, routes_dir)
                 if route is None:
-                    kept.append(f"route = {json.dumps(entry)}")
+                    outside.append(entry)
                 else:
                     names.append(route)
             if names:
                 request["route"] = names
+            if outside:
+                kept.append(("route", outside))
             continue
         if dest not in fields or dest in KEPT_OPTIONS:
-            kept.append(f"{key} = {_toml(value)}")
+            kept.append((key, value))
             if dest in fields:
                 request[dest] = value                       # shown in the form, written as it was
             continue
@@ -165,12 +166,33 @@ def read_recipe(recipes_dir: str, routes_dir: str, name: str, fields: Collection
             try:
                 value = resolve_wind_period(value, kind=dest.replace("_", " ")).key
             except ValueError as e:
-                raise RecipeError(f"{path.name}: {e}") from None
+                raise RecipeError(f"{where}: {e}") from None
         if dest == "borders" and isinstance(value, int):
             value = str(value)                              # a year, written as a number
         if dest == "city" and isinstance(value, str):
             value = next((city for city in ortho.MAJOR_METROPOLISES if city.lower() == value.lower()), value)
         request[dest] = value
+    return request, kept
+
+
+def read_recipe(recipes_dir: str, routes_dir: str, name: str, fields: Collection[str]) -> dict[str, Any]:
+    """Recipe *name* as ``{"name", "description", "request", "kept"}``.
+
+    *request* holds the options among *fields* (the web form's), as
+    :func:`request_from_options` gives them. *kept* names what the form
+    leaves alone, which a save keeps as it is.
+    """
+    path = _recipe_path(recipes_dir, name)
+    if not path.is_file():
+        raise RecipeNotFound(f"There is no recipe {name!r}.")
+    text, data = _load(path)
+    request, entries = request_from_options(data, path.parent, routes_dir, fields, path.name)
+    kept = []
+    for key, value in entries:
+        if key == "route":
+            kept += [f"route = {json.dumps(entry)}" for entry in value]
+        else:
+            kept.append(f"{key} = {_toml(value)}")
     return {"name": name, "description": description(text), "request": request, "kept": kept}
 
 
@@ -233,6 +255,28 @@ def recipe_text(description_text: str, entries: Iterable[tuple[str, Any]]) -> st
     return "\n".join(lines) + "\n"
 
 
+def options_from_request(
+    request: dict[str, Any], base_dir: str, routes_dir: str, fields: Collection[str],
+) -> list[tuple[str, Any]]:
+    """The form's *request* as recipe entries ``(key, value)``, in the order of *fields*.
+
+    Keys are the options' long names; blanks and the options a recipe keeps
+    as it was are left out, and route files are written relative to *base_dir*.
+    Raises :class:`RecipeError` for an unknown route file.
+    """
+    long_names = {action.dest: name for name, action in reversed(_actions().items())}  # the first spelling
+    entries: list[tuple[str, Any]] = []
+    for dest in fields:
+        value = request.get(dest)
+        if dest in KEPT_OPTIONS or value is None or value is False or value == "" or value == []:
+            continue
+        if dest == "route":
+            value = [os.path.relpath(route_path(routes_dir, route), base_dir).replace(os.sep, "/")
+                     for route in value]
+        entries.append((long_names[dest], value))
+    return entries
+
+
 def write_recipe(
     recipes_dir: str, routes_dir: str, name: str, description_text: str, request: dict[str, Any],
     fields: Collection[str], overwrite: bool = False,
@@ -245,16 +289,7 @@ def write_recipe(
     path = _recipe_path(recipes_dir, name)
     if path.exists() and not overwrite:
         raise RecipeExists(f"There is already a recipe {name!r}.")
-    long_names = {action.dest: name for name, action in reversed(_actions().items())}  # the first spelling
-    entries: list[tuple[str, Any]] = []
-    for dest in fields:
-        value = request.get(dest)
-        if dest in KEPT_OPTIONS or value is None or value is False or value == "" or value == []:
-            continue
-        if dest == "route":
-            value = [os.path.relpath(route_path(routes_dir, route), recipes_dir).replace(os.sep, "/")
-                     for route in value]
-        entries.append((long_names[dest], value))
+    entries = options_from_request(request, recipes_dir, routes_dir, fields)
     for key, value in _kept_entries(path, routes_dir, fields):
         if key == "route":
             routes = next((v for k, v in entries if k == "route"), [])
