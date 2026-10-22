@@ -2705,6 +2705,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [routes/](routes/): bundled route files
 - [recipes/](recipes/): recipe files for the sample maps (`--config`)
 - [atlases/](atlases/): atlas files (`atlas.py`): the Romanian school atlas
+- [ROMANIA_DATA_SOURCES.md](ROMANIA_DATA_SOURCES.md): Romanian data for future layers (censuses, INS TEMPO, boundaries by UAT, climate), what has been checked, and the plan
 - [requirements.txt](requirements.txt): minimum dependency versions
 - [pyproject.toml](pyproject.toml): project metadata and the `ortho`, `ortho-web` and `ortho-atlas` commands
 - [tests/](tests/): unit test suite
