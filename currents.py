@@ -35,6 +35,7 @@ from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.legend import Legend
 
+import frame
 from wind import _ArrowHandle, _ArrowHandler, _SwatchHandler, arrow_points
 
 logger = logging.getLogger(__name__)
@@ -163,7 +164,7 @@ def add_currents_overlay(ax: GeoAxes, field: CurrentField, across: int = ARROWS_
                          zorder: float = 7.4) -> Any:
     """Draw the current arrows on *ax*; returns the Quiver (``None`` when no sea is in sight)."""
     x0, x1, y0, y1 = ax.get_extent(ax.projection)
-    lon, lat, _ = arrow_points(ax.projection, (x0, x1, y0, y1), across)
+    lon, lat, _ = arrow_points(ax.projection, (x0, x1, y0, y1), across, frame.is_rectangle(ax))
     u, v, warmth = sample(field, lon, lat)
     keep = np.isfinite(u) & np.isfinite(v) & (np.hypot(u, v) >= MIN_SPEED)
     if not keep.any():

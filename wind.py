@@ -45,6 +45,8 @@ from matplotlib.artist import Artist
 from matplotlib.legend import Legend
 from matplotlib.legend_handler import HandlerBase
 
+import frame
+
 logger = logging.getLogger(__name__)
 
 WIND_URL = ("https://downloads.psl.noaa.gov/Datasets/ncep.reanalysis.derived/surface_gauss/"
@@ -216,20 +218,25 @@ def load_wind(period: WindPeriod, cache_dir: str | None = None) -> WindField:
 
 
 def arrow_points(projection: ccrs.Projection, extent: tuple[float, float, float, float],
-                 across: int = ARROWS_ACROSS) -> tuple[np.ndarray, np.ndarray, float]:
+                 across: int = ARROWS_ACROSS, rectangle: bool = False) -> tuple[np.ndarray, np.ndarray, float]:
     """Longitudes and latitudes of an even grid of arrows over the visible disc.
 
     *extent* is the map's ``(x0, x1, y0, y1)`` in *projection* coordinates,
     centred on the globe's centre. Returns ``(lon, lat, spacing)``, spacing in
-    projection units. Points outside the disc the map shows are left out.
+    projection units. Points outside the disc the map shows are left out; with
+    *rectangle*, the map is the whole frame and only its edge is kept clear.
     """
     x0, x1, y0, y1 = extent
     spacing = (x1 - x0) / across
     xs = np.arange(x0 + spacing / 2, x1, spacing)
     ys = np.arange(y0 + spacing / 2, y1, spacing)
     xx, yy = np.meshgrid(xs, ys)
-    radius = min(x1 - x0, y1 - y0) / 2 - spacing / 2
-    inside = np.hypot(xx - (x0 + x1) / 2, yy - (y0 + y1) / 2) <= radius
+    if rectangle:
+        inside = (np.abs(xx - (x0 + x1) / 2) <= (x1 - x0 - spacing) / 2) & \
+            (np.abs(yy - (y0 + y1) / 2) <= (y1 - y0 - spacing) / 2)
+    else:
+        radius = min(x1 - x0, y1 - y0) / 2 - spacing / 2
+        inside = np.hypot(xx - (x0 + x1) / 2, yy - (y0 + y1) / 2) <= radius
     xx, yy = xx[inside], yy[inside]
     lonlat = ccrs.PlateCarree().transform_points(projection, xx, yy)
     ok = np.isfinite(lonlat[:, :2]).all(axis=1)
@@ -265,7 +272,7 @@ def add_wind_overlay(ax: GeoAxes, period: WindPeriod, cache_dir: str | None = No
     """Draw the prevailing-wind arrows for *period* on *ax*; returns the Quiver."""
     field = load_wind(period, cache_dir)
     x0, x1, y0, y1 = ax.get_extent(ax.projection)
-    lon, lat, _ = arrow_points(ax.projection, (x0, x1, y0, y1), across)
+    lon, lat, _ = arrow_points(ax.projection, (x0, x1, y0, y1), across, frame.is_rectangle(ax))
     u, v, steadiness = sample_wind(field, lon, lat)
     cmap, norm = steadiness_colours()
     quiver = ax.quiver(

@@ -35,6 +35,8 @@ import matplotlib.patches as mpatches
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 
+import frame
+
 logger = logging.getLogger(__name__)
 
 ECOREGIONS_URL = "https://storage.googleapis.com/teow2016/Ecoregions2017.zip"
@@ -363,13 +365,13 @@ def visible_points(ax: GeoAxes, samples: int = 300) -> tuple[np.ndarray, np.ndar
     """Points spread evenly over the globe on *ax* as drawn: ``(lon, lat, x, y)``.
 
     *x*, *y* are in the axes' projection. The globe, or a radius map's disc,
-    is the circle inside the frame, so what is foreshortened near the rim gets
-    fewer points, as it looks.
+    is the circle inside the frame (a rectangular map the whole frame), so
+    what is foreshortened near the rim gets fewer points, as it looks.
     """
     steps = (np.arange(samples) + 0.5) / samples
     (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
     gx, gy = np.meshgrid(x0 + steps * (x1 - x0), y0 + steps * (y1 - y0))
-    inside = (2 * gx - x0 - x1) ** 2 / (x1 - x0) ** 2 + (2 * gy - y0 - y1) ** 2 / (y1 - y0) ** 2 <= 1
+    inside = frame.inside(ax, gx, gy)
     x, y = gx[inside], gy[inside]
     lonlat = ccrs.PlateCarree().transform_points(ax.projection, x, y)
     ok = np.isfinite(lonlat[:, 0]) & np.isfinite(lonlat[:, 1])
@@ -377,12 +379,11 @@ def visible_points(ax: GeoAxes, samples: int = 300) -> tuple[np.ndarray, np.ndar
 
 
 def on_globe(ax: GeoAxes, lon: float, lat: float, margin: float = 0.9) -> bool:
-    """True if (*lon*, *lat*) shows on *ax*, within *margin* of the disc's radius (clear of the rim)."""
+    """True if (*lon*, *lat*) shows on *ax*, within *margin* of the map's size (clear of its edge)."""
     x, y = ax.projection.transform_point(lon, lat, ccrs.PlateCarree())
     if not (np.isfinite(x) and np.isfinite(y)):
         return False
-    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
-    return ((2 * x - x0 - x1) / (x1 - x0)) ** 2 + ((2 * y - y0 - y1) / (y1 - y0)) ** 2 <= margin ** 2
+    return bool(frame.inside(ax, x, y, margin))
 
 
 def visible_values(axes: Iterable[GeoAxes], grid: np.ndarray, samples: int = 300) -> Counter[int]:

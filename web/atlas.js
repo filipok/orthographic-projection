@@ -172,6 +172,7 @@ $("cover-edit").addEventListener("click", () => {
   if (!current.atlas.cover) {
     current.atlas.cover = { map: { ...lastMap(), no_circles: true }, kept: [], recipe: null };
     delete current.atlas.cover.map.radius;
+    delete current.atlas.cover.map.rectangle;   // cut from a radius map only
     setDirty(true);
   }
   editMap("cover");

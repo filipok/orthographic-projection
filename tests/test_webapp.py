@@ -106,6 +106,13 @@ class TestMaps:
         for key in ("lat", "lon", "radius_km", "zoom", "koppen_classes", "elevation", "wind", "dpi"):
             assert renders[0][key] == cli[key], key
 
+    def test_a_rectangle(self, client, renders):
+        _, status = _render(client, city="Paris", radius=450, rectangle="3:2")
+        assert renders[0]["rectangle"] == 1.5 and renders[0]["radius_km"] == 450
+        assert "--rectangle" in status["command"]
+        args = ortho.parse_cli_args(status["command"].split()[2:])
+        assert args.rectangle == 1.5
+
     def test_circles_from_another_place(self, client, renders):
         _, status = _render(client, city="Paris", circles_from="London")
         assert renders[0]["circles_from"] == (51.5074, -0.1278)

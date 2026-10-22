@@ -245,6 +245,16 @@ class TestBuilding:
         assert boxes[4] == (portrait[1], portrait[0])               # "Both sides": two globes, landscape
         assert all(box == portrait for i, box in enumerate(boxes) if i != 4)
 
+    @pytest.mark.parametrize("shape, landscape", [("3:2", True), ("2:3", False), ("1:1", False)])
+    def test_a_rectangle_turns_the_page_before_it_is_drawn(self, tmp_path, shape, landscape):
+        text = SMALL.replace("radius = 2000\n", f'radius = 2000\nrectangle = "{shape}"\n')
+        book = _load(tmp_path, text)
+        assert atlas._image_aspect(None, book.pages[1]) == pytest.approx(ortho.parse_aspect(shape))
+        out = tmp_path / "a.pdf"
+        atlas.build_atlas(book, str(out), str(tmp_path / "maps"), proof=True, cache_dir=str(tmp_path / "cache"))
+        width, height = _media_boxes(out)[3]                        # after the cover, contents and section
+        assert (width > height) is landscape
+
     def test_orientation_can_be_set(self, tmp_path, renders):
         text = SMALL.replace('title = "Both sides"', 'title = "Both sides"\norientation = "portrait"')
         book = _load(tmp_path, text)

@@ -12,6 +12,7 @@ from matplotlib.figure import Figure
 from pyproj import Transformer
 
 import cities
+import frame
 from rotation import globe_projection
 
 TO_MOLLWEIDE = Transformer.from_crs("EPSG:4326", "ESRI:54009", always_xy=True)
@@ -256,6 +257,17 @@ class TestDrawing:
         ax.figure.set_size_inches(1, 1)
         cities.draw_cities(ax, found, 50_000)
         assert len(ax.texts) < 3
+
+    def test_names_reach_a_rectangles_corners(self):
+        for rectangle in (False, True):
+            proj = globe_projection(45, 25)
+            ax = Figure(figsize=(10, 10)).add_subplot(projection=proj)
+            ax.set_extent((-1e6, 1e6, -1e6, 1e6), crs=proj)
+            if rectangle:
+                frame.set_rectangle(ax)
+            # A short name just inside the bottom-left corner: off the disc, on the rectangle
+            assert cities.LabelSpace(ax).claim(-0.9e6, -0.95e6, "Corner", 8) is rectangle
+            assert cities.LabelSpace(ax).claim(0.0, 0.0, "Middle", 8)
 
     def test_beyond_the_horizon(self, cache):
         found = cities.load_cities(2025, cache)

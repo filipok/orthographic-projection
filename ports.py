@@ -33,6 +33,7 @@ from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
 
+import frame
 from air_routes import near_side
 from cities import label_space
 from indicators import _tls
@@ -204,15 +205,12 @@ def dot_size(ships: np.ndarray, scale: float = 1.0) -> np.ndarray:
 
 
 def in_view(ax: GeoAxes, lon: np.ndarray, lat: np.ndarray, margin: float = 1.0) -> np.ndarray:
-    """True for the points that show on *ax*: on its side of the globe and within *margin* of the disc's radius."""
+    """True for the points that show on *ax*: on its side of the globe and within *margin* of the map's size."""
     if len(lon) == 0:
         return np.zeros(0, bool)
     xy = ax.projection.transform_points(ccrs.PlateCarree(), lon, lat)[:, :2]
     seen = near_side(ax, lon, lat, xy)
-    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
-    with np.errstate(invalid="ignore"):
-        inside = ((2 * xy[:, 0] - x0 - x1) / (x1 - x0)) ** 2 + ((2 * xy[:, 1] - y0 - y1) / (y1 - y0)) ** 2
-    return seen & (inside <= margin ** 2)
+    return seen & frame.inside(ax, xy[:, 0], xy[:, 1], margin)
 
 
 def draw_ports(ax: GeoAxes, ports: Ports, labels: bool = True, limit: int = LABEL_MAX, alpha: float = 0.85) -> int:

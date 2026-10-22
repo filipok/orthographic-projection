@@ -43,6 +43,7 @@ from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.collections import LineCollection
 from matplotlib.legend import Legend
 
+import frame
 from biomes import _download, _key
 from borders import Polity, _pack, _rgb, _unpack, colour_groups, draw_borders
 
@@ -219,8 +220,6 @@ def draw_rivers(ax: GeoAxes, rivers: Sequence[River], labels: bool = True) -> No
         return
     (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
     to_pixels = ax.transData
-    (px0, py0), (px1, py1) = to_pixels.transform([(x0, y0), (x1, y1)])
-    centre, radius = ((px0 + px1) / 2, (py0 + py1) / 2), abs(px1 - px0) / 2
     dpi = ax.figure.dpi
     fontsize = 10
     placed: list[tuple[float, float, float, float]] = []
@@ -247,8 +246,7 @@ def draw_rivers(ax: GeoAxes, rivers: Sequence[River], labels: bool = True) -> No
         px, py = to_pixels.transform((x, y))
         half_w, half_h = 0.3 * fontsize * len(name) * dpi / 72, 0.6 * fontsize * dpi / 72
         box = (px - half_w, py, px + half_w, py + 2 * half_h)
-        corners = [(box[0], box[1]), (box[0], box[3]), (box[2], box[1]), (box[2], box[3])]
-        if any((cx - centre[0]) ** 2 + (cy - centre[1]) ** 2 > (0.95 * radius) ** 2 for cx, cy in corners):
+        if not frame.box_inside(ax, box, 0.95):
             continue
         if any(box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in placed):
             continue

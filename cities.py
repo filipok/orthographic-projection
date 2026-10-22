@@ -46,6 +46,7 @@ from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
 
+import frame
 from biomes import _download, _key, on_globe
 from iucn import parse_geopackage_geometry, project
 
@@ -377,15 +378,13 @@ def anchor(cities: Cities, i: int) -> tuple[float, float]:
 
 
 class LabelSpace:
-    """Room for names on a globe: a name above a point fits if it stays on the disc and clear of every name and
-    point already placed (the sizes of names are estimated from their length)."""
+    """Room for names on a globe: a name above a point fits if it stays on the map (the disc, or a rectangle) and
+    clear of every name and point already placed (the sizes of names are estimated from their length)."""
 
     def __init__(self, ax: GeoAxes):
+        self.ax = ax
         self.to_pixels = ax.transData
         self.dpi = ax.figure.dpi
-        (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
-        (cx0, cy0), (cx1, cy1) = self.to_pixels.transform([(x0, y0), (x1, y1)])
-        self.centre, self.radius = ((cx0 + cx1) / 2, (cy0 + cy1) / 2), abs(cx1 - cx0) / 2
         self.placed: list[tuple[float, float, float, float]] = []
 
     def claim(self, x: float, y: float, text: str, size: float, point: float | None = None) -> bool:
@@ -395,9 +394,7 @@ class LabelSpace:
         gap = 0.25 * size * self.dpi / 72
         half_w = 0.3 * size * len(text) * self.dpi / 72
         box = (px - half_w, py + gap, px + half_w, py + gap + 1.2 * size * self.dpi / 72)
-        corners = [(box[0], box[1]), (box[0], box[3]), (box[2], box[1]), (box[2], box[3])]
-        if any((cx - self.centre[0]) ** 2 + (cy - self.centre[1]) ** 2 > (0.97 * self.radius) ** 2
-               for cx, cy in corners):
+        if not frame.box_inside(self.ax, box, 0.97):
             return False
         if any(box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in self.placed):
             return False

@@ -554,6 +554,9 @@ python ortho.py --lat 60 --lon -100 --soil-property organic-carbon --soil-depth 
 python ortho.py --lat 46 --lon 10 --radius --elevation
 python ortho.py --city tokyo --radius 800
 
+# Cut to a rectangle instead of a disc, to fill a page (see "Rectangular Maps")
+python ortho.py --lat 45.9 --lon 25.0 --radius 450 --rectangle 3:2 --relief-units regions
+
 # Prevailing winds over the year, a season or a month (see "Prevailing Winds")
 python ortho.py --lat 15 --lon -30 --wind
 python ortho.py --lat 15 --lon 75 --wind jja
@@ -665,6 +668,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
 | `--route-legend` | Add a key below the globe naming each route next to its colour | off |
 | `--radius [KM]` | Zoom in: show only the area within KM of the centre, 100–10,000 (not with `--both-hemispheres`) | off (`2500` when given alone) |
+| `--rectangle W:H` | With `--radius`, cut the map to a rectangle of that shape instead of a disc: `3:2`, `4:3`, `1.414:1` (A4 landscape), `2:3` for a tall one; its longer side is the disc's diameter | off (a disc) |
 | `--both-hemispheres` | Draw a second globe centred on the antipode, showing the whole Earth; `--dpi` up to 600 | off |
 | `--beside PLACE` | Draw a second globe beside the first, centred on a city or `LAT,LON` (not with `--both-hemispheres`); `--dpi` up to 600 | — |
 | `--up BEARING` | Compass bearing to put at the top, in degrees clockwise from north | `0` |
@@ -775,7 +779,8 @@ Example:
 orthographic_map_paris_osm_z3.png
 ```
 
-A radius map adds `_r<km>km`, both hemispheres `_hemispheres` and a turned
+A radius map adds `_r<km>km` (and a rectangle `_rect<width over height>`, as
+`_rect1p5` for 3:2), both hemispheres `_hemispheres` and a turned
 globe `_up<bearing>`, e.g. `orthographic_map_tokyo_osm_z8_r800km.png`; a globe
 beside the first joins the two places, as in `orthographic_map_lisbon_and_tokyo_osm_z3.png`.
 
@@ -909,8 +914,10 @@ rivers = true
 - **Editing.** Change the text, reorder the `[[pages]]` tables, delete or add
   pages. A map page takes a `[pages.map]` table, a `recipe = "../recipes/x.toml"`
   (relative to the atlas), or both, the table's options on top of the recipe's.
-  `orientation` is `auto` (landscape when the map is wide, as two globes are),
-  `portrait` or `landscape`. The atlas sets `dpi` and the output for every map,
+  `orientation` is `auto` (landscape when the map is wide, as two globes or a
+  `rectangle = "3:2"` are), `portrait` or `landscape`. A radius map with
+  `rectangle` fills the page instead of leaving its corners empty (see
+  "Rectangular Maps"). The atlas sets `dpi` and the output for every map,
   so a page's map may not.
 - **Checked first.** Every map is checked like a command line before anything is
   drawn, and a mistake names its page: `romania_school.toml page 5 (Clima):
@@ -1230,6 +1237,38 @@ python ortho.py --config recipes/alps_radius.toml
   climate and soil grids (7–15 km) look blocky on small radii.
 - It works with `--up`, `--up-toward` and `--beside` (both globes show the
   radius), but not with `--both-hemispheres`.
+
+### Rectangular Maps
+
+A disc wastes the corners of a page. `--rectangle W:H` (`rectangle=` in the
+API, as width over height) cuts a radius map to a rectangle instead, to fill
+an atlas page or a slide:
+
+```powershell
+python ortho.py --lat 45.9 --lon 25.0 --radius 450 --rectangle 3:2 --relief-units regions
+python ortho.py --city lisbon --radius 600 --rectangle 2:3 --elevation
+python ortho.py --city tokyo --radius 800 --rectangle 1.414:1
+```
+
+- **The longer side is the disc's diameter.** The rectangle is cut from the
+  square the disc would fill, so a 450 km map at 3:2 is 900 km across and
+  600 km from top to bottom. Its corners reach a little beyond the radius,
+  which the disc would have hidden. The default zoom and the size of the
+  smallest named city stay those of the radius.
+- **Any shape from 4:1 to 1:4.** `3:2`, `4:3` and `1.414:1` (A4 landscape)
+  are wide; `2:3` and `1:1.414` are tall; `1:1` is a square. A bare number is
+  width over height: `1.5` is `3:2`.
+- **The corners must stay on the globe.** They lie further out than the
+  radius, so a rectangle takes a smaller radius than a disc: up to about
+  6,260 km at 3:2 and 5,000 km for a square.
+- **Labels, arrows and keys use the whole rectangle.** City, river, border and
+  relief names, port dots, wind and current arrows and the biome and border
+  keys' counts reach into the corners. Distance circles that run off the top
+  edge are labelled on their east side. The credits get a pale backing in
+  the bottom-right corner, which is map now.
+- It works with `--beside` (both globes are cut alike) and in recipes, the web
+  app (the **Shape** menu under the radius) and atlases, where a wide
+  rectangle turns its page to landscape (see "Atlases (PDF)").
 - Auto-named files get an `_r<km>km` suffix, for example
   `orthographic_map_tokyo_osm_z8_r800km.png`.
 

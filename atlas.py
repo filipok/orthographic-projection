@@ -58,6 +58,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Circle, FancyBboxPatch, Rectangle
 from PIL import Image
 
+import frame
 import ortho
 import recipe_store
 
@@ -455,7 +456,11 @@ def _image_aspect(path: str | None, page: Page) -> float:
         with Image.open(path) as img:
             return img.width / img.height
     wide = page.map.get("both-hemispheres", page.map.get("both_hemispheres")) or page.map.get("beside")
-    return 2.0 if wide else 1.0
+    try:
+        shape = frame.parse_aspect(page.map["rectangle"]) if page.map.get("rectangle") is not None else 1.0
+    except ValueError:
+        shape = 1.0   # drawing the map reports the mistake
+    return 2.0 * shape if wide else shape
 
 
 class _Atlas:
@@ -733,14 +738,19 @@ class _Atlas:
             ax = sheet.axes(left, bottom, fit_w, fit_h)
             ax.imshow(pixels, interpolation="none", aspect="auto")
             return
-        # Not drawn: a pale globe (two for a map of two globes) and why
+        # Not drawn: a pale globe or rectangle (two for a map of two globes) and why
         ax = sheet.axes(left, bottom, fit_w, fit_h)
         ax.set_xlim(0, aspect)
         ax.set_ylim(0, 1)
-        globes = 2 if aspect >= 1.8 else 1
+        wide = page.map.get("both-hemispheres", page.map.get("both_hemispheres")) or page.map.get("beside")
+        globes = 2 if wide or (page.map.get("rectangle") is None and aspect >= 1.8) else 1
         for i in range(globes):
             cx = (i + 0.5) * aspect / globes
-            ax.add_patch(Circle((cx, 0.5), 0.46, facecolor=TINT, edgecolor=RULE, linewidth=1))
+            if page.map.get("rectangle") is not None:
+                w = 0.94 * aspect / globes
+                ax.add_patch(Rectangle((cx - w / 2, 0.03), w, 0.94, facecolor=TINT, edgecolor=RULE, linewidth=1))
+            else:
+                ax.add_patch(Circle((cx, 0.5), 0.46, facecolor=TINT, edgecolor=RULE, linewidth=1))
         failed = self.failures.get(key)
         label = self.atlas.labels["failed" if failed else "proof"]
         prop = sheet.font(10, bold=True)

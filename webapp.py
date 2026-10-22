@@ -122,6 +122,7 @@ class MapRequest(BaseModel):
     zoom: int | None = None
     dpi: int | None = None
     radius: float | None = None
+    rectangle: str | None = None
     both_hemispheres: bool | None = None
     beside: str | None = None
     up: float | None = None
@@ -253,6 +254,11 @@ def request_args(request: MapRequest, settings: Settings, output_dir: str) -> ar
     args = ortho.build_cli_parser().parse_args([])
     for name, value in given.items():
         setattr(args, name, value)
+    if "rectangle" in given:
+        try:
+            args.rectangle = ortho.parse_aspect(given["rectangle"])   # as the parser's type would
+        except ValueError as e:
+            raise ValueError(f"{str(e)[0].upper()}{str(e)[1:]}.") from e
     args.route = [recipe_store.route_path(settings.routes_dir, route) for route in given.get("route", [])]
     args.dpi = dpi
     args.output = None

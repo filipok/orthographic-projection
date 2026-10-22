@@ -166,6 +166,14 @@ class TestSampling:
         assert spacing == 200_000 and len(lon) == 60             # the 10 × 10 grid's points within 900 km
         assert np.all(np.abs(lat - 46) < 12) and np.all(np.abs(lon - 10) < 16)
 
+    def test_arrows_fill_a_rectangle_to_its_corners(self):
+        proj = ccrs.Orthographic(10, 46)
+        half_w, half_h = 1_000_000.0, 600_000.0
+        lon, lat, spacing = wind.arrow_points(proj, (-half_w, half_w, -half_h, half_h), across=10, rectangle=True)
+        assert spacing == 200_000 and len(lon) == 60             # the whole 10 × 6 grid
+        xy = proj.transform_points(ccrs.PlateCarree(), lon, lat)
+        assert np.max(np.abs(xy[:, 0])) == pytest.approx(900_000) and np.max(np.abs(xy[:, 1])) == pytest.approx(500_000)
+
 
 class TestDrawing:
     def _ax(self):

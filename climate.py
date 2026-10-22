@@ -42,6 +42,7 @@ from matplotlib.artist import Artist
 from matplotlib.legend import Legend
 from matplotlib.legend_handler import HandlerBase
 
+import frame
 from elevation import land_and_lakes
 from trewartha import CHELSA_URL, OVERVIEW_LEVEL, TrewarthaDataError, read_cog_level
 from wind import DAYS_IN_MONTH, WindPeriod, resolve_wind_period
@@ -200,7 +201,7 @@ class View(NamedTuple):
 
 
 def visible_box(ax: GeoAxes, margin: float = 0.5) -> View:
-    """The lon/lat box of the disc *ax* shows, widened by *margin* degrees."""
+    """The lon/lat box of the disc (or rectangle) *ax* shows, widened by *margin* degrees."""
     projection = ax.projection
     x0, x1, y0, y1 = ax.get_extent(projection)
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
@@ -208,12 +209,19 @@ def visible_box(ax: GeoAxes, margin: float = 0.5) -> View:
     geodetic = ccrs.PlateCarree()
     centre_lon = float(geodetic.transform_point(cx, cy, projection)[0])
 
-    # Points over the disc and around its rim, back to lon/lat
+    # Points over the map and around its edge, back to lon/lat
     xs, ys = np.meshgrid(np.linspace(-1, 1, 81), np.linspace(-1, 1, 81))
-    inside = np.hypot(xs, ys) <= 1
-    angle = np.linspace(0, 2 * np.pi, 721)
-    px = np.concatenate([xs[inside], 0.999999 * np.cos(angle)]) * radius + cx
-    py = np.concatenate([ys[inside], 0.999999 * np.sin(angle)]) * radius + cy
+    if frame.is_rectangle(ax):
+        edge = np.linspace(-0.999999, 0.999999, 361)
+        ex = np.concatenate([edge, edge, np.full(361, -0.999999), np.full(361, 0.999999)])
+        ey = np.concatenate([np.full(361, -0.999999), np.full(361, 0.999999), edge, edge])
+        px = np.concatenate([xs.ravel(), ex]) * (x1 - x0) / 2 + cx
+        py = np.concatenate([ys.ravel(), ey]) * (y1 - y0) / 2 + cy
+    else:
+        inside = np.hypot(xs, ys) <= 1
+        angle = np.linspace(0, 2 * np.pi, 721)
+        px = np.concatenate([xs[inside], 0.999999 * np.cos(angle)]) * radius + cx
+        py = np.concatenate([ys[inside], 0.999999 * np.sin(angle)]) * radius + cy
     lonlat = geodetic.transform_points(projection, px, py)[:, :2]
     lonlat = lonlat[np.all(np.isfinite(lonlat), axis=1)]
     rel = (lonlat[:, 0] - centre_lon + 180) % 360 - 180
@@ -223,7 +231,7 @@ def visible_box(ax: GeoAxes, margin: float = 0.5) -> View:
     # A pole on show: every longitude meets there
     for pole in (90, -90):
         xy = projection.transform_point(0, pole, geodetic)
-        if np.all(np.isfinite(xy)) and np.hypot(xy[0] - cx, xy[1] - cy) < 0.999 * radius:
+        if np.all(np.isfinite(xy)) and frame.inside(ax, xy[0], xy[1], 0.999):
             west, east = -180.0, 180.0
             south, north = (south, 90.0) if pole > 0 else (-90.0, north)
     return View(centre_lon, max(west, -180.0), min(east, 180.0), max(south, -90.0), min(north, 90.0))
