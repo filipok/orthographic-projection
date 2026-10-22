@@ -1119,7 +1119,8 @@ def generate_orthographic_map(
         comma-separated.
     relief_units : str, optional
         Draw Romania's relief units (Posea & Badea 1984, mapped by Candrea
-        et al. 2008), filled in the colour of their major region and named:
+        et al. 2008), filled in the colour of their major region (paler for
+        depressions, corridors and floodplains) and named:
         ``"units"`` for all 820, from the Carpathians to single depressions
         and plains, or ``"regions"`` for the 16 major regions (see
         :data:`relief.LEVELS`); *relief_alpha* sets the fill's opacity.
@@ -2974,7 +2975,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
 
     landforms = parser.add_argument_group("Relief units of Romania (Posea & Badea 1984, geo-spatial.org)")
     landforms.add_argument("--relief-units", nargs="?", const="units", metavar="LEVEL",
-                           help="Draw Romania's relief units, filled in the colour of their major region and "
+                           help="Draw Romania's relief units, filled in the colour of their major region "
+                                "(paler for depressions, corridors and floodplains) and "
                                 "named: units (all 820, down to single depressions, corridors and plains; the "
                                 "default) or regions (the 16 major ones). "
                                 "Downloaded once (~1.4 MB).")
