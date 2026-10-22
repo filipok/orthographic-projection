@@ -44,6 +44,7 @@ import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 
+import frame
 from biomes import _download, _key, visible_points
 
 logger = logging.getLogger(__name__)
@@ -411,14 +412,10 @@ def draw_borders(ax: GeoAxes, polities: Sequence[Polity], colours: dict[str, tup
     counts = {i: len(xy[0]) for i, xy in found.items()}
     if not labels or not counts:
         return counts
-    total = (np.pi / 4) * samples ** 2
+    total = frame.coverage(ax) * samples ** 2
     placed: list[tuple[float, float, float, float]] = []
     to_pixels = ax.transData
     dpi = ax.figure.dpi
-    # The disc as drawn, in pixels: names must fit inside it
-    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
-    (cx0, cy0), (cx1, cy1) = to_pixels.transform([(x0, y0), (x1, y1)])
-    centre, radius = ((cx0 + cx1) / 2, (cy0 + cy1) / 2), abs(cx1 - cx0) / 2
     for i in sorted(counts, key=counts.__getitem__, reverse=True):
         share = counts[i] / total
         if share < LABEL_MIN_SHARE:
@@ -431,8 +428,7 @@ def draw_borders(ax: GeoAxes, polities: Sequence[Polity], colours: dict[str, tup
         half_w = 0.3 * size * len(polities[i].name) * dpi / 72
         half_h = 0.6 * size * dpi / 72
         box = (px - half_w, py - half_h, px + half_w, py + half_h)
-        corners = [(box[0], box[1]), (box[0], box[3]), (box[2], box[1]), (box[2], box[3])]
-        if any((cx - centre[0]) ** 2 + (cy - centre[1]) ** 2 > (0.97 * radius) ** 2 for cx, cy in corners):
+        if not frame.box_inside(ax, box, 0.97):  # names must fit on the map as drawn
             continue
         if any(box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in placed):
             continue

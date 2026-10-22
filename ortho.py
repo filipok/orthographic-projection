@@ -163,6 +163,7 @@ from trewartha import (
 )
 from routes import Route, add_route_legend, draw_routes, load_routes
 from tile_fetch import download_tile
+from frame import MAX_ASPECT, half_sides, inside, is_rectangle, max_rectangle_radius_km, parse_aspect, set_rectangle
 
 logger = logging.getLogger(__name__)
 
@@ -673,7 +674,8 @@ def validate_render_options(
     dpi: int, koppen_alpha: float | None = None, both_hemispheres: bool = False, ice_year: int | None = None,
     elevation_alpha: float = 0.8, soil_alpha: float = 0.6, vegetation_alpha: float = 0.7,
     land_cover_year: int | None = None, zoom: int | None = None, radius_km: float | None = None,
-    tile_provider: str = "osm", lat: float = 0.0, beside: tuple[float, float] | None = None,
+    rectangle: float | None = None, tile_provider: str = "osm", lat: float = 0.0,
+    beside: tuple[float, float] | None = None,
     biome_alpha: float = 0.6, borders_alpha: float = 0.55, basins_alpha: float = 0.5,
     permafrost_alpha: float = 0.7, population_alpha: float = 0.7, livestock_alpha: float = 0.7,
     earthquakes: float | None = None, cyclones: int | None = None, malaria_alpha: float = 0.75,
@@ -693,6 +695,15 @@ def validate_render_options(
             raise ValueError(f"radius_km must be between {MIN_RADIUS_KM:,} and {MAX_RADIUS_KM:,}, got {radius_km}")
         if both_hemispheres:
             raise ValueError("a radius map shows one globe; it cannot have both hemispheres")
+    if rectangle is not None:
+        if radius_km is None:
+            raise ValueError("a rectangle is cut from a radius map; give a radius too")
+        if not (math.isfinite(rectangle) and 1 / MAX_ASPECT <= rectangle <= MAX_ASPECT):
+            raise ValueError(f"rectangle must be between 1:{MAX_ASPECT:g} and {MAX_ASPECT:g}:1, got {rectangle:g}")
+        widest = max_rectangle_radius_km(rectangle, EARTH_RADIUS_M / 1_000)
+        if radius_km > widest:
+            raise ValueError(f"the corners of a {radius_km:,g} km rectangle would reach past the edge of the globe; "
+                             f"use a radius of at most {math.floor(widest):,} km")
     if zoom is not None:
         top = max_zoom(radius_km, lat, tile_provider)
         if not 1 <= zoom <= top:
@@ -783,6 +794,7 @@ def generate_orthographic_map(
     biome_alpha: float = 0.6,
     wind: str | None = None,
     radius_km: float | None = None,
+    rectangle: float | None = None,
     temperature: str | None = None,
     precipitation: str | None = None,
     humidity: str | None = None,
@@ -1115,6 +1127,11 @@ def generate_orthographic_map(
         as a disc filling the frame, instead of the whole hemisphere. Use a
         finer *zoom* to match (see :func:`zoom_for_radius`). Not with
         *both_hemispheres*; with *beside*, both globes show this radius.
+    rectangle : float, optional
+        Cut a radius map to a rectangle this many times wider than tall
+        (below 1 for a tall one) instead of a disc, to fill a page. Its longer
+        side is the disc's diameter, so the corners show more than the disc
+        would. Needs *radius_km*.
 
     Returns
     -------
@@ -1125,8 +1142,9 @@ def generate_orthographic_map(
     validate_render_options(
         dpi=dpi, koppen_alpha=koppen_alpha, both_hemispheres=both_hemispheres, ice_year=ice_year,
         elevation_alpha=elevation_alpha, soil_alpha=soil_alpha, vegetation_alpha=vegetation_alpha,
-        land_cover_year=land_cover_year, zoom=zoom, radius_km=radius_km, tile_provider=tile_provider,
-        lat=lat, beside=beside, biome_alpha=biome_alpha, borders_alpha=borders_alpha, basins_alpha=basins_alpha,
+        land_cover_year=land_cover_year, zoom=zoom, radius_km=radius_km, rectangle=rectangle,
+        tile_provider=tile_provider, lat=lat, beside=beside, biome_alpha=biome_alpha,
+        borders_alpha=borders_alpha, basins_alpha=basins_alpha,
         permafrost_alpha=permafrost_alpha, population_alpha=population_alpha, livestock_alpha=livestock_alpha,
         earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha, iucn_alpha=iucn_alpha,
         indicator_alpha=indicator_alpha, shipping_alpha=shipping_alpha, relief_alpha=relief_alpha,
@@ -1271,9 +1289,10 @@ def generate_orthographic_map(
         logger.info("Adding a second globe, centred at lat=%.4f, lon=%.4f", *beside)
     fig = Figure(figsize=(20 * len(centres), 20))
     if radius_km is not None:
-        logger.info("Showing %s km around the centre", f"{radius_km:,g}")
+        logger.info("Showing %s km around the centre%s", f"{radius_km:,g}",
+                    f", cut to a {rectangle:.3g}:1 rectangle" if rectangle is not None else "")
     axes = [
-        _add_globe_axes(fig, centre_lat, centre_lon, index, len(centres), centre_up, radius_km)
+        _add_globe_axes(fig, centre_lat, centre_lon, index, len(centres), centre_up, radius_km, rectangle)
         for index, (centre_lat, centre_lon, centre_up) in enumerate(centres)
     ]
     near = axes[0]
@@ -1827,8 +1846,7 @@ def generate_orthographic_map(
         if radius_km is not None:
             # The map reaches this far from the circles' centre at most
             offset_km = Geodesic().inverse((centre_lon, centre_lat), (ring_lon, ring_lat))[0, 0] / 1_000
-            disc = ax.projection.x_limits[1] * math.sin(radius_km * 1_000 / EARTH_RADIUS_M)
-            _draw_distance_circles(ax, ring_lon, ring_lat, within=disc,
+            _draw_distance_circles(ax, ring_lon, ring_lat, within=True,
                                    radii_km=ring_radii(min(radius_km + offset_km, 19_000)))
         else:
             _draw_distance_circles(ax, ring_lon, ring_lat)
@@ -2033,12 +2051,14 @@ _GLOBE_GAP_IN = 1.0
 
 def _add_globe_axes(
     fig: Figure, lat: float, lon: float, index: int, count: int, up: float = 0.0,
-    radius_km: float | None = None,
+    radius_km: float | None = None, rectangle: float | None = None,
 ) -> GeoAxes:
     """Add globe *index* of *count* to *fig*, centred on (*lat*, *lon*), bearing *up* at the top.
 
     With *radius_km*, the axes show only the disc within that distance of the
-    centre, filling the same frame the whole globe would.
+    centre, filling the same frame the whole globe would. With *rectangle*
+    too (width over height), they show the rectangle cut from that frame
+    instead, its longer side the disc's diameter.
     """
     proj = globe_projection(lat, lon, up)
     if count == 1:
@@ -2059,6 +2079,13 @@ def _add_globe_axes(
         # A circle on the ground around the centre is a circle on an orthographic
         # globe, of radius R·sin(d / R): zoom to its square and clip to the circle
         half = proj.x_limits[1] * math.sin(radius_km * 1_000 / EARTH_RADIUS_M)
+        if rectangle is not None:
+            half_w, half_h = half_sides(half, rectangle)
+            ax.set_extent((-half_w, half_w, -half_h, half_h), crs=proj)
+            ax.set_boundary(mpath.Path([(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)], closed=True),
+                            transform=ax.transAxes)
+            set_rectangle(ax)
+            return ax
         ax.set_extent((-half, half, -half, half), crs=proj)
         # A many-sided polygon: Cartopy keeps only the vertices of a curved path
         theta = np.linspace(0, 2 * np.pi, 721)
@@ -2115,14 +2142,17 @@ def _report_tile_failures(tiles: BufferedTileSource) -> None:
 def _add_attribution(ax: GeoAxes, credits: Sequence[str]) -> None:
     """Draw *credits*, one per line, in the bottom-right corner of *ax*.
 
-    That corner lies outside the globe disc, so the text never covers map
-    content. ``clip_on=False`` stops GeoAxes clipping it to the globe.
+    On a globe that corner lies outside the disc, so the text never covers map
+    content; a rectangle has map there, so the credits get a pale backing.
+    ``clip_on=False`` stops GeoAxes clipping it to the globe.
     """
+    rectangle = is_rectangle(ax)
     ax.text(
-        1.0, 0.0, "\n".join(credits),
+        0.995 if rectangle else 1.0, 0.005 if rectangle else 0.0, "\n".join(credits),
         transform=ax.transAxes,
         ha="right", va="bottom", multialignment="right",
-        fontsize=8, color="#888888", style="italic",
+        fontsize=8, color="#555555" if rectangle else "#888888", style="italic",
+        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor="none", alpha=0.75) if rectangle else None,
         clip_on=False, zorder=10,
     )
 
@@ -2185,7 +2215,7 @@ def _draw_distance_circles(
     lon: float,
     lat: float,
     radii_km: tuple[float, ...] = (2_500, 5_000),
-    within: float | None = None,
+    within: bool = False,
 ) -> None:
     """Draw concentric geodesic circles on *ax* at the given radii.
 
@@ -2194,8 +2224,8 @@ def _draw_distance_circles(
     whenever a circle encloses a pole: the ring then spans all 360° of
     longitude and has to cross the CRS seam, producing a spurious edge.
 
-    *within* is the radius, in projection units, of a radius map's disc: a ring
-    wholly outside it is left out, and labels go on the part inside it.
+    With *within*, for a radius map, a ring's label goes on the part of it
+    inside the map's disc or rectangle, and a ring wholly outside has none.
     """
     proj = ax.projection
     colors = ["#ffffff", "#ffffff"]
@@ -2221,17 +2251,28 @@ def _draw_distance_circles(
                 zorder=9,
             )
         visible = np.vstack(runs)
-        if within is not None:
-            visible = visible[np.hypot(visible[:, 0], visible[:, 1]) <= 0.98 * within]
-            if not len(visible):
-                continue
         # Place a small label at the top of the circle as drawn on the map
-        label_x, label_y = visible[int(np.argmax(visible[:, 1]))]
+        ha, va = "center", "bottom"
+        if within and is_rectangle(ax):
+            # The ring's top, or where it runs off the top edge its east side; else none
+            top, east = visible[int(np.argmax(visible[:, 1]))], visible[int(np.argmax(visible[:, 0]))]
+            if inside(ax, *top, 0.96):
+                label_x, label_y = top
+            elif inside(ax, *east, 0.9):
+                (label_x, label_y), ha, va = east, "left", "center"
+            else:
+                continue
+        else:
+            if within:
+                visible = visible[inside(ax, visible[:, 0], visible[:, 1], 0.98)]
+                if not len(visible):
+                    continue
+            label_x, label_y = visible[int(np.argmax(visible[:, 1]))]
         ax.text(
             label_x, label_y, f" {radius_km:,g} km",
             transform=proj,
             fontsize=9, color="white", alpha=alphas[idx % len(alphas)],
-            fontweight="bold", va="bottom", ha="center", zorder=10,
+            fontweight="bold", va=va, ha=ha, zorder=10,
             path_effects=[pe.withStroke(linewidth=2, foreground="black")],
         )
 
@@ -2275,7 +2316,7 @@ def prompt_for_zoom(default_zoom: int = 3, min_zoom: int = 1, max_zoom: int = 4)
 
 def build_output_filename(
     city_slug: str, tile_provider: str, zoom: int, both_hemispheres: bool = False, up: float = 0.0,
-    radius_km: float | None = None, beside_slug: str | None = None,
+    radius_km: float | None = None, beside_slug: str | None = None, rectangle: float | None = None,
 ) -> str:
     """Build a descriptive output filename from the render parameters."""
     if beside_slug is not None:
@@ -2284,6 +2325,8 @@ def build_output_filename(
     suffix = "_hemispheres" if both_hemispheres else ""
     if radius_km is not None:
         suffix += f"_r{round(radius_km)}km"
+    if rectangle is not None:
+        suffix += f"_rect{rectangle:.3g}".replace(".", "p")
     up = normalise_bearing(up)
     if up:
         suffix += f"_up{round(up) % 360}"
@@ -2534,6 +2577,14 @@ def prompt_for_routes() -> list[Route]:
 # --- CLI argument parser ---
 
 
+def _aspect(text: str) -> float:
+    """``--rectangle``'s W:H as width over height."""
+    try:
+        return parse_aspect(text)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from e
+
+
 def build_cli_parser() -> argparse.ArgumentParser:
     """Build and return the argparse parser, its options grouped by topic for ``--help``."""
     parser = argparse.ArgumentParser(
@@ -2614,6 +2665,15 @@ def build_cli_parser() -> argparse.ArgumentParser:
         metavar="KM",
         help=f"Zoom in: show only the area within KM of the centre ({MIN_RADIUS_KM:,}-{MAX_RADIUS_KM:,}; "
              f"default when given without a value: {DEFAULT_RADIUS_KM:,}).",
+    )
+    layout.add_argument(
+        "--rectangle",
+        type=_aspect,
+        default=None,
+        metavar="W:H",
+        help="With --radius, cut the map to a rectangle of this shape instead of a disc, to fill a page: "
+             "3:2 or 4:3 for a wide one, 2:3 for a tall one, 1.414:1 for A4 landscape. Its longer side "
+             "is the disc's diameter, so the corners show a little more.",
     )
     layout.add_argument(
         "--both-hemispheres",
@@ -3609,7 +3669,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             dpi=args.dpi, koppen_alpha=args.koppen_alpha, both_hemispheres=args.both_hemispheres,
             ice_year=args.ice_year, elevation_alpha=args.elevation_alpha, soil_alpha=args.soil_alpha,
             vegetation_alpha=args.vegetation_alpha, land_cover_year=args.landcover_year,
-            zoom=zoom, radius_km=args.radius, tile_provider=args.provider, lat=lat, beside=beside_centre,
+            zoom=zoom, radius_km=args.radius, rectangle=args.rectangle, tile_provider=args.provider, lat=lat,
+            beside=beside_centre,
             biome_alpha=args.biome_alpha, borders_alpha=args.borders_alpha, basins_alpha=args.basins_alpha,
             permafrost_alpha=args.permafrost_alpha, population_alpha=args.population_alpha,
             livestock_alpha=args.livestock_alpha, earthquakes=args.earthquakes, cyclones=args.cyclones,
@@ -3636,7 +3697,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
     else:
         output_file = build_output_filename(
             city_slug, args.provider, zoom, args.both_hemispheres, up, args.radius,
-            beside.slug if beside is not None else None,
+            beside.slug if beside is not None else None, args.rectangle,
         )
         output_dir = args.output_dir
 
@@ -3725,6 +3786,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         precipitation=args.precipitation,
         humidity=args.humidity,
         radius_km=args.radius,
+        rectangle=args.rectangle,
         up=up,
         circles_from=circles_from,
         distance_circles=not args.no_circles,

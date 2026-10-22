@@ -7,10 +7,12 @@ from collections import Counter
 import numpy as np
 import pytest
 import shapefile
+import cartopy.crs as ccrs
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.figure import Figure
 
 import biomes
+import frame
 from rotation import globe_projection
 
 
@@ -203,6 +205,19 @@ class TestVisible:
     def test_a_radius_map_sees_only_its_disc(self):
         counts = biomes.visible_ecoregions([_globe(45, 0, radius_km=500)], _layer(self.IDS), samples=50)
         assert set(counts) == {0}
+
+    def test_a_rectangle_samples_its_whole_frame(self):
+        ax = _globe(45, 0, radius_km=500)
+        frame.set_rectangle(ax)
+        lon, _, _, _ = biomes.visible_points(ax, samples=50)
+        assert len(lon) == 50 ** 2
+        assert biomes.on_globe(ax, *self._corner(ax)) and not biomes.on_globe(_globe(45, 0, 500), *self._corner(ax))
+
+    @staticmethod
+    def _corner(ax):
+        """Longitude and latitude a little inside the frame's top-right corner."""
+        (_, x1), (_, y1) = ax.get_xlim(), ax.get_ylim()
+        return tuple(ccrs.PlateCarree().transform_point(0.85 * x1, 0.85 * y1, ax.projection))
 
     def test_globes_add_up(self):
         layer = _layer(self.IDS)

@@ -51,6 +51,7 @@ import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 
+import frame
 from biomes import _download, _key, visible_points
 from borders import _pack, _unpack
 from cities import label_space
@@ -470,7 +471,7 @@ def draw_relief(ax: GeoAxes, relief: Relief, alpha: float = 0.55, labels: bool =
     if not labels or not counts:
         return counts
     found_groups = visible_units(ax, relief.groups, samples)
-    total = (np.pi / 4) * samples ** 2
+    total = frame.coverage(ax) * samples ** 2
     lon, lat, x, y = visible_points(ax, samples)
     space = label_space(ax)
     named = groups_named = 0

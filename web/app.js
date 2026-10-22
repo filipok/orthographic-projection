@@ -82,6 +82,7 @@ function buildRequest() {
   const view = radio("view");
   if (view === "hemispheres") req.both_hemispheres = true;
   if (view === "radius") req.radius = Number($("radius").value);
+  if (view === "radius" && $("rectangle").value) req.rectangle = $("rectangle").value;
   if (view !== "hemispheres" && $("beside").value.trim()) req.beside = $("beside").value.trim();
   if (radio("orient") === "bearing") {
     const up = Number($("up").value || 0);
@@ -291,6 +292,10 @@ function fillForm(req) {
   if (req.provider) pick("provider", req.provider, "base map");
   if (req.both_hemispheres) check("view", "hemispheres");
   else if (req.radius) { check("view", "radius"); set("radius", req.radius); }
+  if (req.rectangle && !choose("rectangle", req.rectangle)) {
+    $("rectangle").append(option(String(req.rectangle), `Rectangle, ${req.rectangle}`));   // a shape of its own
+    choose("rectangle", req.rectangle);
+  }
   else check("view", "globe");
   set("beside", req.beside);
   fillZoom();

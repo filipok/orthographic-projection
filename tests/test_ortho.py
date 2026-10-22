@@ -371,6 +371,12 @@ class TestBuildOutputFilename:
         assert ortho.build_output_filename("rome", "osm", 7, radius_km=2500.0, up=90) == \
             "orthographic_map_rome_osm_z7_r2500km_up90.png"
 
+    def test_rectangle_suffix(self):
+        assert ortho.build_output_filename("cluj", "osm", 7, radius_km=450.0, rectangle=1.5) == \
+            "orthographic_map_cluj_osm_z7_r450km_rect1p5.png"
+        tall = ortho.build_output_filename("cluj", "osm", 7, radius_km=450.0, rectangle=2 / 3)
+        assert tall.endswith("_rect0p667.png")
+
     @pytest.mark.parametrize("up, suffix", [(0, ""), (360, ""), (180, "_up180"), (119.6, "_up120"), (-90, "_up270")])
     def test_rotation_suffix(self, up, suffix):
         assert ortho.build_output_filename("sydney", "osm", 3, up=up) == f"orthographic_map_sydney_osm_z3{suffix}.png"
@@ -463,6 +469,9 @@ class TestValidateRenderOptions:
         (dict(zoom=9, radius_km=2_500), "between 1 and 8 for a 2,500 km radius"),
         (dict(zoom=9, radius_km=100, tile_provider="nasa"), "between 1 and 8"),
         (dict(zoom=8, radius_km=2_500, lat=46), "between 1 and 7"),
+        (dict(rectangle=1.5), "cut from a radius map"),
+        (dict(rectangle=6.0, radius_km=2_500), "rectangle must be between"),
+        (dict(rectangle=1.0, radius_km=5_100), "reach past the edge of the globe; use a radius of at most 5,003 km"),
     ])
     def test_zoom_and_radius(self, kwargs, match):
         with pytest.raises(ValueError, match=match):
@@ -471,6 +480,8 @@ class TestValidateRenderOptions:
     def test_zoom_within_limits(self):
         ortho.validate_render_options(dpi=100, koppen_alpha=0.5, zoom=4)
         ortho.validate_render_options(dpi=100, koppen_alpha=0.5, zoom=8, radius_km=2_500)
+        ortho.validate_render_options(dpi=100, zoom=8, radius_km=2_500, rectangle=1.5)
+        ortho.validate_render_options(dpi=100, radius_km=5_000, rectangle=1.0)
 
     def test_both_hemispheres_halves_the_dpi_cap(self):
         ortho.validate_render_options(dpi=ortho.MAX_DPI // 2, koppen_alpha=0.5, both_hemispheres=True)
@@ -1049,7 +1060,7 @@ class TestRunCLIValidation:
             indicator=None, indicator_year=None, indicator_alpha=0.75, industry=None,
             shipping=None, shipping_alpha=0.85, ports=None, air_routes=None, relief_units=None,
             relief_alpha=0.55,
-            wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
+            wind=None, radius=None, rectangle=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -1217,6 +1228,20 @@ class TestRunCLIValidation:
         assert kwargs["radius_km"] == 2_500 and kwargs["zoom"] == 6       # Paris is at 49°N
         assert kwargs["output_filename"] == "orthographic_map_paris_osm_z6_r2500km.png"
 
+    def test_rectangle_passed_to_renderer(self):
+        args = ortho.parse_cli_args(["--city", "paris", "--radius", "450", "--rectangle", "3:2"])
+        assert args.rectangle == 1.5
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["rectangle"] == 1.5 and render.call_args.kwargs["radius_km"] == 450
+        assert render.call_args.kwargs["output_filename"].endswith("_r450km_rect1p5.png")
+
+    def test_bad_rectangle_is_a_usage_error(self, capsys):
+        with pytest.raises(SystemExit):
+            ortho.parse_cli_args(["--city", "paris", "--radius", "450", "--rectangle", "wide"])
+        assert "written width:height" in capsys.readouterr().err
+
     def test_globe_zoom_defaults_to_3(self):
         args = self._make_args(city="paris", zoom=None)
         with mock.patch.object(ortho, "generate_orthographic_map") as render, \
@@ -1229,6 +1254,7 @@ class TestRunCLIValidation:
         (dict(radius=2_500.0, zoom=8), "between 1 and 7"),
         (dict(radius=50.0, zoom=None), "radius_km must be between"),
         (dict(radius=2_500.0, zoom=None, both_hemispheres=True), "both hemispheres"),
+        (dict(rectangle=1.5), "cut from a radius map"),
         (dict(wind="monsoon"), "Unknown wind period"),
     ])
     def test_bad_radius_zoom_or_wind_exits_before_render(self, caplog, overrides, message):
@@ -2957,9 +2983,10 @@ class TestDrawDistanceCircles:
         proj = ccrs.Orthographic(0, 0)
         disc = proj.x_limits[1] * np.sin(1_000_000 / ortho.EARTH_RADIUS_M)   # a 1,000 km map
         fig, ax = plt.subplots(subplot_kw={"projection": proj})
+        ax.set_extent((-disc, disc, -disc, disc), crs=proj)
         try:
             # From 1,500 km east of the centre: 1,000 km crosses the disc, 3,000 km misses it
-            ortho._draw_distance_circles(ax, 13.5, 0, radii_km=(1_000, 3_000), within=disc)
+            ortho._draw_distance_circles(ax, 13.5, 0, radii_km=(1_000, 3_000), within=True)
             assert len(ax.texts) == 1 and ax.texts[0].get_text().strip() == "1,000 km"
             assert np.hypot(*ax.texts[0].get_position()) <= disc
         finally:
@@ -3082,13 +3109,44 @@ class TestRadiusAndWindRendering:
         assert np.hypot(boundary[:, 0] - 0.5, boundary[:, 1] - 0.5) == pytest.approx(0.5)
         assert circles.call_args.kwargs["radii_km"] == (500, 1_000, 1_500, 2_000)
 
+    def test_rectangle_cuts_the_radius_square(self, tmp_path):
+        ax, circles, _ = self._render(tmp_path, radius_km=2_500, rectangle=1.5, zoom=6)
+        half = ax.projection.x_limits[1] * np.sin(2_500_000 / ortho.EARTH_RADIUS_M)
+        assert ax.get_extent(ax.projection) == pytest.approx((-half, half, -half / 1.5, half / 1.5))
+        # The whole frame, not a circle within it
+        boundary = ax.patch.get_path().vertices
+        assert {tuple(v) for v in np.round(boundary, 6)} == {(0, 0), (1, 0), (1, 1), (0, 1)}
+        assert ortho.is_rectangle(ax)
+        assert circles.call_args.kwargs["within"] is True
+        assert circles.call_args.kwargs["radii_km"] == (500, 1_000, 1_500, 2_000)
+
+    def test_tall_rectangle(self, tmp_path):
+        ax, _, _ = self._render(tmp_path, radius_km=1_000, rectangle=0.5, zoom=7)
+        half = ax.projection.x_limits[1] * np.sin(1_000_000 / ortho.EARTH_RADIUS_M)
+        assert ax.get_extent(ax.projection) == pytest.approx((-half / 2, half / 2, -half, half))
+
+    def test_two_globes_cut_alike(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None):
+            fig_axes = []
+            real = ortho._add_globe_axes
+
+            def spy(*args, **kwargs):
+                fig_axes.append(real(*args, **kwargs))
+                return fig_axes[-1]
+
+            with mock.patch.object(ortho, "_add_globe_axes", spy):
+                ortho.generate_orthographic_map(lat=46, lon=10, output_filename="m.png", zoom=6, dpi=20,
+                                                output_dir=str(tmp_path), radius_km=800, rectangle=4 / 3,
+                                                beside=(40.4, -3.7))
+        assert len(fig_axes) == 2 and all(ortho.is_rectangle(ax) for ax in fig_axes)
+
     def test_circles_from_another_place(self, tmp_path):
         ax, circles, _ = self._render(tmp_path, radius_km=2_500, zoom=6, circles_from=(52.52, 13.405))   # Berlin
         args, kwargs = circles.call_args
         assert args[1:] == (13.405, 52.52)
         # The map reaches ~3,250 km from Berlin, so the rings step by 1,000 km
         assert kwargs["radii_km"] == (1_000, 2_000, 3_000)
-        assert kwargs["within"] == pytest.approx(ax.projection.x_limits[1] * np.sin(2_500_000 / ortho.EARTH_RADIUS_M))
+        assert kwargs["within"] is True
         rings = [line for line in ax.lines if line.get_marker() == "o" and line.get_markerfacecolor() == "none"]
         assert len(rings) == 1 and tuple(np.ravel(rings[0].get_data())) == (13.405, 52.52)
 
