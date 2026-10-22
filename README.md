@@ -853,15 +853,16 @@ last settings in the browser.
 title page for each part, and a page for each map with its title, a caption
 and questions for the reader. An atlas is a TOML file;
 [atlases/romania_school.toml](atlases/romania_school.toml) is a school atlas in
-Romanian, in three parts: **România** (position, relief, rivers, climate,
-temperatures, precipitation, vegetation, soils, crops, population, cities,
+Romanian, in three parts: **România** (position, relief, the relief units and
+two close-ups of them, rivers, climate, temperatures, precipitation,
+vegetation, soils, crops, population, cities,
 development regions, industry, night lights, the Vrancea earthquakes, and the
 borders of 1914 and 1938), **Uniunea Europeană** (the states, relief, climates,
 January temperatures, precipitation, biomes, population, cities, GDP and
 unemployment by region, night lights, shipping, Europe in 1914) and **Lumea**
 (the two hemispheres, the states, relief and the ocean floor, plate tectonics,
 climates, currents, biomes, population, cities, life expectancy, GDP, time zones,
-shipping, the polar regions): 49 pages, 47 maps.
+shipping, the polar regions): 52 pages, 50 maps.
 
 ```powershell
 python atlas.py atlases/romania_school.toml           # draws the maps and writes atlas_romania_school.pdf
