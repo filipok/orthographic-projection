@@ -24,6 +24,11 @@ is Câmpia Valea lui Mihai and Câmpia Pișcolțului, and with Câmpia Ierului a
 others it makes up Câmpia Someșului. The map has only the smallest units, so
 each larger one is drawn as the outline of the units the legend puts in it and
 named in bold. Both files are downloaded once and cached in a compact form.
+
+The low ground inside the mountains and hills, the depressions, corridors and
+floodplains (Depresiunea, Culoarul, Lunca …), is told by the kind its name
+begins with, or its legend entry's when the map's name has none, and drawn in
+a paler, greener shade of its region's colour.
 """
 
 from __future__ import annotations
@@ -60,7 +65,7 @@ logger = logging.getLogger(__name__)
 
 SHAPES_URL = "https://geo-spatial.org/vechi/file_download/24263"    # the shapefile in degrees (WGS 84), zipped
 LEGEND_URL = "https://geo-spatial.org/vechi/file_download/24264"    # its legend, an MS Excel sheet
-DATA_VERSION = 2          # bump when the cache changes, so old ones are rebuilt
+DATA_VERSION = 3          # bump when the cache changes, so old ones are rebuilt
 
 RELIEF_ATTRIBUTION = ("Relief units: Candrea, Candrea & Niță 2008 (geo-spatial.org), after Posea & Badea 1984, "
                       "CC BY-SA 3.0")
@@ -81,6 +86,10 @@ REGION_COLOURS: dict[str, tuple[int, int, int]] = {
     "XVI": (160, 206, 192),
 }
 OTHER_COLOUR = (220, 220, 210)
+# Depressions, corridors and floodplains: their region's colour, this far toward the green-yellow of low ground
+LOW_KINDS = frozenset({"Depresiunea", "Depresiunile", "Culoarul", "Culoarele", "Lunca", "Balta"})
+LOW_GROUND = (214, 232, 170)
+LOW_BLEND = 0.65
 UNIT_EDGE = "#7a5c40"
 GROUP_EDGE = "#5e4430"
 REGION_EDGE = "#4a3520"
@@ -128,6 +137,7 @@ class Unit(NamedTuple):
     name: str           # "" for a unit without a name of its own
     region: str         # Roman numeral of its major region ("I" … "XVI")
     outline: shapely.Geometry
+    low: bool = False   # a depression, corridor or floodplain (see LOW_KINDS)
 
 
 class Relief(NamedTuple):
@@ -137,6 +147,7 @@ class Relief(NamedTuple):
     regions: dict[str, str]         # "I" -> "Carpații Orientali (Răsăriteni)"
     borders: Sequence[shapely.Geometry]  # the outline of each major region, drawn over the units
     groups: Sequence[Unit] = ()     # the larger units the smallest make up (Câmpia Careiului), largest first
+    low: Sequence[Unit] = ()        # at the level of regions, the depressions, corridors and floodplains in them
 
 
 def resolve_relief_level(level: str | None) -> str:
@@ -256,6 +267,17 @@ def restore_name(raw: str, legend: Key) -> str:
     return f"{kind} {rest}" if kind else rest
 
 
+def unit_kind(raw: str, entry: Entry | None = None) -> str:
+    """The kind of relief unit, in full, that the shapefile's name *raw* begins with (``Depresiunea``), or its
+    legend *entry*'s when *raw* begins with none (``Bistrita Bargaului``, the legend's ``Dep. Bistriței …``);
+    ``""`` when neither tells."""
+    for name in (raw, entry.path[-1] if entry and entry.path else ""):
+        kind = split_kind(name)[0]
+        if kind:
+            return GENERIC.get(_fold(kind), kind)
+    return ""
+
+
 def group_name(name: str) -> str:
     """The legend's *name* of a group of units with its kind in full: ``Dep.-le Gheorgheni-Ciuc`` →
     ``Depresiunile Gheorgheni-Ciuc``; ``Dl.`` stays short, being Dealul or Dealurile."""
@@ -299,7 +321,7 @@ def read_units(shapes_zip: bytes, legend: Key) -> dict[str, np.ndarray]:
             raise ReliefError("The relief units' archive holds no shapefile")
         files = {ext: io.BytesIO(archive.read(members[ext])) for ext in (".shp", ".shx", ".dbf")}
     reader = shapefile.Reader(shp=files[".shp"], shx=files[".shx"], dbf=files[".dbf"], encoding="iso8859_16")
-    names, regions, outlines, paths = [], [], [], []
+    names, regions, outlines, paths, low = [], [], [], [], []
     for item in reader.iterShapeRecords():
         if item.shape is None or item.record is None:
             continue
@@ -313,13 +335,15 @@ def read_units(shapes_zip: bytes, legend: Key) -> dict[str, np.ndarray]:
         outlines.append(outline)
         entry = find_entry(raw, region, str(row["SUBREGIUNE"] or "").strip(), legend)
         paths.append((region, entry.path) if entry else None)
+        low.append(unit_kind(raw, entry) in LOW_KINDS)
     if not outlines:
         raise ReliefError("The relief units' shapefile is empty")
     groups = unit_groups(paths)
     group_outlines = [shapely.union_all([outlines[i] for i in units], grid_size=1e-6) for units in groups.values()]
     packed = _pack(group_outlines)
     codes = sorted(legend.regions)
-    return {"names": np.array(names), "regions": np.array(regions), "region_codes": np.array(codes),
+    return {"names": np.array(names), "regions": np.array(regions), "low": np.array(low, dtype=bool),
+            "region_codes": np.array(codes),
             "region_names": np.array([legend.regions[c] for c in codes]), **_pack(outlines),
             "group_names": np.array([group_name(path[-1]) for _, path in groups], dtype=str),
             "group_regions": np.array([region for region, _ in groups], dtype=str),
@@ -386,16 +410,20 @@ def load_relief(level: str = DEFAULT_LEVEL, cache_dir: str | None = None) -> Rel
         by_region[str(code)].append(outline)
     borders = [shapely.union_all(parts, grid_size=1e-6) for parts in by_region.values()]
     groups: list[Unit] = []
+    every = [Unit(str(n), str(r), o, bool(k))
+             for n, r, o, k in zip(table["names"], table["regions"], outlines, table["low"])]
+    low: list[Unit] = []
     if level == "regions":
         units = [Unit(regions.get(code, ""), code, border) for code, border in zip(by_region, borders)]
+        low = [u for u in every if u.low]
     else:
-        units = [Unit(str(n), str(r), o) for n, r, o in zip(table["names"], table["regions"], outlines)]
+        units = every
         group_outlines = _unpack({"wkb": table["group_wkb"], "wkb_ends": table["group_wkb_ends"]})
         groups = [Unit(str(n), str(r), o)
                   for n, r, o in zip(table["group_names"], table["group_regions"], group_outlines)]
         groups.sort(key=lambda u: float(shapely.area(u.outline)), reverse=True)
     units.sort(key=lambda u: float(shapely.area(u.outline)), reverse=True)
-    return Relief(level, units, regions, borders, groups)
+    return Relief(level, units, regions, borders, groups, low)
 
 
 # ---------------------------------------------------------------------------
@@ -403,9 +431,13 @@ def load_relief(level: str = DEFAULT_LEVEL, cache_dir: str | None = None) -> Rel
 # ---------------------------------------------------------------------------
 
 
-def region_colour(code: str) -> tuple[float, float, float]:
-    r, g, b = REGION_COLOURS.get(code, OTHER_COLOUR)
-    return r / 255, g / 255, b / 255
+def region_colour(code: str, low: bool = False) -> tuple[float, float, float]:
+    """The colour of region *code*, or with *low* of its depressions, corridors and floodplains."""
+    rgb = np.array(REGION_COLOURS.get(code, OTHER_COLOUR), float)
+    if low:
+        rgb += LOW_BLEND * (np.array(LOW_GROUND, float) - rgb)
+    r, g, b = rgb / 255
+    return float(r), float(g), float(b)
 
 
 def visible_units(ax: GeoAxes, units: Sequence[Unit], samples: int = 300) -> dict[int, np.ndarray]:
@@ -451,11 +483,20 @@ def draw_relief(ax: GeoAxes, relief: Relief, alpha: float = 0.55, labels: bool =
     does not fit; the groups' names are bold. Returns how many sample points
     each unit covers (index into ``relief.units``).
     """
-    by_colour: defaultdict[str, list[shapely.Geometry]] = defaultdict(list)
+    # Each unit in its region's colour, its low ground paler; a region's own fill leaves out the low ground in it
+    by_colour: defaultdict[tuple[str, bool], list[shapely.Geometry]] = defaultdict(list)
+    low_in: defaultdict[str, list[shapely.Geometry]] = defaultdict(list)
+    for unit in relief.low:
+        low_in[unit.region].append(unit.outline)
+        by_colour[(unit.region, True)].append(unit.outline)
     for unit in relief.units:
-        by_colour[unit.region].append(unit.outline)
-    for code, outlines in by_colour.items():
-        ax.add_geometries(outlines, crs=ccrs.PlateCarree(), facecolor=(*region_colour(code), alpha),
+        outline = unit.outline
+        if low_in.get(unit.region):
+            outline = shapely.difference(outline, shapely.union_all(low_in[unit.region], grid_size=1e-6),
+                                         grid_size=1e-6)
+        by_colour[(unit.region, unit.low)].append(outline)
+    for (code, low), outlines in by_colour.items():
+        ax.add_geometries(outlines, crs=ccrs.PlateCarree(), facecolor=(*region_colour(code, low), alpha),
                           edgecolor="none", zorder=5)
     if relief.level == "units":
         ax.add_geometries([u.outline for u in relief.units], crs=ccrs.PlateCarree(), facecolor="none",
@@ -518,18 +559,28 @@ def _points_to_data(ax: GeoAxes, points: float) -> float:
 
 def add_relief_legend(ax: GeoAxes, relief: Relief, counts: Iterable[dict[int, int]],
                       y: float = -0.01, x: float = 0.5) -> Legend | None:
-    """A key to the major regions on the map, in their colours, largest first. ``None`` when none shows."""
+    """A key to the major regions on the map, in their colours, largest first, and to their low ground when
+    some shows. ``None`` when none shows."""
     shares: Counter[str] = Counter()
     units: Counter[str] = Counter()
+    low: Counter[str] = Counter()           # the low ground in view, by region
     for per_globe in counts:
         for i, n in per_globe.items():
             shares[relief.units[i].region] += n
             units[relief.units[i].region] += 1
+            if relief.units[i].low:
+                low[relief.units[i].region] += n
     if not shares:
         return None
+    for i, points in (visible_units(ax, relief.low) if relief.low else {}).items():
+        low[relief.low[i].region] += len(points)
     top = [code for code, _ in shares.most_common()]
     handles = [mpatches.Patch(facecolor=region_colour(c), edgecolor=REGION_EDGE, linewidth=0.6) for c in top]
     labels = [f"{c}. {relief.regions.get(c, c)}" for c in top]
+    if low:
+        handles.append(mpatches.Patch(facecolor=region_colour(low.most_common(1)[0][0], low=True),
+                                      edgecolor=REGION_EDGE, linewidth=0.6))
+        labels.append("Depressions, corridors and floodplains: a paler, greener shade of their region")
     what = "Major relief regions" if relief.level == "regions" else f"Relief units ({sum(units.values()):,})"
     title = f"{what} of Romania in view, after Posea & Badea 1984 (Candrea et al. 2008)"
     if relief.groups:

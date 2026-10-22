@@ -266,7 +266,7 @@ The main script is [ortho.py](ortho.py).
 - Optional ports: 2,065 seaports as dots sized by the ships calling a year (2019–2025), of every kind or only container ships, tankers, bulk carriers, general cargo or ro-ro ships, the busiest named
 - Night lights: NASA's Black Marble, the Earth at night, as a base map
 - Optional air routes: the airline network, or the routes from chosen airports or of chosen airlines, as great-circle arcs wider for routes more airlines fly
-- Optional relief units of Romania: its 820 geomorphological units (Posea & Badea), from the Carpathians to single depressions and plains such as Depresiunea Hațegului or Câmpia Ierului, filled in their major region's colour and named, or the 16 major regions alone
+- Optional relief units of Romania: its 820 geomorphological units (Posea & Badea), from the Carpathians to single depressions and plains such as Depresiunea Hațegului or Câmpia Ierului, filled in their major region's colour (depressions, corridors and floodplains paler) and named, or the 16 major regions alone
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
@@ -1490,6 +1490,17 @@ python ortho.py --lat 46.3 --lon 25.55 --radius 100 --provider osm_plain --relie
   the Delta blue-green. The major regions are outlined more boldly. `regions`
   draws and names only those 16 (Carpații Orientali, Depresiunea
   Transilvaniei, Câmpia Română …).
+- **Depressions, corridors and floodplains** stand out from the mountains
+  and hills around them: every unit that is a *Depresiunea*, *Culoarul*,
+  *Lunca* or *Balta* is filled in its region's colour taken two-thirds of
+  the way toward a pale green-yellow, so Depresiunea Hațegului reads lower than the Retezat
+  beside it and the Eastern Carpathians' depressions still differ from the
+  Southern Carpathians'. The kind is the first word of the unit's name, or of
+  its legend entry when the map's name has none; the 52 depressions without a
+  name of their own count too. `regions` shades the same low ground inside
+  each region, without outlining or naming it. The key adds one entry for
+  it. A unit whose name starts with no kind, in the map or in its legend
+  entry, keeps its region's colour.
 - **Groups.** The map has only the smallest units; the legend says which make
   up which larger ones, and 201 of those are drawn as the outline of their
   units and named in bold: Câmpia Careiului over its two halves, beside

@@ -4,6 +4,7 @@ import io
 import os
 import zipfile
 from typing import Any
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -111,6 +112,19 @@ class TestNames:
     def test_group_names(self, name, full):
         assert rl.group_name(name) == full
 
+    @pytest.mark.parametrize("raw, kind", [
+        ("Depresiunea Hategului", "Depresiunea"), ("Depresiune", "Depresiunea"), ("Depr. Poiana", "Depresiunea"),
+        ("Culoarul  Târnavei Mici", "Culoarul"), ("Lunca Jiu - Jiet", "Lunca"), ("Muntii Oasului", "Munții"),
+        ("Bistrita Bargaului", ""),
+    ])
+    def test_kind(self, raw, kind):
+        assert rl.unit_kind(raw) == kind
+
+    def test_kind_from_the_legend_when_the_map_gives_none(self):
+        entry = rl.Entry("B", ("Câmpia Crișurilor", "Cul. Târnavei Mici"))
+        assert rl.unit_kind("Tarnavei Mici", entry) == "Culoarul"
+        assert rl.unit_kind("Muntii Oasului", entry) == "Munții"              # the map's own kind first
+
     def test_entry_found_by_name_and_subregion(self):
         legend = rl.legend_from_rows(ROWS + [["", "", "C", "Câmpia Banatului", "", "", "2.", "C. Ierului"]])
         assert rl.find_entry("Câmpia Ierului", "XIII", "A", legend) == rl.Entry("A", ("Câmpia Someșului",
@@ -176,6 +190,14 @@ class TestData:
         assert dict(zip(table["region_codes"], table["region_names"]))["XIII"] == "Câmpia Banato-Crișană"
         outlines = rl._unpack(table)
         assert outlines[1].bounds == pytest.approx((21.9, 47.3, 22.5, 47.5))
+        assert table["low"].tolist() == [True, False, True, False, False]      # the two depressions
+
+    def test_low_ground_told_by_the_legend(self):
+        units = [("Tarnavei Mici", "XIII", "B", [(24, 46), (24, 46.2), (24.5, 46.2), (24.5, 46)]),
+                 ("Lunca Jiu - Jiet", "XIII", "A", [(23, 44), (23, 44.2), (23.5, 44.2), (23.5, 44)]),
+                 ("Câmpia Ierului", "XIII", "A", [(21.9, 47.3), (21.9, 47.5), (22.5, 47.5), (22.5, 47.3)])]
+        table = rl.read_units(_shapefile_zip(units), _legend())
+        assert table["low"].tolist() == [True, True, False]                    # Cul. Târnavei Mici in the legend
 
     def test_archive_without_shapefile(self):
         out = io.BytesIO()
@@ -204,6 +226,7 @@ class TestData:
                                                  "Câmpia Valea lui Mihai", "Câmpia Pișcolțului", ""]
         assert units.level == "units" and len(units.borders) == 2
         assert [g.name for g in units.groups] == ["Câmpia Someșului", "Câmpia Careiului"]   # largest first
+        assert [u.low for u in units.units] == [False, True, False, False, True] and not units.low
         rl.load_relief("regions", str(tmp_path))
         assert geo_spatial == [rl.SHAPES_URL, rl.LEGEND_URL]                    # cached
         assert sorted(os.listdir(tmp_path)) == [f"relief_units_v{rl.DATA_VERSION}.npz"]   # downloads removed
@@ -214,6 +237,8 @@ class TestData:
             ("XIII", "Câmpia Banato-Crișană"), ("III", "Carpații Meridionali (Carpații de Miazăzi)")]
         assert regions.units[1].outline.area == pytest.approx(0.4 * 0.2 + 0.1 * 0.1)   # both units of III
         assert not regions.groups
+        assert sorted(u.name for u in regions.low) == ["", "Depresiunea Hațegului (Țara Hațegului)"]
+        assert all(u.low and u.region == "III" for u in regions.low)
 
     def test_unreachable(self, tmp_path, monkeypatch):
         def offline(url, dest, timeout=120, label=""):
@@ -268,6 +293,43 @@ class TestDrawing:
         legend = rl.add_relief_legend(ax, relief, [counts])
         assert legend is not None and legend.get_title().get_text().endswith(
             "\nin bold: the larger units they make up")
+
+    def test_low_ground_paler_and_greener(self):
+        mountain, low = rl.region_colour("I"), rl.region_colour("I", low=True)
+        assert low != mountain and low[1] > mountain[1] and sum(low) > sum(mountain)
+        assert rl.region_colour("III", low=True) != low                        # still told apart by region
+
+    def test_low_ground_drawn_and_keyed(self):
+        ax = _globe()
+        units = [rl.Unit("Munții Ciucului", "I", shapely.box(24, 45, 27, 48)),
+                 rl.Unit("Depresiunea Ciucului", "I", shapely.box(25, 46, 26, 47), low=True)]
+        relief = rl.Relief("units", units, {"I": "Carpații Orientali"}, [shapely.box(24, 45, 27, 48)])
+        counts = rl.draw_relief(ax, relief)
+        fills = {tuple(np.round(c.get_facecolor()[0][:3], 4)) for c in ax.collections
+                 if len(c.get_facecolor()) and c.get_facecolor()[0][3] > 0}
+        assert fills == {tuple(np.round(rl.region_colour("I"), 4)), tuple(np.round(rl.region_colour("I", True), 4))}
+        legend = rl.add_relief_legend(ax, relief, [counts])
+        assert legend is not None
+        assert [t.get_text() for t in legend.get_texts()][-1].startswith("Depressions, corridors and floodplains")
+
+    def test_no_low_ground_no_key_entry(self):
+        ax = _globe()
+        legend = rl.add_relief_legend(ax, _relief(), [rl.draw_relief(ax, _relief())])
+        assert legend is not None and len(legend.get_texts()) == 2
+
+    def test_low_ground_cut_out_of_the_regions(self):
+        ax = _globe()
+        hollow = rl.Unit("Depresiunea Ciucului", "I", shapely.box(25, 46, 26, 47), low=True)
+        relief = rl.Relief("regions", [rl.Unit("Carpații Orientali", "I", shapely.box(24, 45, 27, 48))],
+                           {"I": "Carpații Orientali"}, [shapely.box(24, 45, 27, 48)], low=[hollow])
+        with mock.patch.object(ax, "add_geometries", wraps=ax.add_geometries) as added:
+            counts = rl.draw_relief(ax, relief)
+        filled = {kwargs["facecolor"][:3]: shapely.union_all(list(geoms)) for (geoms,), kwargs in
+                  ((call.args, call.kwargs) for call in added.call_args_list) if kwargs["facecolor"] != "none"}
+        assert filled[rl.region_colour("I")].area == pytest.approx(9 - 1)      # the region without its depression
+        assert filled[rl.region_colour("I", True)].area == pytest.approx(1)
+        legend = rl.add_relief_legend(ax, relief, [counts])
+        assert legend is not None and len(legend.get_texts()) == 2
 
     def test_regions_key(self):
         ax = _globe()
