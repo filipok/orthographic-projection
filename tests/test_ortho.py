@@ -1047,7 +1047,8 @@ class TestRunCLIValidation:
             malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None, species=None, species_years=None,
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
             indicator=None, indicator_year=None, indicator_alpha=0.75, industry=None,
-            shipping=None, shipping_alpha=0.85, ports=None, air_routes=None,
+            shipping=None, shipping_alpha=0.85, ports=None, air_routes=None, relief_units=None,
+            relief_alpha=0.55,
             wind=None, radius=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1536,6 +1537,26 @@ class TestRunCLIValidation:
             ortho.run_cli(args)
         assert render.call_args.kwargs["ports"] == "tankers"
 
+    def test_relief_units_passed_to_renderer(self):
+        args = self._make_args(lat=44.4, lon=26.1, relief_units="regions", relief_alpha=0.4)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert (kwargs["relief_units"], kwargs["relief_alpha"]) == ("regions", 0.4)
+
+    def test_relief_alpha_alone_is_ignored(self, caplog):
+        args = self._make_args(lat=44.4, lon=26.1, relief_alpha=0.4)
+        with mock.patch.object(ortho, "generate_orthographic_map"), mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert "--relief-alpha is ignored" in caplog.text
+
+    def test_cli_parses_relief_units(self):
+        parse = ortho.build_cli_parser().parse_args
+        assert (parse(["--relief-units"]).relief_units, parse(["--relief-units"]).relief_alpha) == ("units", 0.55)
+        assert parse(["--relief-units", "regions", "--relief-alpha", "0.3"]).relief_alpha == 0.3
+        assert parse(["--city", "paris"]).relief_units is None
+
     def test_cli_parses_ports(self):
         assert ortho.build_cli_parser().parse_args(["--city", "paris", "--ports"]).ports == "all"
         assert ortho.build_cli_parser().parse_args(["--ports", "container"]).ports == "container"
@@ -1586,6 +1607,8 @@ class TestRunCLIValidation:
         ({"industry": "smelting"}, "Unknown industry"),
         ({"shipping": "submarines"}, "Unknown kind of ships"),
         ({"ports": "yachts"}, "Unknown kind of port traffic"),
+        ({"relief_units": "counties"}, "Unknown level of relief units"),
+        ({"relief_units": "units", "relief_alpha": 1.5}, "relief_alpha"),
         ({"shipping": "all", "shipping_alpha": 1.5}, "shipping_alpha"),
         ({"air_routes": "airline:"}, "Name an airline"),
         ({"indicator": "fertility", "indicator_year": 1900}, "Indicator years run from 1960"),
@@ -2120,6 +2143,44 @@ class TestGenerateOrthographicMapIntegration:
         draw.assert_not_called()
         assert ortho.PORTS_ATTRIBUTION not in attribution.call_args.args[1]
 
+    def test_relief_units_drawn_with_key_and_credit(self, tmp_path):
+        landforms = mock.Mock()
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_relief", return_value=landforms) as loaded, \
+                mock.patch.object(ortho, "draw_relief", side_effect=[{0: 4}, {1: 6}]) as draw, \
+                mock.patch.object(ortho, "add_relief_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(45, 26), relief_units="Regions",
+                                            relief_alpha=0.3)
+        assert loaded.call_args.args[0] == "regions"
+        assert draw.call_count == 2 and draw.call_args.kwargs["alpha"] == 0.3
+        assert key.call_args.args[1:] == (landforms, [{0: 4}, {1: 6}])
+        assert ortho.RELIEF_ATTRIBUTION in attribution.call_args.args[1]
+
+    def test_relief_units_unavailable_draws_nothing(self, tmp_path, caplog):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_relief", side_effect=ortho.ReliefError("offline")), \
+                mock.patch.object(ortho, "draw_relief") as draw, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), relief_units="units")
+        assert os.path.exists(result) and "Skipping the relief units: offline" in caplog.text
+        draw.assert_not_called()
+        assert ortho.RELIEF_ATTRIBUTION not in attribution.call_args.args[1]
+
+    def test_cities_named_before_relief_units(self, tmp_path):
+        order = []
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_relief", return_value=mock.Mock()), \
+                mock.patch.object(ortho, "load_cities", return_value=mock.Mock()), \
+                mock.patch.object(ortho, "draw_relief", side_effect=lambda *a, **k: order.append("relief") or {}), \
+                mock.patch.object(ortho, "draw_cities", side_effect=lambda *a: order.append("cities") or []), \
+                mock.patch.object(ortho, "add_relief_legend"), mock.patch.object(ortho, "add_cities_legend"):
+            ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), relief_units="units", cities=2025)
+        assert order == ["cities", "relief"]
+
     def test_cities_named_before_ports(self, tmp_path):
         order = []
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
@@ -2298,6 +2359,8 @@ class TestGenerateOrthographicMapIntegration:
         ("shipping:Fishing, air-routes:lhr+jfk", {"shipping": "fishing", "air_routes": "lhr+jfk"}),
         ("ports, shipping", {"ports": "all", "shipping": "commercial"}),
         ("ports:Tankers", {"ports": "tanker"}),
+        ("relief-units", {"relief_units": "units"}),
+        ("relief-units:Regions", {"relief_units": "regions"}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected

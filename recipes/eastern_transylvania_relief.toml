@@ -1,0 +1,9 @@
+# The depressions of the Eastern Carpathians up close: Giurgeu, Ciuc, Bârsa and the Homorod
+# Subcarpathians around Odorheiu Secuiesc, with Brașov and Târgu Mureș.
+lat = 46.3
+lon = 25.55
+provider = "osm_plain"
+radius = 100
+relief_units = "units"
+cities = 2025
+output = "orthographic_map_eastern_transylvania_osm_plain_r100km_relief_units_cities_2025.png"

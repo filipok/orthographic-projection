@@ -1,0 +1,9 @@
+# Romania's 16 major relief regions (Posea & Badea 1984) over NASA's shaded relief: the arc of the
+# Carpathians, the Transylvanian Depression inside it, the Subcarpathians, plateaus and plains around it.
+lat = 45.9
+lon = 25.0
+provider = "nasa"
+radius = 330
+relief_units = "regions"
+relief_alpha = 0.45
+output = "orthographic_map_romania_nasa_r330km_relief_regions.png"

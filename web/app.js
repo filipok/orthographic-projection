@@ -208,6 +208,10 @@ function buildRequest() {
     if ($("borders-source").value !== "auto") req.borders_source = $("borders-source").value;
     req.borders_alpha = changed("borders-alpha", options.alpha.borders);
   }
+  if ($("relief-units").value) {
+    req.relief_units = $("relief-units").value;
+    req.relief_alpha = changed("relief-alpha", options.alpha.relief);
+  }
   const routes = selectedRoutes();
   if (routes.length) {
     req.route = routes;
@@ -380,6 +384,8 @@ function fillForm(req) {
   $("borders").value = req.borders ?? "";
   if (req.borders_source) pick("borders-source", req.borders_source, "borders source");
   set("borders-alpha", req.borders_alpha);
+  if (req.relief_units) pick("relief-units", req.relief_units, "level of relief units");
+  set("relief-alpha", req.relief_alpha);
   const routes = req.route || [];
   for (const name of routes) {
     if (!routeFiles.some((f) => f.name === name)) missing.push(`route file ${name}`);
@@ -769,6 +775,7 @@ async function init() {
   $("vegetation-alpha").value = options.alpha.vegetation;
   $("biome-alpha").value = options.alpha.biome;
   $("borders-alpha").value = options.alpha.borders;
+  $("relief-alpha").value = options.alpha.relief;
   for (const name of ["basins", "permafrost", "population", "livestock", "malaria", "iucn", "indicator", "shipping"]) {
     $(`${name}-alpha`).value = options.alpha[name];
   }
@@ -783,6 +790,7 @@ async function init() {
   $("industry-list").append(...Object.entries(options.industry).map(([name, about]) => option(name, about)));
   $("shipping").append(...Object.entries(options.shipping).map(([name, label]) => option(name, label)));
   $("ports").append(...Object.entries(options.ports).map(([name, label]) => option(name, label)));
+  $("relief-units").append(...Object.entries(options.relief_units).map(([name, label]) => option(name, label)));
   $("indicator-list").append(...Object.entries(options.indicators).map(([name, title]) => option(name, title)));
   $("cities-year").append(...options.cities_years.slice().reverse().map((y) => option(String(y),
     y === 2030 ? "2030 (projected)" : String(y))));

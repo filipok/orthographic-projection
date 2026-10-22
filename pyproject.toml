@@ -20,6 +20,8 @@ dependencies = [
     "pillow>=12.1.0",
     "python-dotenv>=1.2.0",
     "h5py>=3.16.0",
+    "pyshp>=2.3.0",
+    "xlrd>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -42,4 +44,4 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.setuptools]
-py-modules = ["ortho", "koppen", "trewartha", "elevation", "biomes", "zoogeography", "borders", "tectonics", "currents", "hydrology", "cyclones", "timezones", "iceage", "permafrost", "population", "livestock", "malaria", "aedes", "gbif", "iucn", "cities", "indicators", "industry", "shipping", "air_routes", "ports", "soil", "soil_properties", "vegetation", "wind", "climate", "sea", "ice", "crops", "rotation", "routes", "google_tiles", "tile_fetch", "recipe_store", "webapp", "atlas"]
+py-modules = ["ortho", "koppen", "trewartha", "elevation", "biomes", "zoogeography", "borders", "tectonics", "currents", "hydrology", "cyclones", "timezones", "iceage", "permafrost", "population", "livestock", "malaria", "aedes", "gbif", "iucn", "cities", "indicators", "industry", "shipping", "air_routes", "ports", "relief", "soil", "soil_properties", "vegetation", "wind", "climate", "sea", "ice", "crops", "rotation", "routes", "google_tiles", "tile_fetch", "recipe_store", "webapp", "atlas"]

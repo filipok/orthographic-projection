@@ -182,6 +182,20 @@ The main script is [ortho.py](ortho.py).
 *The container ports of East Asia over the shipping lanes (plain OSM, zoom 3, IMF PortWatch, World Bank and IMF).*
 
 <p align="center">
+  <img src="sample_romania_relief_regions.png" alt="A disc 330 km around central Romania over NASA's shaded relief, the country divided into its 16 major relief regions: the arc of the Eastern, Southern and Banat Carpathians and the Apuseni Mountains in browns, the Transylvanian Depression inside the arc, the Subcarpathians, Getic Piedmont and Moldavian Plateau in ochres, the Romanian and Banat-Crișana plains in green, each named" width="48%">
+  <img src="sample_romania_relief_units.png" alt="The same disc on a plain map with all of Romania's relief units outlined and filled in the colour of their major region, hundreds named in italics: depressions such as Depresiunea Hațegului and Depresiunea Bârsei, mountains such as Masivul Făgăraș and Munții Rodnei, and plains such as Câmpia Ierului and Câmpia Burnas" width="48%">
+</p>
+
+*Left: Romania's major relief regions (NASA Blue Marble, 330 km radius, after Posea & Badea 1984).*<br>
+*Right: All 820 relief units, as many named as fit (plain OSM, 330 km radius).*
+
+<p align="center">
+  <img src="sample_eastern_transylvania_relief.png" alt="A disc 100 km around the Harghita Mountains: the depressions of Giurgeu, Ciuc and Bârsa, the Homorod Subcarpathians around Odorheiu Secuiesc and the Târnava plateaus to the west, each relief unit outlined and named, with Brașov and Târgu Mureș" width="48%">
+</p>
+
+*The depressions of the Eastern Carpathians up close (plain OSM, 100 km radius, relief units and GHSL cities).*
+
+<p align="center">
   <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
 </p>
 
@@ -252,6 +266,7 @@ The main script is [ortho.py](ortho.py).
 - Optional ports: 2,065 seaports as dots sized by the ships calling a year (2019–2025), of every kind or only container ships, tankers, bulk carriers, general cargo or ro-ro ships, the busiest named
 - Night lights: NASA's Black Marble, the Earth at night, as a base map
 - Optional air routes: the airline network, or the routes from chosen airports or of chosen airlines, as great-circle arcs wider for routes more airlines fly
+- Optional relief units of Romania: its 820 geomorphological units (Posea & Badea), from the Carpathians to single depressions and plains such as Depresiunea Hațegului or Câmpia Ierului, filled in their major region's colour and named, or the 16 major regions alone
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
@@ -350,6 +365,8 @@ Sahara, the Gobi, the Atacama) are already plain land in OSM. It shares the
 - `pillow==12.1.1`
 - `python-dotenv==1.2.4`
 - `h5py==3.16.0`
+- `pyshp==3.0.3`
+- `xlrd==2.0.2`
 
 ## Setup
 
@@ -399,7 +416,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `relief-units`, `relief-units:regions` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -514,6 +531,10 @@ python ortho.py --city Lisbon --borders 1500
 python ortho.py --lat 40 --lon 20 --borders 117 --radius 3000
 python ortho.py --lat 5 --lon 20 --borders 1914-07-01
 
+# Romania's relief units: every depression and plain, or the 16 major regions (see "Relief Units of Romania")
+python ortho.py --lat 45.9 --lon 25.0 --radius 330 --provider osm_plain --relief-units
+python ortho.py --lat 45.9 --lon 25.0 --radius 330 --provider nasa --relief-units regions --relief-alpha 0.45
+
 # Biomes, all or some, the ecoregions within 1,200 km of Madagascar, or the realms (see "Biomes, Ecoregions and Realms")
 python ortho.py --lat 5 --lon 20 --biomes
 python ortho.py --lat 10 --lon 100 --biome-class mangroves --biome-class "tropical moist"
@@ -601,6 +622,8 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--borders WHEN` | Draw the states of a year (`1500`, `-500`, `500 BC`) or, from 1886, a day (`1914-08-01`), filled, outlined and named, with a key | — |
 | `--borders-source SOURCE` | `cliopatria` (3400 BCE–2024), `cshapes` (1886–2019, with colonies) or `auto` (CShapes in its years, Cliopatria otherwise) | `auto` |
 | `--borders-alpha ALPHA` | Opacity of the borders' fill (0–1) | `0.55` |
+| `--relief-units [LEVEL]` | Draw Romania's relief units, filled in their major region's colour and named: `units` (all 820) or `regions` (the 16 major ones) | off (`units` when given alone) |
+| `--relief-alpha ALPHA` | Opacity of the relief units' fill (0–1) | `0.55` |
 | `--ocean-depth` | Colour the sea floor by depth and shade it, with a key (opacity: `--elevation-alpha`) | off |
 | `--ice-age` | Draw the last ice age: the land it left dry (sea ~120 m lower), its coast, and its ice sheets | off |
 | `--plates` | Draw the plate boundaries by kind and name the large plates | off |
@@ -655,7 +678,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
-Historical borders, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
+Historical borders, Relief units of Romania, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
 Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Shipping, ports and air routes (World Bank and IMF, OpenFlights), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
@@ -1395,6 +1418,66 @@ Cliopatria otherwise):
   own (the article describing it is CC BY-NC 4.0; the R package that carries the
   data is GPL ≥ 2). Neither is shipped here: each is downloaded on first use, and
   every map carries the credit line.
+
+## Relief Units of Romania
+
+`--relief-units` (`relief_units=` in the API, `relief-units` at the prompt)
+draws Romania's geomorphological regions, as Grigore Posea and Lucian Badea
+divided the country in *România. Unitățile de relief (Regionarea
+geomorfologică)* (1984, 1:800,000), in the digital map Bogdan Candrea,
+Petronela Candrea and Mihai Daniel Niță drew of it on the SRTM elevation
+model (geo-spatial.org, 2008):
+
+```powershell
+# All 820 units, as many named as fit
+python ortho.py --lat 45.9 --lon 25.0 --radius 330 --provider osm_plain --relief-units
+
+# The 16 major regions over the shaded relief
+python ortho.py --lat 45.9 --lon 25.0 --radius 330 --provider nasa --relief-units regions --relief-alpha 0.45
+
+# Up close: the depressions of Giurgeu, Ciuc and Bârsa, and the Homorod Subcarpathians
+python ortho.py --lat 46.3 --lon 25.55 --radius 100 --provider osm_plain --relief-units --cities
+```
+
+- **Units.** `units` (the default) outlines every unit, from mountain massifs
+  (Masivul Făgăraș, Munții Rodnei) to depressions (Depresiunea Hațegului,
+  Depresiunea Ciucului de Jos), corridors (Culoarul Mureșului), hills, plateaus
+  and plains (Câmpia Ierului, the marshy Ier valley; Câmpia Valea lui Mihai
+  and Câmpia Pișcolțului, the two halves of the sandy Carei Plain beside it;
+  Câmpia Burnas). Each is filled in
+  the colour of its major region, on a physical map's scheme: the Carpathians
+  brown, the Subcarpathians, hills and plateaus ochre, the plains green and
+  the Delta blue-green. The major regions are outlined more boldly. `regions`
+  draws and names only those 16 (Carpații Orientali, Depresiunea
+  Transilvaniei, Câmpia Română …).
+- **Groups.** The map has only the smallest units; the legend says which make
+  up which larger ones, and 201 of those are drawn as the outline of their
+  units and named in bold: Câmpia Careiului over its two halves, beside
+  Câmpia Ierului, both within Câmpia Someșului; Depresiunea Ciucului de Sus
+  (Sândominic and Ciceu) within Depresiunea Ciucului, within Depresiunile
+  Gheorgheni-Ciuc. A larger unit is drawn when at least two of the units in it
+  are mapped and it is not mapped itself. Their kinds are written in full,
+  except `Dl.`, which the legend uses for both Dealul and Dealurile.
+- **Names** go in italics at the point of each unit deepest inside what shows
+  of it, largest first, so a group's name before those of the units in it, and
+  where the full name does not fit it is tried without the other name in
+  brackets, then with its kind shortened as Romanian maps do (`Dep.
+  Hațegului`, `M-ții Rodnei`). They fit around the names of cities, plants and
+  ports. 52 small units have no name of their own in the map (e.g. the
+  depression around Odorheiu Secuiesc lies within *Subcarpații Homoroadelor*)
+  and are drawn unnamed. The key lists the major regions in view.
+- **Diacritics.** The shapefile lost most of its diacritics (`Podisul
+  Tîrnaveni`); its legend, an Excel sheet, kept them, and the names are
+  restored from it: 713 of the 768 named units by matching the name without
+  its kind against the legend's, the other 55 word by word (`Podișul
+  Târnaveni`). `î` inside
+  a word becomes `â` and ş, ţ take the comma below, as written since 1993. A
+  few words the legend spells differently stay without (`Munții Calimani`).
+- **Data.** The shapefile (~1.3 MB) and its legend (~90 KB) are downloaded once
+  from geo-spatial.org into `~/.cache/ortho_tiles/relief/` and kept as one
+  compact file. Reading the legend needs `xlrd`. The map is CC BY-SA 3.0: it is
+  not shipped here, and a map drawn with it carries its credit line and, being
+  an adaptation, should be shared under the same licence.
 
 ## Ocean Depth and the Ice Age Coast
 
@@ -2402,6 +2485,7 @@ to the attribution block.
 | GBIF occurrence records, read as occurrence density maps (zoom 1, ~20 km cells) | GBIF.org and its data publishers | Per dataset: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) or [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); see [GBIF's terms](https://www.gbif.org/terms) | [gbif.org](https://www.gbif.org/), [maps API](https://techdocs.gbif.org/en/openapi/v2/maps) |
 | Cliopatria v0.2.1: borders of over 1,600 states and empires, 3400 BCE–2024 | Bennett, J. S. et al. (2025), Seshat Global History Databank | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-025-04516-9](https://doi.org/10.1038/s41597-025-04516-9), [github.com/Seshat-Global-History-Databank/cliopatria](https://github.com/Seshat-Global-History-Databank/cliopatria) |
 | CShapes 2.0: borders of states and dependent territories, 1886–2019 (Gleditsch & Ward system), from the `cshapes` R package | Schvitz, G. et al. (2022), ETH Zurich | No data licence stated; the article is CC BY-NC 4.0 and the R package GPL ≥ 2. Downloaded by each user, not shipped | [doi:10.1177/00220027211013563](https://doi.org/10.1177/00220027211013563), [icr.ethz.ch/data/cshapes](https://icr.ethz.ch/data/cshapes/) |
+| Harta unităților de relief din România: 820 relief units after Posea & Badea's geomorphological regionalisation (1984), with its legend | Candrea, B., Candrea, P. & Niță, M. D. (2008), geo-spatial.org | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/); downloaded by each user, not shipped | [geo-spatial.org](https://geo-spatial.org/vechi/download/harta-unitati-relief-romania) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
 | OpenStreetMap tiles | OpenStreetMap contributors | Data [ODbL](https://www.openstreetmap.org/copyright); attribution required by the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) | [openstreetmap.org](https://www.openstreetmap.org/) |
@@ -2436,6 +2520,7 @@ the globe:
 | `--ice` overlay | *Sea ice: NSIDC Sea Ice Index v4, extent March YYYY (Arctic) and September YYYY (Antarctic)* |
 | `--borders` (Cliopatria) | *Borders: Cliopatria v0.2.1, Seshat Global History Databank (Bennett et al. 2025), CC BY 4.0* |
 | `--borders` (CShapes) | *Borders: CShapes 2.0 (Schvitz et al. 2022), ETH Zurich* |
+| `--relief-units` | *Relief units: Candrea, Candrea & Niță 2008 (geo-spatial.org), after Posea & Badea 1984, CC BY-SA 3.0* |
 | `--ocean-depth`, `--ice-age` | the elevation credit above |
 | `--ice-age` (ice sheets) | *Ice sheets 20,000 years ago: PaleoMIST 1.0 (Gowan et al. 2021), PANGAEA, CC BY 4.0* |
 | `--plates` | *Plate boundaries: Bird (2003), PB2002, converted by Ahlenius (Nordpil), ODC-By* |
@@ -2539,6 +2624,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [ports.py](ports.py): the IMF PortWatch ports as dots sized by the ships calling, the busiest named
 - [air_routes.py](air_routes.py): the OpenFlights airline network as great-circle arcs
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
+- [relief.py](relief.py): Romania's relief units (Posea & Badea, geo-spatial.org): names restored from the legend, fills by region, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)
 - [soil_properties.py](soil_properties.py): soil property overlay and key (SoilGrids 2.0, 5 km)

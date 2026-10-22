@@ -169,6 +169,13 @@ class TestMaps:
         assert (renders[0]["ports"], renders[0]["tile_provider"]) == ("container", "nasa_night")
         assert "--ports container" in status["command"] and "--provider nasa_night" in status["command"]
 
+    def test_relief_units(self, client, renders):
+        options = client.get("/api/options").json()
+        assert list(options["relief_units"]) == ["units", "regions"] and options["alpha"]["relief"] == 0.55
+        _, status = _render(client, lat=44.4, lon=26.1, relief_units="regions", relief_alpha=0.4)
+        assert (renders[0]["relief_units"], renders[0]["relief_alpha"]) == ("regions", 0.4)
+        assert "--relief-units regions --relief-alpha 0.4" in status["command"]
+
     def test_shipping_and_air_routes(self, client, renders):
         _, status = _render(client, city="Lisbon", shipping="fishing", shipping_alpha=0.6, air_routes="LIS")
         assert (renders[0]["shipping"], renders[0]["shipping_alpha"], renders[0]["air_routes"]) == ("fishing", 0.6,

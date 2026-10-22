@@ -1,0 +1,8 @@
+# All of Romania's relief units, after Posea & Badea 1984 (Candrea et al. 2008): 820 mountains, depressions,
+# hills, plateaus, corridors and plains, from Câmpia Ierului to the Danube Delta, as many named as fit.
+lat = 45.9
+lon = 25.0
+provider = "osm_plain"
+radius = 330
+relief_units = "units"
+output = "orthographic_map_romania_osm_plain_r330km_relief_units.png"
