@@ -1663,6 +1663,13 @@ python ortho.py --lat 25 --lon 90 --population
 python ortho.py --lat 50 --lon 10 --radius 1500 --population 2000
 ```
 
+GPWv4 counts people at each country's census and carries the counts to the
+other years by the growth between censuses, so the year nearest the census is
+the surest. Where an input is wrong the error grows with the distance: in
+Romania, Călărași county comes out almost empty in 2000 and at over 1,000
+people per km² in 2020, against about 50 in fact, while 2010 looks right, so
+maps of Romania are best drawn for 2010.
+
 The sample above is `python ortho.py --config recipes/asia_population.toml`.
 
 ## Livestock

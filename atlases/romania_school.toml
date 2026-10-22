@@ -343,7 +343,7 @@ text = """
 La recensământul din 2021, România avea 19,05 milioane de locuitori, cu o densitate medie de
 aproximativ 80 de locuitori pe km². Cele mai dens populate sunt zonele din jurul marilor
 orașe, Valea Prahovei și Moldova; munții înalți și Delta Dunării sunt cele mai slab populate.
-Harta arată densitatea populației în 2020.
+Harta arată densitatea populației în 2010.
 """
 questions = [
     "Care sunt cele mai slab populate regiuni ale țării? Explică de ce.",
@@ -355,7 +355,7 @@ lon = 24.95
 provider = "osm_plain"
 radius = 450
 no-circles = true
-population = 2020
+population = 2010
 
 [[pages]]
 title = "Orașele"
@@ -646,7 +646,7 @@ text = """
 Cele mai dens populate regiuni ale Europei formează un culoar de la sudul Angliei prin Țările de
 Jos, Belgia și valea Rinului până în nordul Italiei, numit uneori „Banana albastră”. Nordul
 Scandinaviei, munții și interiorul Spaniei sunt slab populate. Harta arată densitatea
-populației în 2020.
+populației în 2010.
 """
 questions = [
     "Numește trei regiuni foarte dens populate ale Europei.",
@@ -658,7 +658,7 @@ lon = 14.0
 provider = "osm_plain"
 radius = 2500
 no-circles = true
-population = 2020
+population = 2010
 
 [[pages]]
 title = "Marile orașe ale Europei"
