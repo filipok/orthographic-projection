@@ -1493,14 +1493,14 @@ python ortho.py --lat 46.3 --lon 25.55 --radius 100 --provider osm_plain --relie
 - **Depressions, corridors and floodplains** stand out from the mountains
   and hills around them: every unit that is a *Depresiunea*, *Culoarul*,
   *Lunca* or *Balta* is filled in its region's colour taken two-thirds of
-  the way toward a pale green-yellow, so Depresiunea Hațegului reads lower than the Retezat
-  beside it and the Eastern Carpathians' depressions still differ from the
-  Southern Carpathians'. The kind is the first word of the unit's name, or of
-  its legend entry when the map's name has none; the 52 depressions without a
-  name of their own count too. `regions` shades the same low ground inside
-  each region, without outlining or naming it. The key adds one entry for
-  it. A unit whose name starts with no kind, in the map or in its legend
-  entry, keeps its region's colour.
+  the way toward a pale green-yellow, so Depresiunea Hațegului reads lower
+  than the Retezat beside it and the Eastern Carpathians' depressions still
+  differ from the Southern Carpathians'. The kind is the first word of the
+  unit's name, so the 50 depressions without a name of their own count too;
+  289 of the 820 units are low ground. `regions` shades the same low ground
+  inside each region, without outlining or naming it. The key adds one entry
+  for it. The six units whose name starts with no kind (Bistrița Bârgăului,
+  Valea Ianca …) keep their region's colour.
 - **Groups.** The map has only the smallest units; the legend says which make
   up which larger ones, and 201 of those are drawn as the outline of their
   units and named in bold: Câmpia Careiului over its two halves, beside
@@ -1514,9 +1514,10 @@ python ortho.py --lat 46.3 --lon 25.55 --radius 100 --provider osm_plain --relie
   where the full name does not fit it is tried without the other name in
   brackets, then with its kind shortened as Romanian maps do (`Dep.
   Hațegului`, `M-ții Rodnei`). They fit around the names of cities, plants and
-  ports. 52 small units have no name of their own in the map (e.g. the
-  depression around Odorheiu Secuiesc lies within *Subcarpații Homoroadelor*)
-  and are drawn unnamed. The key lists the major regions in view.
+  ports. 52 small units have no name of their own in the map, 50
+  depressions and 2 hills (e.g. the depression around Odorheiu Secuiesc lies
+  within *Subcarpații Homoroadelor*), and are drawn unnamed. The key lists
+  the major regions in view.
 - **Diacritics.** The shapefile lost most of its diacritics (`Podisul
   Tîrnaveni`); its legend, an Excel sheet, kept them, and the names are
   restored from it: 713 of the 768 named units by matching the name without

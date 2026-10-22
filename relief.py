@@ -17,7 +17,8 @@ its legend, an Excel sheet (~90 KB), has them, and the names are restored from
 it: each unit's name without its first word (Depresiunea, Câmpia …) is matched
 against the legend's, ignoring accents, and the rest word by word. ``î`` inside
 a word becomes ``â`` and ş, ţ take the comma below, as written since 1993. 52
-small units have no name of their own (``Depresiune``) and are drawn unnamed.
+small units have no name of their own (50 ``Depresiune``, 2 ``Deal``) and are
+drawn unnamed.
 
 The legend also tells which units make up which larger ones: Câmpia Careiului
 is Câmpia Valea lui Mihai and Câmpia Pișcolțului, and with Câmpia Ierului and
@@ -27,8 +28,7 @@ named in bold. Both files are downloaded once and cached in a compact form.
 
 The low ground inside the mountains and hills, the depressions, corridors and
 floodplains (Depresiunea, Culoarul, Lunca …), is told by the kind its name
-begins with, or its legend entry's when the map's name has none, and drawn in
-a paler, greener shade of its region's colour.
+begins with and drawn in a paler, greener shade of its region's colour.
 """
 
 from __future__ import annotations
@@ -267,15 +267,11 @@ def restore_name(raw: str, legend: Key) -> str:
     return f"{kind} {rest}" if kind else rest
 
 
-def unit_kind(raw: str, entry: Entry | None = None) -> str:
-    """The kind of relief unit, in full, that the shapefile's name *raw* begins with (``Depresiunea``), or its
-    legend *entry*'s when *raw* begins with none (``Bistrita Bargaului``, the legend's ``Dep. Bistriței …``);
-    ``""`` when neither tells."""
-    for name in (raw, entry.path[-1] if entry and entry.path else ""):
-        kind = split_kind(name)[0]
-        if kind:
-            return GENERIC.get(_fold(kind), kind)
-    return ""
+def unit_kind(raw: str) -> str:
+    """The kind of relief unit, in full, that the shapefile's name *raw* begins with (``Depresiunea``); ``""``
+    for the few names that begin with none (``Bistrita Bargaului``, ``Valea Ianca``)."""
+    kind = split_kind(raw)[0]
+    return GENERIC.get(_fold(kind), kind) if kind else ""
 
 
 def group_name(name: str) -> str:
@@ -335,7 +331,7 @@ def read_units(shapes_zip: bytes, legend: Key) -> dict[str, np.ndarray]:
         outlines.append(outline)
         entry = find_entry(raw, region, str(row["SUBREGIUNE"] or "").strip(), legend)
         paths.append((region, entry.path) if entry else None)
-        low.append(unit_kind(raw, entry) in LOW_KINDS)
+        low.append(unit_kind(raw) in LOW_KINDS)
     if not outlines:
         raise ReliefError("The relief units' shapefile is empty")
     groups = unit_groups(paths)

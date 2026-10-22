@@ -120,11 +120,6 @@ class TestNames:
     def test_kind(self, raw, kind):
         assert rl.unit_kind(raw) == kind
 
-    def test_kind_from_the_legend_when_the_map_gives_none(self):
-        entry = rl.Entry("B", ("Câmpia Crișurilor", "Cul. Târnavei Mici"))
-        assert rl.unit_kind("Tarnavei Mici", entry) == "Culoarul"
-        assert rl.unit_kind("Muntii Oasului", entry) == "Munții"              # the map's own kind first
-
     def test_entry_found_by_name_and_subregion(self):
         legend = rl.legend_from_rows(ROWS + [["", "", "C", "Câmpia Banatului", "", "", "2.", "C. Ierului"]])
         assert rl.find_entry("Câmpia Ierului", "XIII", "A", legend) == rl.Entry("A", ("Câmpia Someșului",
@@ -191,13 +186,6 @@ class TestData:
         outlines = rl._unpack(table)
         assert outlines[1].bounds == pytest.approx((21.9, 47.3, 22.5, 47.5))
         assert table["low"].tolist() == [True, False, True, False, False]      # the two depressions
-
-    def test_low_ground_told_by_the_legend(self):
-        units = [("Tarnavei Mici", "XIII", "B", [(24, 46), (24, 46.2), (24.5, 46.2), (24.5, 46)]),
-                 ("Lunca Jiu - Jiet", "XIII", "A", [(23, 44), (23, 44.2), (23.5, 44.2), (23.5, 44)]),
-                 ("Câmpia Ierului", "XIII", "A", [(21.9, 47.3), (21.9, 47.5), (22.5, 47.5), (22.5, 47.3)])]
-        table = rl.read_units(_shapefile_zip(units), _legend())
-        assert table["low"].tolist() == [True, True, False]                    # Cul. Târnavei Mici in the legend
 
     def test_archive_without_shapefile(self):
         out = io.BytesIO()
