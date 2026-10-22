@@ -18,6 +18,7 @@ from typing import Any, NamedTuple
 import numpy as np
 
 from matplotlib.figure import Figure
+from matplotlib.text import Annotation, Text
 import cartopy.crs as ccrs
 import cartopy.io.img_tiles as cimgt
 import cartopy.feature as cfeature
@@ -2085,6 +2086,9 @@ def _add_globe_axes(
             ax.set_boundary(mpath.Path([(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)], closed=True),
                             transform=ax.transAxes)
             set_rectangle(ax)
+            # Shrink the square frame to the rectangle now rather than when drawn, so the names' room and the
+            # keys' places, measured in pixels as the layers go, are measured on the map as it will be
+            ax.apply_aspect()
             return ax
         ax.set_extent((-half, half, -half, half), crs=proj)
         # A many-sided polygon: Cartopy keeps only the vertices of a curved path
@@ -2147,7 +2151,7 @@ def _add_attribution(ax: GeoAxes, credits: Sequence[str]) -> None:
     ``clip_on=False`` stops GeoAxes clipping it to the globe.
     """
     rectangle = is_rectangle(ax)
-    ax.text(
+    credit = ax.text(
         0.995 if rectangle else 1.0, 0.005 if rectangle else 0.0, "\n".join(credits),
         transform=ax.transAxes,
         ha="right", va="bottom", multialignment="right",
@@ -2155,6 +2159,24 @@ def _add_attribution(ax: GeoAxes, credits: Sequence[str]) -> None:
         bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor="none", alpha=0.75) if rectangle else None,
         clip_on=False, zorder=10,
     )
+    if rectangle:
+        _clear_names_under(ax, credit)
+
+
+def _clear_names_under(ax: GeoAxes, credit: Any) -> None:
+    """Leave out the names the *credit* lines' backing would cover, half hidden, in a rectangle's corner, as names
+    that would run off the map are; the credits come last, once every layer has placed its names."""
+    renderer = ax.figure._get_renderer()  # pyright: ignore[reportAttributeAccessIssue]  # as matplotlib measures text
+    pad = 0.4 * credit.get_fontsize() * ax.figure.dpi / 72
+    box = credit.get_window_extent(renderer).padded(pad)
+    for text in ax.texts:
+        if text is credit or not text.get_visible() or not text.get_text():
+            continue
+        if isinstance(text, Annotation):
+            # Undrawn, an annotation has no place yet (its extent is an empty box): place it, then measure its text
+            text.update_positions(renderer)
+        if Text.get_window_extent(text, renderer).overlaps(box):
+            text.set_visible(False)
 
 
 def _geodesic_circle(lon: float, lat: float, radius_m: float, n_points: int = 180) -> Polygon:

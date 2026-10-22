@@ -2931,6 +2931,20 @@ class TestAttribution:
         finally:
             plt.close(fig)
 
+    @pytest.mark.parametrize("rectangle", [True, False])
+    def test_names_under_a_rectangles_credits_left_out(self, rectangle):
+        fig = ortho.Figure(figsize=(8, 8))
+        ax = ortho._add_globe_axes(fig, 46, 10, 0, 1, radius_km=800, rectangle=1.5 if rectangle else None)
+        (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+        # Placed as the layers place names: annotations above a point, which have no extent until drawn
+        corner = ax.annotate("Munții Buzăului", (x1 - 0.05 * (x1 - x0), y0 + 0.02 * (y1 - y0)), xycoords="data",
+                             xytext=(0, 2), textcoords="offset points", ha="right", annotation_clip=True)
+        middle = ax.annotate("Depresiunea Brașovului", ((x0 + x1) / 2, (y0 + y1) / 2), xycoords="data",
+                             xytext=(0, 2), textcoords="offset points", annotation_clip=True)
+        ortho._add_attribution(ax, ["Map tiles © OpenStreetMap contributors", "Relief units: geo-spatial.org"])
+        assert corner.get_visible() is not rectangle             # a disc's credits sit outside the map
+        assert middle.get_visible() and ax.texts[-1].get_visible()
+
 
 # ===================================================================
 # Distance circles
@@ -3119,6 +3133,12 @@ class TestRadiusAndWindRendering:
         assert ortho.is_rectangle(ax)
         assert circles.call_args.kwargs["within"] is True
         assert circles.call_args.kwargs["radii_km"] == (500, 1_000, 1_500, 2_000)
+
+    def test_rectangle_shaped_before_the_layers_measure_it(self):
+        fig = ortho.Figure(figsize=(10, 10))
+        ax = ortho._add_globe_axes(fig, 46, 10, 0, 1, radius_km=800, rectangle=1.5)
+        box = ax.get_window_extent()                               # as names and keys measure it, before drawing
+        assert box.width / box.height == pytest.approx(1.5, rel=0.01)
 
     def test_tall_rectangle(self, tmp_path):
         ax, _, _ = self._render(tmp_path, radius_km=1_000, rectangle=0.5, zoom=7)

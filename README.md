@@ -1265,7 +1265,8 @@ python ortho.py --city tokyo --radius 800 --rectangle 1.414:1
   relief names, port dots, wind and current arrows and the biome and border
   keys' counts reach into the corners. Distance circles that run off the top
   edge are labelled on their east side. The credits get a pale backing in
-  the bottom-right corner, which is map now.
+  the bottom-right corner, which is map now, and names it would cover are
+  left out.
 - It works with `--beside` (both globes are cut alike) and in recipes, the web
   app (the **Shape** menu under the radius) and atlases, where a wide
   rectangle turns its page to landscape (see "Atlases (PDF)").
