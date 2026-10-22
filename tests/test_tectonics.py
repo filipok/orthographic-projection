@@ -1,5 +1,7 @@
 """Tests for tectonics.py — plate boundaries, earthquakes and volcanoes: reading, caching and drawing (no network)."""
 
+import gzip
+import io
 import os
 import time
 
@@ -83,6 +85,22 @@ class TestCaching:
         os.utime(path, (old, old))
         monkeypatch.setattr(t, "_get_json", lambda url, timeout=180: (_ for _ in ()).throw(OSError("offline")))
         assert t.load_quakes(6.0, str(tmp_path)).lon.tolist() == [1]      # stale beats nothing
+
+    @pytest.mark.parametrize("encoding", ["gzip", None])
+    def test_answers_asked_for_compressed(self, monkeypatch, encoding):
+        body = b'{"features": []}'
+        sent = {}
+
+        class Response(io.BytesIO):
+            headers = {"Content-Encoding": encoding} if encoding else {}
+
+        def urlopen(request, timeout):
+            sent.update(request.headers)
+            return Response(gzip.compress(body) if encoding else body)
+
+        monkeypatch.setattr(t.urllib.request, "urlopen", urlopen)
+        assert t._get_json("https://example.org") == {"features": []}
+        assert sent["Accept-encoding"] == "gzip"                    # whether or not the server compresses
 
     def test_failures(self, tmp_path, monkeypatch):
         monkeypatch.setattr(t, "_get_json", lambda url, timeout=180: (_ for _ in ()).throw(OSError("offline")))

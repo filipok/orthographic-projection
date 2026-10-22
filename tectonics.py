@@ -23,6 +23,7 @@ fetched again after :data:`REFRESH_DAYS`.
 
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 import os
@@ -121,9 +122,11 @@ def _default_cache_dir() -> str:
 
 
 def _get_json(url: str, timeout: float = 180) -> Any:
-    request = urllib.request.Request(url, headers={"User-Agent": "ortho/1.0"})
+    # Compressed: the USGS breaks off uncompressed answers of a few MB part way through
+    request = urllib.request.Request(url, headers={"User-Agent": "ortho/1.0", "Accept-Encoding": "gzip"})
     with urllib.request.urlopen(request, timeout=timeout) as resp:
-        return json.loads(resp.read())
+        body = resp.read()
+        return json.loads(gzip.decompress(body) if resp.headers.get("Content-Encoding") == "gzip" else body)
 
 
 def _save(path: str, **arrays: np.ndarray) -> None:
