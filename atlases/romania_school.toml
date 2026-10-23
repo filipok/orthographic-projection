@@ -14,6 +14,7 @@ edition = "Ediția 2026"
 language = "ro"
 paper = "a4"
 dpi = 120
+text_scale = 2      # the maps print about 6 in wide: names, lines and keys twice as large
 
 [cover.map]
 lat = 45.95
@@ -73,11 +74,10 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 elevation = true
-rivers = true
 
 [[pages]]
 title = "Unitățile majore de relief"
@@ -121,7 +121,7 @@ questions = [
 [pages.map]
 lat = 46.3
 lon = 25.55
-provider = "osm_plain"
+provider = "osm_local"
 radius = 100
 no-circles = true
 relief-units = "units"
@@ -145,11 +145,10 @@ questions = [
 [pages.map]
 lat = 47.6
 lon = 22.55
-provider = "osm_plain"
+provider = "osm_local"
 radius = 100
 no-circles = true
 relief-units = "units"
-rivers = true
 cities = 2025
 
 [[pages]]
@@ -169,10 +168,9 @@ questions = [
 [pages.map]
 lat = 45.6
 lon = 26.0
-provider = "osm_plain"
+provider = "osm_local"
 radius = 550
 no-circles = true
-rivers = true
 ocean-depth = true
 
 [[pages]]
@@ -191,7 +189,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 koppen = true
@@ -211,7 +209,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 temperature = "year"
@@ -231,7 +229,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 temperature = "january"
@@ -250,7 +248,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 temperature = "july"
@@ -270,7 +268,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 precipitation = "year"
@@ -291,7 +289,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 landcover = true
@@ -312,7 +310,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 soil = true
@@ -332,7 +330,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 crop = ["wheat", "maize", "sunflower"]
@@ -352,7 +350,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 population = 2010
@@ -372,7 +370,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 cities = 2025
@@ -395,7 +393,7 @@ questions = [
 [pages.map]
 lat = 45.9
 lon = 25.2
-provider = "osm_plain"
+provider = "osm_local"
 radius = 390
 no-circles = true
 ro-admin = "counties"
@@ -417,7 +415,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 indicator = "eurostat:gdp-per-person"
@@ -437,7 +435,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
+provider = "osm_local"
 radius = 450
 no-circles = true
 industry = "steel,refineries,petrochemicals,cement,power"
