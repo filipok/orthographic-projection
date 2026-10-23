@@ -196,7 +196,7 @@ The main script is [ortho.py](ortho.py).
 *The depressions of the Eastern Carpathians up close (plain OSM, 100 km radius, relief units and GHSL cities).*
 
 <p align="center">
-  <img src="sample_romania_counties.png" alt="A disc 390 km around central Romania on a plain map, the country's 41 counties and Bucharest filled in four pastel colours so that no two neighbours share one, each named in capitals, inside the bold border of Romania" width="48%">
+  <img src="sample_romania_counties.png" alt="A disc 390 km around central Romania on a plain map, the country's 41 counties and Bucharest filled in four pastel colours so that no two neighbours share one, each named in capitals, with the county seats as dots and Bucharest as a ringed dot, inside the bold border of Romania" width="48%">
   <img src="sample_cluj_uats.png" alt="A disc 100 km around Cluj-Napoca with the borders of its counties and of the municipalities, towns and communes within them: Cluj-Napoca, Zalău and Alba Iulia in bold, towns such as Huedin and Gherla, and hundreds of communes in italic, Apahida, Feleacu, Florești and others" width="48%">
 </p>
 

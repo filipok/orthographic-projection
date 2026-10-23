@@ -1,5 +1,6 @@
-# Romania's 41 counties and Bucharest, each filled in a pastel colour that no neighbour shares and
-# named, inside the border the counties make up (GISCO LAU 2024, names from INS's SIRUTA).
+# Romania's 41 counties and Bucharest with the county seats, each county filled in a pastel colour
+# that no neighbour shares and named, inside the border the counties make up (GISCO LAU 2024,
+# names from INS's SIRUTA).
 lat = 45.9
 lon = 25.2
 provider = "osm_plain"
