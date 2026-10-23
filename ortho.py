@@ -94,6 +94,7 @@ from relief import (
 from ro_admin import (
     ADMIN_ATTRIBUTION, AdminError, add_admin_legend, draw_admin, load_admin, resolve_admin_level,
 )
+import ne_local
 import osm_local
 from osm_local import OSMDataError
 from industry import (
@@ -401,6 +402,7 @@ TILE_PROVIDERS = [
     "osm",
     "osm_plain",
     "osm_local",
+    "natural_earth",
     "google",
     "google_satellite",
     "nasa",
@@ -422,9 +424,13 @@ TILE_ATTRIBUTIONS = {
 # blank: the map's own colours where they differ from the light defaults
 FALLBACK_COLOURS = {"nasa_night": ("#04050f", "#0b0d18"),     # (sea, land) of Black Marble
                     # Drawn from data: the sea under GISCO's land (Natural Earth's coarser land would show)
-                    "osm_local": (osm_local.WATER_COLOUR, osm_local.WATER_COLOUR)}
-# Providers drawn from data rather than tiles (see osm_local)
-LOCAL_PROVIDERS = frozenset({"osm_local"})
+                    "osm_local": (osm_local.WATER_COLOUR, osm_local.WATER_COLOUR),
+                    "natural_earth": (osm_local.WATER_COLOUR, osm_local.WATER_COLOUR)}
+# A base map drawn from data names today's cities and capitals only beside borders of this year or later (South
+# Sudan's independence); beside older ones, only seas, rivers and lakes
+MODERN_BORDERS_YEAR = 2011
+# Providers drawn from data rather than tiles (see osm_local and ne_local)
+LOCAL_PROVIDERS = frozenset({"osm_local", "natural_earth"})
 
 
 def _to_rgba(img: Any) -> np.ndarray:
@@ -580,7 +586,7 @@ def create_tile_source(
     elif provider == "nasa_night":
         tile_source = CachedNASANight(cache=cache_dir or False, **tile_kwargs)
     elif provider in LOCAL_PROVIDERS:
-        raise ValueError(f"{provider!r} is drawn from data, not tiles (see osm_local)")
+        raise ValueError(f"{provider!r} is drawn from data, not tiles (see osm_local and ne_local)")
     elif provider in GOOGLE_MAP_TYPES:
         if cache_dir:
             logger.info("Google tiles are not cached (Google Maps Platform terms).")
@@ -909,7 +915,9 @@ def generate_orthographic_map(
         ``"google_satellite"``, ``"nasa"``, ``"nasa_night"`` (the Earth at night), or
         ``"osm_local"``, no tiles but Romania and Moldova drawn from OpenStreetMap's
         data and named in print-size type (see :mod:`osm_local`; raises
-        :class:`osm_local.OSMDataError` if the data cannot be had).
+        :class:`osm_local.OSMDataError` if the data cannot be had), or
+        ``"natural_earth"``, Europe or the world drawn so from Natural Earth's
+        data, named in *language* (see :mod:`ne_local`).
     tile_kwargs : dict, optional
         Extra keyword arguments forwarded to the tile source constructor.
         Google providers accept ``api_key`` (default: ``$GOOGLE_MAPS_API_KEY``),
@@ -1322,7 +1330,8 @@ def generate_orthographic_map(
         tile_buffer_factor = min(tile_buffer_factor, RADIUS_TILE_BUFFER)
     tiles, base = None, None
     if tile_provider.lower() in LOCAL_PROVIDERS:
-        base = osm_local.load_base()          # raises OSMDataError: without it there is no map
+        # Raises OSMDataError: without it there is no map
+        base = osm_local.load_base() if tile_provider.lower() == "osm_local" else ne_local.load_base(language)
     else:
         tiles = create_tile_source(
             tile_provider=tile_provider,
@@ -1387,7 +1396,9 @@ def generate_orthographic_map(
         # savefig; failed tiles come out transparent (see BufferedTileSource).
         # A base drawn from data is drawn now instead.
         if base is not None:
-            osm_local.draw_base(ax, base)
+            # A --borders date draws its own borders; one before the reservoirs were built, none of them
+            osm_local.draw_base(ax, base, borders=border_when is None,
+                                reservoirs=border_when is None or border_when.year >= MODERN_BORDERS_YEAR)
             continue
         assert tiles is not None
         ax.add_image(
@@ -1747,7 +1758,8 @@ def generate_orthographic_map(
     if base is not None:
         # The base map's names last, in the room the layers' names leave
         for ax in axes:
-            osm_local.name_base(ax, base)
+            osm_local.name_base(ax, base, countries=border_when is None,
+                                places=border_when is None or border_when.year >= MODERN_BORDERS_YEAR)
     sightings = None
     if taxon is not None:
         try:
@@ -2056,8 +2068,9 @@ def generate_orthographic_map(
     if property_drawn:
         credits.append(SOIL_PROPERTY_ATTRIBUTION)
     if polities is not None and border_source is not None:
-        credits.append(borders_attribution(border_source)
-                       + (f"; {CLDR_ATTRIBUTION}" if language == "ro" and border_source == "cshapes" else ""))
+        named_in_cldr = (language == "ro" and border_source == "cshapes"
+                         and not any("CLDR" in c for c in credits))      # unless the base map's credit has it
+        credits.append(borders_attribution(border_source) + (f"; {CLDR_ATTRIBUTION}" if named_in_cldr else ""))
     if basin_list:
         credits.append(BASINS_ATTRIBUTION)
     if rivers_drawn:

@@ -324,6 +324,7 @@ The interactive menu exposes these providers:
 - `osm`: OpenStreetMap
 - `osm_plain`: OpenStreetMap with forests, meadows, heath, farmland and sand deserts drawn as plain land, so the layers on top aren't tinted by OSM's land cover colours
 - `osm_local`: no tiles: Romania and Moldova drawn from OpenStreetMap's data (Geofabrik), with names in type sized for print (see [OpenStreetMap Drawn from Data](#openstreetmap-drawn-from-data))
+- `natural_earth`: no tiles: Europe or the world drawn from Natural Earth's data, with names in type sized for print, in English or, with `--language ro`, in Romanian (see [Europe and the World Drawn from Natural Earth](#europe-and-the-world-drawn-from-natural-earth))
 - `google`: Google road map (API key required)
 - `google_satellite`: Google satellite imagery (API key required; not available to EEA-billed projects, see below)
 - `nasa`: NASA Blue Marble satellite imagery with shaded relief and ocean-floor bathymetry; free, public domain, no key
@@ -598,10 +599,10 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--city CITY` | Pre-defined city (case-insensitive) | — |
 | `--lat LAT` | Custom latitude (-90 to 90) | — |
 | `--lon LON` | Custom longitude (-180 to 180) | — |
-| `--provider` | Tile provider: `osm`, `osm_plain`, `osm_local` (drawn from OSM data, Romania), `google`, `google_satellite`, `nasa`, `nasa_night` (the Earth at night) | `osm` |
+| `--provider` | Tile provider: `osm`, `osm_plain`, `osm_local` (drawn from OSM data, Romania), `natural_earth` (drawn from Natural Earth's data, Europe and the world), `google`, `google_satellite`, `nasa`, `nasa_night` (the Earth at night) | `osm` |
 | `--zoom ZOOM` | Tile zoom level: 1–4 for the whole globe; with `--radius`, up to one above its default | `3`, or chosen from `--radius` and the latitude |
 | `--dpi DPI` | Output resolution, 10–1200. The figure is 20 in, so 300 DPI = 6,000 px | `300` |
-| `--language {en,ro}` | Write the map's names in this language where the data allows: with `ro`, the states of `--borders` (CShapes) in Romanian, from Unicode CLDR | `en` |
+| `--language {en,ro}` | Write the map's names in this language where the data allows: with `ro`, the states of `--borders` (CShapes) in Romanian, from Unicode CLDR, and the `natural_earth` base map's names, from Wikidata and CLDR | `en` |
 | `--text-scale X` | Names, lines, markers and keys X times larger on the map (0.5–4), for a map printed small: the figure is 20/X in, drawn at X times the DPI, so the image keeps its size in pixels | `1` |
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
 | `--output-dir` | Directory for auto-named output files | `.` |
@@ -1494,7 +1495,7 @@ Cliopatria otherwise):
   colony with no Romanian name in either (`Spanish West Africa`) is drawn
   unnamed. CLDR's tables (~20 KB) are downloaded once. Cliopatria's names stay
   in English, as do the keys' titles. An atlas in Romanian gives its maps with
-  `--borders` this language.
+  `--borders` or the `natural_earth` base map this language.
 - **Licences.** Cliopatria is CC BY 4.0. CShapes 2.0 states no licence of its
   own (the article describing it is CC BY-NC 4.0; the R package that carries the
   data is GPL ≥ 2). Neither is shipped here: each is downloaded on first use, and
@@ -1688,6 +1689,58 @@ python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider osm_local --ro-adm
   `~/.cache/ortho_tiles/osm_local/` (~70 MB). To bring the data up to date,
   delete that file; the credit line gives the extracts' date. OSM's data is
   © OpenStreetMap contributors under the ODbL.
+
+## Europe and the World Drawn from Natural Earth
+
+On a map of Europe or a hemisphere, OSM's tiles are stretched over the page:
+their pixels blur, and so do their names, in the local script where it is not
+Latin (Burmese, Thai). `--provider natural_earth` draws such maps as
+`osm_local` draws Romania's, from Natural Earth's 1:10m data, and names them
+in print-size type, in English or, with `--language ro`, in Romanian:
+
+```powershell
+# Europe, named in Romanian
+python ortho.py --lat 49 --lon 14 --radius 2500 --no-circles --provider natural_earth --language ro
+
+# Both hemispheres
+python ortho.py --lat 0 --lon 70 --both-hemispheres --no-circles --provider natural_earth --language ro
+```
+
+- **What it draws.** The land, lakes, rivers and borders between countries,
+  and names the countries, seas, capitals and cities, rivers and lakes. With
+  `--borders` the date's borders and states are the borders layer's, so the
+  base draws neither today's borders nor the countries' names; beside borders
+  before 2011 (South Sudan's independence) it names no cities either, today's
+  capitals and names (`Dnipro`, `Bratislava`) having no place on a map of
+  1914. Names never go over another layer's.
+- **For the scale.** As for `osm_local`, the map's width sets what it shows,
+  with fewer and thinner rivers on maps wider than 1,500 km: on a map of
+  Europe 5,000 km across, rivers of at least ~300 km, lakes of 280 km²,
+  cities of 750,000 people and capitals of 75,000 (Luxemburg, not Vaduz or
+  Monaco), countries of 6,900 km² and seas down to the Adriatic's rank; on the
+  world's, rivers of ~1,250 km, cities and capitals of 4.9 million and the
+  oceans and great seas. Rivers are named from 4/30 of the map's width long
+  (650 km on Europe's). Natural Earth's intermittent rivers (the Sahara's
+  wadis) are left out, as is the Kakhovka Reservoir, drained in 2023; Yangon
+  (capital to 2006) and Johannesburg are not marked as capitals.
+- **Names in Romanian.** Each feature's Wikidata item gives its Romanian name:
+  the title of its Romanian Wikipedia article (`Marea Chinei de Est`, `Fluviul
+  Galben`) without the note in brackets (`Ohře (râu)`), else its Romanian
+  label. A river is written without `Râul` or `Fluviul` (`Mureș`, `Zambezi`),
+  unless an adjective follows (`Fluviul Galben`). The countries are CLDR's
+  Romanian names, as `--borders` names them; units without an ISO code
+  (Somaliland, Northern Cyprus) are not named. A few items are another feature's
+  or titled otherwise than the place, and are named by hand: `Crișul Alb`
+  (tagged as the Criș), `Tokyo` (`Tōkyō`, its 23 wards), `Bruxelles` (`Orașul
+  Bruxelles`). A river, lake or sea without a Romanian name is left unnamed; a
+  city without one keeps Natural Earth's. Checked by eye: Europe's capitals and
+  large cities (`Varșovia`, `Cracovia`, `Salonic`, `Liov`, `Haga`), the
+  seas and oceans, and the main rivers (`Dunărea`, `Nipru`, `Rin`, `Volga`).
+- **Data.** Natural Earth's files (~30 MB, public domain) are downloaded once
+  by Cartopy; the names are asked of Wikidata once (some 6,900 items, ~15
+  minutes, as fast as it allows) and kept in
+  `~/.cache/ortho_tiles/ne_local/wikidata_ro.json`, beside the cached data
+  (~4 MB). Wikidata's data is CC0.
 
 ## Ocean Depth and the Ice Age Coast
 
@@ -2717,6 +2770,7 @@ the globe:
 |---|---|
 | `osm`, `osm_plain` tiles | *Map tiles © OpenStreetMap contributors* |
 | `osm_local` base | *Map data © OpenStreetMap contributors (ODbL), Geofabrik extracts of* (their date)*; land and borders © EuroGeographics (GISCO)* |
+| `natural_earth` base | *Map data: Natural Earth* (in Romanian: *Map data: Natural Earth, Wikidata, CLDR 47.0*) |
 | `nasa` tiles | *Imagery: NASA Blue Marble, via NASA GIBS (ESDIS)* |
 | `nasa_night` tiles | *Imagery: NASA Black Marble 2016 (VIIRS night lights), via NASA GIBS (ESDIS)* |
 | `google`, `google_satellite` tiles | *Google Maps* plus the copyright string returned by the Map Tiles API |
@@ -2844,6 +2898,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [relief.py](relief.py): Romania's relief units (Posea & Badea, geo-spatial.org): names restored from the legend, fills by region, names and key
 - [osm_local.py](osm_local.py): the `osm_local` base map: Romania's and Moldova's places, rivers and lakes from Geofabrik's OpenStreetMap extracts (read in parts), GISCO's land and borders, drawn and named for print
+- [ne_local.py](ne_local.py): the `natural_earth` base map: Natural Earth's land, water, borders, countries, seas and cities, named in English or in Romanian (Wikidata, CLDR), for maps of Europe and the world
 - [ro_admin.py](ro_admin.py): Romania's counties and UATs (GISCO LAU 2024, INS SIRUTA): names and types joined by SIRUTA code, county borders from their UATs, fills, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)

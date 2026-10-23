@@ -54,7 +54,7 @@ questions = [
 [pages.map]
 lat = 45.95
 lon = 24.95
-provider = "osm"
+provider = "natural_earth"
 circles-from = "44.43,26.10"
 
 [[pages]]
@@ -477,7 +477,7 @@ questions = [
 [pages.map]
 lat = 45.7
 lon = 26.6
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 700
 no-circles = true
 earthquakes = 5
@@ -498,7 +498,7 @@ questions = [
 [pages.map]
 lat = 46.0
 lon = 25.5
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 900
 no-circles = true
 borders = "1914-07-01"
@@ -518,7 +518,7 @@ questions = [
 [pages.map]
 lat = 46.0
 lon = 25.5
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 900
 no-circles = true
 borders = "1938-01-01"
@@ -555,7 +555,7 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 borders = "2019-06-01"
@@ -576,11 +576,10 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 elevation = true
-rivers = true
 
 [[pages]]
 title = "Climatele Europei"
@@ -597,7 +596,7 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 koppen = true
@@ -617,7 +616,7 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 temperature = "january"
@@ -637,7 +636,7 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 precipitation = "year"
@@ -657,7 +656,7 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 biomes = true
@@ -677,7 +676,7 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 population = 2010
@@ -696,7 +695,7 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 cities = 2025
@@ -717,7 +716,7 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 indicator = "eurostat:gdp-per-person"
@@ -736,7 +735,7 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 indicator = "eurostat:unemployment"
@@ -774,7 +773,7 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 shipping = "commercial"
@@ -794,7 +793,7 @@ questions = [
 [pages.map]
 lat = 49.0
 lon = 14.0
-provider = "osm_plain"
+provider = "natural_earth"
 radius = 2500
 no-circles = true
 borders = "1914-07-01"
@@ -848,7 +847,7 @@ questions = [
 [pages.map]
 lat = 0
 lon = 70
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 borders = "2019-06-01"
@@ -868,7 +867,7 @@ questions = [
 [pages.map]
 lat = 0
 lon = 70
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 elevation = true
@@ -889,7 +888,7 @@ questions = [
 [pages.map]
 lat = 0
 lon = 160
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 plates = true
@@ -910,7 +909,7 @@ questions = [
 [pages.map]
 lat = 0
 lon = 70
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 koppen = true
@@ -930,7 +929,7 @@ questions = [
 [pages.map]
 lat = 0
 lon = -30
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 currents = true
@@ -949,7 +948,7 @@ questions = [
 [pages.map]
 lat = 0
 lon = 70
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 biomes = true
@@ -969,7 +968,7 @@ questions = [
 [pages.map]
 lat = 0
 lon = 70
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 population = 2020
@@ -989,7 +988,7 @@ questions = [
 [pages.map]
 lat = 0
 lon = 70
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 cities = 2025
@@ -1008,7 +1007,7 @@ questions = [
 [pages.map]
 lat = 10
 lon = 20
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 indicator = "life-expectancy"
@@ -1028,7 +1027,7 @@ questions = [
 [pages.map]
 lat = 10
 lon = 20
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 indicator = "gdp-per-person"
@@ -1047,7 +1046,7 @@ questions = [
 [pages.map]
 lat = 0
 lon = 70
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 time-zones = true
@@ -1066,7 +1065,7 @@ questions = [
 [pages.map]
 lat = 0
 lon = 70
-provider = "osm_plain"
+provider = "natural_earth"
 both-hemispheres = true
 no-circles = true
 shipping = "commercial"
@@ -1086,7 +1085,7 @@ questions = [
 [pages.map]
 lat = 90
 lon = 0
-provider = "osm_plain"
+provider = "natural_earth"
 beside = "-90,0"
 no-circles = true
 ice = true

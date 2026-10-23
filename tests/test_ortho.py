@@ -44,7 +44,7 @@ class TestConstants:
     def test_tile_providers_list(self):
         assert "osm" in ortho.TILE_PROVIDERS
         assert "osm_plain" in ortho.TILE_PROVIDERS
-        assert "osm_local" in ortho.TILE_PROVIDERS
+        assert "osm_local" in ortho.TILE_PROVIDERS and "natural_earth" in ortho.TILE_PROVIDERS
         assert "google" in ortho.TILE_PROVIDERS
         assert "google_satellite" in ortho.TILE_PROVIDERS
         assert "nasa" in ortho.TILE_PROVIDERS
@@ -2252,8 +2252,8 @@ class TestGenerateOrthographicMapIntegration:
         order = []
         with mock.patch.object(ortho.GeoAxes, "add_image") as tiles, \
                 mock.patch.object(ortho.osm_local, "load_base", return_value=base), \
-                mock.patch.object(ortho.osm_local, "draw_base", side_effect=lambda *a: order.append("base")), \
-                mock.patch.object(ortho.osm_local, "name_base", side_effect=lambda *a: order.append("names")), \
+                mock.patch.object(ortho.osm_local, "draw_base", side_effect=lambda *a, **k: order.append("base")), \
+                mock.patch.object(ortho.osm_local, "name_base", side_effect=lambda *a, **k: order.append("names")), \
                 mock.patch.object(ortho, "load_relief", return_value=mock.Mock()), \
                 mock.patch.object(ortho, "draw_relief", side_effect=lambda *a, **k: order.append("relief") or {}), \
                 mock.patch.object(ortho, "add_relief_legend"), \
@@ -2264,6 +2264,31 @@ class TestGenerateOrthographicMapIntegration:
         tiles.assert_not_called()
         assert order == ["base", "relief", "names"]
         assert attribution.call_args.args[1][0] == ortho.osm_local.attribution(base)       # in place of the tiles
+
+    @pytest.mark.parametrize("borders, places", [(None, True), ("1914-07-01", False), ("2019-06-01", True)])
+    def test_natural_earth_in_the_maps_language(self, tmp_path, borders, places):
+        base = mock.Mock(credit="Map data: Natural Earth (public domain)")
+        with mock.patch.object(ortho.GeoAxes, "add_image") as tiles, \
+                mock.patch.object(ortho.ne_local, "load_base", return_value=base) as load, \
+                mock.patch.object(ortho.osm_local, "load_base") as osm, \
+                mock.patch.object(ortho.osm_local, "draw_base") as draw, \
+                mock.patch.object(ortho.osm_local, "name_base") as name, \
+                mock.patch.object(ortho, "load_polities", return_value=[]), \
+                mock.patch.object(ortho, "in_language", return_value=[]), \
+                mock.patch.object(ortho, "colour_groups", return_value={}), \
+                mock.patch.object(ortho, "draw_borders", return_value={}), \
+                mock.patch.object(ortho, "add_borders_legend"), \
+                mock.patch.object(ortho, "_add_attribution"):
+            ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), tile_provider="natural_earth", language="ro",
+                                            borders=borders)
+        tiles.assert_not_called()
+        osm.assert_not_called()
+        assert load.call_args.args == ("ro",)
+        # A date's borders are drawn and its states named by the borders layer, not today's by the base
+        assert draw.call_args.kwargs == {"borders": borders is None, "reservoirs": places}
+        # and the cities of today only beside the borders of today
+        assert name.call_args.kwargs == {"countries": borders is None, "places": places}
 
     @pytest.mark.parametrize("scale, beside", [(1.0, None), (2.0, None), (2.0, (45, 26))])
     def test_text_scale_draws_a_smaller_figure_at_a_higher_dpi(self, tmp_path, scale, beside):

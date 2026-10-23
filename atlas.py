@@ -83,6 +83,7 @@ COVER_KEYS = ("recipe", "map")
 # Options the atlas sets for every map, which a page's map may not
 # The options whose names a map writes in the atlas's language (see ortho's --language)
 NAMED_IN_LANGUAGE = ("borders",)
+NAMED_PROVIDERS = ("natural_earth",)      # base maps named in the atlas's language
 RUN_OPTIONS = {"output", "output_dir", "dpi", "cache_dir", "no_cache", "config"}
 ACCENTS = ("#1d5c8c", "#2f7d3a", "#b0532a", "#6c4a9e", "#8a6d1c", "#a23a5a")
 INK, GREY, RULE, TINT = "#1f2328", "#5b636e", "#c9ced6", "#f2f4f7"
@@ -306,7 +307,7 @@ def page_args(atlas: Atlas, page: Page, where: str, output: str, cache_dir: str 
     # it take it (so the other maps keep their file names)
     own = any(t.startswith("--language") for t in tokens)
     if (atlas.language in ortho.LANGUAGES and atlas.language != "en" and not own
-            and any(getattr(args, k) for k in NAMED_IN_LANGUAGE)):
+            and (any(getattr(args, k) for k in NAMED_IN_LANGUAGE) or args.provider in NAMED_PROVIDERS)):
         args.language = atlas.language
     return args
 

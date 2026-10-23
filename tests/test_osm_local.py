@@ -422,6 +422,7 @@ def _base(**changes):
 class TestDrawing:
     def test_scale(self):
         assert ol.min_river_km(900) == 30 and ol.min_lake_km2(900) == 9
+        assert ol.min_river_km(5000) == pytest.approx(304, abs=1)                   # Europe: fewer, longer rivers
         assert ol.place_kinds(200) == set(ol.PLACE_KINDS)
         assert ol.place_kinds(900) == {"national_capital", "city", "town"}
         assert ol.min_population(900) == pytest.approx(24_300) and ol.min_population(200) == pytest.approx(1_200)
@@ -484,6 +485,76 @@ class TestDrawing:
         ol.name_base(ax, _base())
         bucharest = next(t for t in ax.texts if t.get_text() == "București")
         assert bucharest.get_verticalalignment() == "top"
+
+    def test_countries_and_seas(self):
+        labels = [ol.Label("România", "country", 238_000, ((24.9, 45.8),)),
+                  ol.Label("Moldova", "country", 33_800, ((28.4, 47.2),)),
+                  ol.Label("Liechtenstein", "country", 160, ((9.55, 47.15),)),               # too small to name
+                  ol.Label("Marea Neagră", "sea", 1, ((-90.0, 40.0), (32.0, 43.5))),         # the first out of sight
+                  ol.Label("Golful Finic", "sea", 4, ((26.0, 60.0),))]                       # too small a sea
+        ax = _map(5000)
+        named = ol.name_base(ax, _base(labels=labels, places=[]))
+        texts = {t.get_text(): t for t in ax.texts}
+        assert {"România", "Moldova", "Marea Neagră"} <= set(texts) and named.areas == 3
+        assert not {"Liechtenstein", "Golful Finic"} & set(texts)
+        assert float(texts["România"].get_fontsize()) > float(texts["Moldova"].get_fontsize())
+        assert texts["Marea Neagră"].get_fontstyle() == "italic"
+        x, _ = ax.projection.transform_point(32.0, 43.5, ol.ccrs.PlateCarree())
+        assert texts["Marea Neagră"].get_position()[0] == pytest.approx(x)
+
+    def test_countries_left_to_the_borders(self):
+        ax = _map(5000)
+        ol.name_base(ax, _base(labels=[ol.Label("România", "country", 238_000, ((24.9, 45.8),)),
+                                       ol.Label("Marea Neagră", "sea", 1, ((32.0, 43.5),))]), countries=False)
+        texts = {t.get_text() for t in ax.texts}
+        assert "Marea Neagră" in texts and "România" not in texts
+        ol.draw_base(ax, _base(), borders=False)
+        without = len(ax.collections)
+        assert without == 3                                                              # land, lakes and rivers
+        with_borders = _map(5000)
+        ol.draw_base(with_borders, _base())
+        assert len(with_borders.collections) == 4
+
+    def test_capitals_with_a_tenth_of_a_citys_people(self):
+        capitals = [ol.Place("Luxemburg", "national_capital", 107_000, 6.13, 49.61),
+                    ol.Place("Vaduz", "national_capital", 5_700, 9.52, 47.14)]
+        ax = _map(5000, lat=50, lon=10)                      # a city needs 750,000, a capital 75,000
+        ol.name_base(ax, _base(places=capitals, rivers=[], lakes=[]))
+        assert {t.get_text() for t in ax.texts} == {"Luxemburg"}
+        ax = _map(12_000, lat=50, lon=10)                    # the world's: a capital as many as a city
+        ol.name_base(ax, _base(places=capitals, rivers=[], lakes=[]))
+        assert not ax.texts
+
+    def test_no_places_on_a_map_of_borders_long_gone(self):
+        dam = ol.Water("Lacul Vidraru", 400, shapely.box(24.5, 45.2, 25.1, 45.6))
+        ax = _map(900)
+        ol.name_base(ax, _base(reservoirs=[dam]), places=False)
+        texts = {t.get_text() for t in ax.texts}
+        assert {"Mureș", "Lacul Mare"} <= texts and not {"București", "Cluj-Napoca", "Lacul Vidraru"} & texts
+        ax = _map(900)
+        ol.name_base(ax, _base(reservoirs=[dam]))
+        assert "Lacul Vidraru" in {t.get_text() for t in ax.texts}
+
+    def test_reservoirs_only_on_maps_of_today(self):
+        dam = ol.Water("", 400, shapely.box(24.5, 45.2, 25.1, 45.6))
+        lakes = []
+        for today in (True, False):
+            ax = _map(900)
+            with mock.patch.object(ax, "add_geometries", wraps=ax.add_geometries) as added:
+                ol.draw_base(ax, _base(reservoirs=[dam]), reservoirs=today)
+            lakes.append(len(added.call_args_list[1].args[0]))                       # the land, then the lakes
+        assert lakes == [2, 1]
+
+    def test_clear_of_names_other_layers_wrote_without_room(self):
+        ax = _map(900)
+        x, y = ax.projection.transform_point(26.1, 44.43, ol.ccrs.PlateCarree())
+        ax.text(x, y, "IMPERIUL OTOMAN", fontsize=40, ha="center", va="center")       # not in the label space
+        ol.name_base(ax, _base())
+        assert "București" not in {t.get_text() for t in ax.texts}
+
+    def test_credit(self):
+        assert ol.attribution(_base()).startswith("Map data © OpenStreetMap contributors")
+        assert ol.attribution(_base(credit="Map data: Natural Earth")) == "Map data: Natural Earth"
 
     def test_a_place_hemmed_in_is_not_named(self):
         ax = _map(900)

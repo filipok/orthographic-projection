@@ -45,7 +45,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import Any, NamedTuple
 
 import numpy as np
@@ -104,6 +104,7 @@ WATER_LABEL_COLOUR = "#2a5f8f"
 BORDER_COLOUR = "#8e7a96"
 PLACE_COLOUR = "#2f2f2f"
 VILLAGE_COLOUR = "#555555"
+COUNTRY_COLOUR = "#5f4b6b"
 
 # Font sizes (points) of the names, as the other layers name places (see ro_admin.UAT_SIZES)
 CAPITAL_SIZE = 9.5
@@ -111,6 +112,14 @@ CITY_SIZES = ((200_000, 8.0), (0, 7.5))        # a city of at least so many peop
 TOWN_SIZE, VILLAGE_SIZE = 6.5, 5.5
 RIVER_SIZES = ((300, 7.5), (100, 7.0), (0, 6.5))  # a river of at least so many km
 LAKE_SIZE = 6.5
+COUNTRY_SIZES = ((1_000_000, 10.0), (100_000, 9.0), (0, 8.0))   # a country of at least so many km², and its size
+OCEAN_SIZE, SEA_SIZE = 10.0, 7.5
+# On a map up to CAPITALS_KM across, a capital is named with this share of the people a city needs (see
+# min_population): Luxembourg on a map of Europe, not Vaduz or Monaco; on a wider one (the world), as a city
+CAPITAL_SHARE = 0.1
+CAPITALS_KM = 6000
+# Maps wider than this draw their rivers thinner and only the longer ones (Europe, the world)
+WIDE_KM = 1500
 # A place this close (points) to a dot another layer marked is that layer's (GHSL's Bucharest is București)
 NEAR_A_DOT = 8.0
 MAX_RIVER_TILT = 65       # degrees: a river is named only where it runs this close to level
@@ -140,6 +149,14 @@ class Water(NamedTuple):
     geometry: shapely.Geometry
 
 
+class Label(NamedTuple):
+    """A country's or a sea's name and where it may be written, best first."""
+    name: str
+    kind: str                       # "country", "ocean" or "sea"
+    rank: float                     # a country's area in km²; a sea's scale rank (0 for the oceans, 1 the great seas)
+    points: tuple[tuple[float, float], ...]     # (lon, lat)
+
+
 class Base(NamedTuple):
     land: list[shapely.Geometry]
     borders: list[shapely.Geometry]
@@ -147,6 +164,9 @@ class Base(NamedTuple):
     rivers: list[Water]             # longest first
     lakes: list[Water]              # largest first
     date: str                       # the date of Geofabrik's extracts, "22 Oct 2026"
+    labels: Sequence[Label] = ()    # the countries, largest first, then the seas (see ne_local)
+    credit: str = ""                # the data credit, if not OSM's
+    reservoirs: Sequence[Water] = ()    # the lakes behind dams, largest first, if told apart (see ne_local)
 
 
 class Named(NamedTuple):
@@ -154,6 +174,7 @@ class Named(NamedTuple):
     places: int = 0
     rivers: int = 0
     lakes: int = 0
+    areas: int = 0                  # countries and seas
 
 
 # ---------------------------------------------------------------------------
@@ -532,7 +553,7 @@ def load_base(cache_dir: str | None = None) -> Base:
 
 
 def attribution(base: Base) -> str:
-    return ATTRIBUTION.format(date=base.date or "unknown date")
+    return base.credit or ATTRIBUTION.format(date=base.date or "unknown date")
 
 
 # ---------------------------------------------------------------------------
@@ -547,8 +568,9 @@ def map_km(ax: GeoAxes) -> float:
 
 
 def min_river_km(across: float) -> float:
-    """The shortest river drawn on a map *across* km wide: 5 km on a map 150 km wide, 30 on one 900 km wide."""
-    return across / 30
+    """The shortest river drawn on a map *across* km wide: 5 km on a map 150 km wide, 30 on one 900 km wide;
+    on a wider one, longer still: 300 km on one 5,000 km wide (Europe), 1,250 on the world's."""
+    return across / 30 * max(1.0, across / WIDE_KM) ** 0.5
 
 
 def min_lake_km2(across: float) -> float:
@@ -571,6 +593,18 @@ def place_kinds(across: float) -> frozenset[str]:
     return frozenset(PLACE_KINDS[:2])
 
 
+def min_country_km2(across: float) -> float:
+    """The smallest country named on a map *across* km wide: 6,900 km² on one 5,000 km wide (Europe), 45,000 on
+    the world's."""
+    return (across / 60) ** 2
+
+
+def max_sea_rank(across: float) -> int:
+    """The least of the seas named on a map *across* km wide, as Natural Earth ranks them: the oceans and the
+    great seas on the world's (rank 1), the North Sea and the Adriatic on Europe's (3)."""
+    return 1 if across > 8000 else 3 if across > 3000 else 4 if across > 1000 else 6
+
+
 def river_width(km: float) -> float:
     """Line width (points) of a river *km* long."""
     return float(np.clip(0.35 + 0.25 * np.log2(max(km, 1) / 25), 0.35, 1.6))
@@ -591,8 +625,14 @@ def _in_view(geometries: Sequence[shapely.Geometry], view: shapely.Geometry | No
     return [g for g in clipped if not g.is_empty]
 
 
-def draw_base(ax: GeoAxes, base: Base) -> None:
-    """Draw the land, lakes, rivers and borders between countries of *base* on *ax*, for its scale.
+def _lakes(base: Base, reservoirs: bool) -> list[Water]:
+    """*base*'s lakes and, if *reservoirs*, its reservoirs, the largest first."""
+    return sorted([*base.lakes, *(base.reservoirs if reservoirs else ())], key=lambda w: -w.km)
+
+
+def draw_base(ax: GeoAxes, base: Base, borders: bool = True, reservoirs: bool = True) -> None:
+    """Draw the land, lakes, rivers and, with *borders*, the borders between countries of *base* on *ax*, for
+    its scale; without *reservoirs*, not the lakes behind dams (on a map of borders older than they are).
 
     The land goes under every other layer (as tiles do); the water and borders
     over the colours other layers lay on the land, under their lines.
@@ -601,11 +641,12 @@ def draw_base(ax: GeoAxes, base: Base) -> None:
     view = _view_box(ax)
     ax.add_geometries(_in_view(base.land, view), crs=ccrs.PlateCarree(), facecolor=LAND_COLOUR,
                       edgecolor="none", zorder=0.5)
-    lakes = [w.geometry for w in base.lakes if w.km >= min_lake_km2(across)]
+    lakes = [w.geometry for w in _lakes(base, reservoirs) if w.km >= min_lake_km2(across)]
     if lakes:
         ax.add_geometries(_in_view(lakes, view), crs=ccrs.PlateCarree(), facecolor=WATER_COLOUR,
                           edgecolor=RIVER_COLOUR, linewidth=0.2, zorder=5.3)
     segments, widths, drawn = [], [], 0
+    thinner = min(1.0, WIDE_KM / across) ** 0.35
     for river in base.rivers:
         if river.km < min_river_km(across):
             break
@@ -613,16 +654,15 @@ def draw_base(ax: GeoAxes, base: Base) -> None:
             continue
         runs = project_lines(ax, river.geometry)
         segments += runs
-        widths += [river_width(river.km)] * len(runs)
+        widths += [river_width(river.km) * thinner] * len(runs)
         drawn += bool(runs)
     ax.add_collection(LineCollection(segments, colors=RIVER_COLOUR, linewidths=widths, zorder=5.35,
                                      capstyle="round", joinstyle="round"))
-    borders = _in_view(base.borders, view)
-    if borders:
-        ax.add_geometries(borders, crs=ccrs.PlateCarree(), facecolor="none", edgecolor=BORDER_COLOUR,
+    lines = _in_view(base.borders, view) if borders else []
+    if lines:
+        ax.add_geometries(lines, crs=ccrs.PlateCarree(), facecolor="none", edgecolor=BORDER_COLOUR,
                           linewidth=1.1, linestyle=(0, (4, 1.5, 1, 1.5)), zorder=5.45)
-    logger.info("OpenStreetMap base drawn: %d rivers, %d lakes (map %s km across).", drawn, len(lakes),
-                f"{across:,.0f}")
+    logger.info("Base map drawn: %d rivers, %d lakes (map %s km across).", drawn, len(lakes), f"{across:,.0f}")
 
 
 def place_size(place: Place) -> float:
@@ -745,6 +785,33 @@ def _name_lake(ax: GeoAxes, space: LabelSpace, lake: Water) -> bool:
     return True
 
 
+def area_size(label: Label) -> float:
+    """Font size (points) of a country's or a sea's name."""
+    if label.kind == "country":
+        return next(size for km2, size in COUNTRY_SIZES if label.rank >= km2)
+    return OCEAN_SIZE if label.kind == "ocean" else SEA_SIZE
+
+
+def _name_area(ax: GeoAxes, space: LabelSpace, label: Label) -> bool:
+    """Name a country or a sea at the first of its points in sight where the name has room."""
+    size = area_size(label)
+    scale = ax.figure.dpi / 72
+    width, height = 0.6 * size * len(label.name) * scale, 1.2 * size * scale
+    for lon, lat in label.points:
+        x, y = ax.projection.transform_point(lon, lat, ccrs.PlateCarree())
+        if not (np.isfinite(x) and np.isfinite(y)) or not frame.inside(ax, x, y, 0.99):
+            continue
+        px, py = ax.transData.transform((x, y))
+        if not _claim_box(space, (px - width / 2, py - height / 2, px + width / 2, py + height / 2)):
+            continue
+        country = label.kind == "country"
+        ax.text(x, y, label.name, transform=ax.projection, fontsize=size, ha="center", va="center",
+                fontstyle="normal" if country else "italic", color=COUNTRY_COLOUR if country else WATER_LABEL_COLOUR,
+                zorder=7.65, clip_on=True, path_effects=[pe.withStroke(linewidth=2.0, foreground=(1, 1, 1, 0.85))])
+        return True
+    return False
+
+
 def _dots(ax: GeoAxes) -> np.ndarray:
     """Where the other layers marked places on *ax* (their one-point markers), in display pixels."""
     found = [line.get_transform().transform(np.column_stack([line.get_xdata(), line.get_ydata()]))
@@ -764,37 +831,69 @@ def _marked(ax: GeoAxes, place: Place, dots: np.ndarray) -> bool:
     return bool((np.hypot(dots[:, 0] - px, dots[:, 1] - py) < NEAR_A_DOT * ax.figure.dpi / 72).any())
 
 
-def name_base(ax: GeoAxes, base: Base) -> Named:
-    """Name the places, rivers and lakes of *base* on *ax* in the room the other layers' names leave.
+def _keep_clear_of_texts(ax: GeoAxes, space: LabelSpace) -> None:
+    """Keep the room of every name already written on *ax* (a state's name on the borders layer), whether or not
+    its layer took it in *space*."""
+    for text in ax.texts:
+        if text.get_visible() and text.get_text().strip():
+            box = text.get_window_extent()
+            space.placed.append((float(box.x0), float(box.y0), float(box.x1), float(box.y1)))
 
-    The capital and cities first, the most populous first; then the rivers,
-    longest first, along a stretch in sight; then the lakes, largest first;
-    then the towns and, on a map up to 300 km across, the villages. Only
-    places of at least :func:`min_population` people are named. A name a
-    layer already wrote (a county seat) is not written again, nor a place
-    another layer marked with a dot under another name (GHSL's ``Bucharest``).
+
+def name_base(ax: GeoAxes, base: Base, countries: bool = True, places: bool = True) -> Named:
+    """Name the countries, seas, places, rivers and lakes of *base* on *ax* in the room the other layers' names
+    leave.
+
+    With *countries*, the countries first (of at least :func:`min_country_km2`),
+    the largest first; then the capitals and cities, the most populous first;
+    then the seas (up to :func:`max_sea_rank`); then the rivers, longest
+    first, along a stretch in sight; then the lakes, largest first; then the
+    towns and, on a map up to 300 km across, the villages. Only places of at
+    least :func:`min_population` people are named, capitals of at least
+    :data:`CAPITAL_SHARE` of that on a map up to :data:`CAPITALS_KM` across.
+    Rivers are named from 4/30 of the map's width long. A name a layer
+    already wrote (a county seat) is not written again, nor a place another
+    layer marked with a dot under another name (GHSL's ``Bucharest``), and no
+    name goes over another layer's. Without *places* (on a map of borders long
+    gone, where today's cities, capitals and reservoirs do not belong), only
+    the countries, seas, rivers and lakes are named.
     """
     across = map_km(ax)
     kinds = place_kinds(across)
     already = {_fold(t.get_text()) for t in ax.texts}
     space = label_space(ax)
+    _keep_clear_of_texts(ax, space)
     dots = _dots(ax)
     fewest = min_population(across)
-    places = [p for p in base.places if p.kind in kinds and (p.population >= fewest or p.kind == "national_capital")
-              and _fold(p.name) not in already and not _marked(ax, p, dots)]
-    big = [p for p in places if p.kind in ("national_capital", "city")]
-    small = [p for p in places if p.kind not in ("national_capital", "city")]
+    share = CAPITAL_SHARE if across <= CAPITALS_KM else 1.0
+    shown = [p for p in (base.places if places else []) if p.kind in kinds
+             and p.population >= fewest * (share if p.kind == "national_capital" else 1)
+             and _fold(p.name) not in already and not _marked(ax, p, dots)]
+    big = [p for p in shown if p.kind in ("national_capital", "city")]
+    small = [p for p in shown if p.kind not in ("national_capital", "city")]
     view = _view_box(ax)
+    areas = [a for a in base.labels if _fold(a.name) not in already
+             and (a.rank >= min_country_km2(across) and countries if a.kind == "country"
+                  else a.rank <= max_sea_rank(across))]
+    named_areas: set[str] = set()
+
+    def name_areas(kinds: Collection[str]) -> None:
+        for area in areas:
+            if area.kind in kinds and area.name not in named_areas and _name_area(ax, space, area):
+                named_areas.add(area.name)
+    name_areas({"country"})
     places_named = sum(_name_place(ax, space, p) for p in big)
-    rivers = [r for r in base.rivers if r.name and r.km >= 4 * min_river_km(across)
+    name_areas({"ocean", "sea"})            # after the cities: a sea's name has room elsewhere, a city's has not
+    rivers = [r for r in base.rivers if r.name and r.km >= max(min_river_km(across), 4 * across / 30)
               and (view is None or shapely.intersects(r.geometry, view))]
     named_rivers: set[str] = set()
     for river in rivers:
         if river.name not in named_rivers and _name_river(ax, space, river):
             named_rivers.add(river.name)
-    lakes = [w for w in base.lakes if w.name and w.km >= 4 * min_lake_km2(across)
+    lakes = [w for w in _lakes(base, places) if w.name and w.km >= 4 * min_lake_km2(across)
              and (view is None or shapely.intersects(w.geometry, view))]
     lakes_named = sum(_name_lake(ax, space, w) for w in lakes)
     places_named += sum(_name_place(ax, space, p) for p in small)
-    logger.info("OpenStreetMap names: %d places, %d rivers, %d lakes.", places_named, len(named_rivers), lakes_named)
-    return Named(places_named, len(named_rivers), lakes_named)
+    logger.info("Base map names: %d countries and seas, %d places, %d rivers, %d lakes.", len(named_areas),
+                places_named, len(named_rivers), lakes_named)
+    return Named(places_named, len(named_rivers), lakes_named, len(named_areas))

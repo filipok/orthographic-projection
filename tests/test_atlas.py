@@ -208,6 +208,13 @@ class TestPlanning:
         relief.map.pop("language")
         assert atlas.page_args(_load(tmp_path), relief, "here", str(tmp_path / "m.png")).language == "en"
 
+    def test_the_atlas_language_for_a_named_base_map(self, tmp_path):
+        book = _load(tmp_path, SMALL.replace('language = "en"', 'language = "ro"'))
+        page = book.pages[1]
+        assert atlas.page_args(book, page, "here", str(tmp_path / "m.png")).language == "en"
+        page.map["provider"] = "natural_earth"
+        assert atlas.page_args(book, page, "here", str(tmp_path / "m.png")).language == "ro"
+
     def test_text_scale_for_every_map_unless_its_own(self, tmp_path):
         book = _load(tmp_path, SMALL.replace('language = "en"', 'language = "en"\ntext_scale = 2'))
         assert book.text_scale == 2
