@@ -35,7 +35,9 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import functools
 import hashlib
+import io
 import json
 import logging
 import os
@@ -268,6 +270,12 @@ _MAP_FILE = re.compile(r"^[a-z0-9-]+-[0-9a-f]{12}\.png$")
 _NOT_HASHED = RUN_OPTIONS | {"list_crops"}
 
 
+@functools.cache
+def _defaults() -> dict[str, Any]:
+    """Each command-line option's default, which a map's file name leaves out."""
+    return {action.dest: action.default for action in ortho.build_cli_parser()._actions}
+
+
 def page_args(atlas: Atlas, page: Page, where: str, output: str, cache_dir: str | None = None) -> argparse.Namespace:
     """The command-line options that draw *page*'s map into *output*: its recipe, its map table on top."""
     parser = ortho.build_cli_parser()
@@ -287,7 +295,10 @@ def page_args(atlas: Atlas, page: Page, where: str, output: str, cache_dir: str 
 
 
 def _fingerprint(args: argparse.Namespace) -> str:
-    options = {k: v for k, v in sorted(vars(args).items()) if k not in _NOT_HASHED}
+    # Options at their defaults are left out, so a new option leaves the maps drawn before it as they are
+    defaults = _defaults()
+    options = {k: v for k, v in sorted(vars(args).items())
+               if k not in _NOT_HASHED and not (k in defaults and v == defaults[k])}
     digest = hashlib.sha256(json.dumps(options, sort_keys=True, default=str).encode())
     digest.update(str(args.dpi).encode())
     for route in args.route or []:
@@ -1093,6 +1104,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Entry point (``ortho-atlas``)."""
     args = build_parser().parse_args(argv)
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding="utf-8")    # the titles' ș and ț, beyond a Windows code page
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     ortho.load_env_files()
     try:

@@ -2,7 +2,9 @@
 
 import itertools
 import json
+import io
 import os
+import sys
 import re
 import tomllib
 from pathlib import Path
@@ -184,6 +186,15 @@ class TestPlanning:
         book.dpi = 150
         assert atlas.plan_maps(book, maps, str(tmp_path / "cache"))[2].path != plans[2].path
 
+    def test_options_at_their_defaults_leave_the_name_alone(self, tmp_path):
+        book = _load(tmp_path)
+        args = atlas.page_args(book, book.pages[1], "here", str(tmp_path / "m.png"))
+        name = atlas._fingerprint(args)
+        delattr(args, "relief_alpha")                   # as before the option was added
+        assert atlas._fingerprint(args) == name
+        args.relief_alpha = 0.3
+        assert atlas._fingerprint(args) != name
+
     def test_slugs_drop_diacritics(self):
         assert atlas._slug("Harta fizică a României") == "harta-fizica-a-romaniei"
         assert atlas._slug("!!!") == "map"
@@ -298,6 +309,15 @@ class TestCommandLine:
                            "--cache-dir", str(tmp_path / "c")]) == 0
         out = capsys.readouterr().out
         assert "  2  map      Relief (to draw)" in out and "4 pages, 3 maps, 0 of them drawn already" in out
+
+    def test_check_prints_diacritics_to_a_narrow_code_page(self, tmp_path, monkeypatch):
+        path = _write(tmp_path, SMALL.replace('title = "Relief"', 'title = "Harta fizică a României"', 1))
+        out = io.BytesIO()
+        monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(out, encoding="cp1252"))
+        assert atlas.main([str(path), "--check", "--maps-dir", str(tmp_path / "m"),
+                           "--cache-dir", str(tmp_path / "c")]) == 0
+        sys.stdout.flush()
+        assert "Harta fizică a României" in out.getvalue().decode("utf-8")
 
     def test_build_and_exit_status(self, tmp_path, renders):
         path = _write(tmp_path)
