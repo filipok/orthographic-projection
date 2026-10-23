@@ -1060,7 +1060,7 @@ class TestRunCLIValidation:
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
             indicator=None, indicator_year=None, indicator_alpha=0.75, industry=None,
             shipping=None, shipping_alpha=0.85, ports=None, air_routes=None, relief_units=None,
-            relief_alpha=0.55, ro_admin=None, ro_admin_alpha=0.0, text_scale=1.0,
+            relief_alpha=0.55, ro_admin=None, ro_admin_alpha=0.0, text_scale=1.0, language="en",
             wind=None, radius=None, rectangle=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1585,6 +1585,14 @@ class TestRunCLIValidation:
         kwargs = render.call_args.kwargs
         assert (kwargs["ro_admin"], kwargs["ro_admin_alpha"]) == ("UATs", 0.4)
 
+    def test_language_passed_to_renderer(self):
+        args = self._make_args(city="paris", language="ro")
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["language"] == "ro"
+        assert ortho.build_cli_parser().parse_args(["--language", "ro"]).language == "ro"
+
     def test_text_scale_passed_to_renderer(self):
         args = self._make_args(city="paris", text_scale=2.0)
         with mock.patch.object(ortho, "generate_orthographic_map") as render, \
@@ -1666,6 +1674,7 @@ class TestRunCLIValidation:
         ({"ro_admin": "villages"}, "Unknown level of Romania's administrative units"),
         ({"ro_admin": "counties", "ro_admin_alpha": -0.1}, "ro_admin_alpha"),
         ({"text_scale": 5.0}, "text_scale must be between 0.5 and 4"),
+        ({"language": "fr"}, "language must be one of en, ro"),
         ({"shipping": "all", "shipping_alpha": 1.5}, "shipping_alpha"),
         ({"air_routes": "airline:"}, "Name an airline"),
         ({"indicator": "fertility", "indicator_year": 1900}, "Indicator years run from 1960"),
@@ -1990,7 +1999,7 @@ class TestGenerateOrthographicMapIntegration:
             )
         assert load.call_args.args == (ortho.parse_when(when), chosen)
         assert draw.call_count == 2 and draw.call_args.kwargs["alpha"] == 0.4      # one per globe
-        assert key.call_args.args[1] is polities and key.call_args.args[2] == [{0: 5}, {0: 5}]
+        assert key.call_args.args[1] == polities and key.call_args.args[2] == [{0: 5}, {0: 5}]
         assert key.call_args.args[4:] == (ortho.parse_when(when), chosen)
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.borders_attribution(chosen)]
 
@@ -2272,6 +2281,34 @@ class TestGenerateOrthographicMapIntegration:
         assert size == pytest.approx((inches * (2 if beside else 1), inches)) and dpi == 20 * scale
         if beside:                       # the globes laid out alike, whatever the figure's size
             assert boxes[0] == pytest.approx((0.1025, 0.11, 0.385, 0.77))     # as at 20 in
+
+    def test_borders_named_in_romanian_with_credit(self, tmp_path):
+        polities = [mock.Mock()]
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_polities", return_value=polities), \
+                mock.patch.object(ortho, "in_language", return_value=["ro"]) as translate, \
+                mock.patch.object(ortho, "colour_groups", return_value={}), \
+                mock.patch.object(ortho, "draw_borders", return_value={}) as draw, \
+                mock.patch.object(ortho, "add_borders_legend"), \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), borders="2019-06-01", language="ro")
+        assert translate.call_args.args[2:] == ("ro", "cshapes") and draw.call_args.args[1] == ["ro"]
+        assert any(ortho.CLDR_ATTRIBUTION in line for line in attribution.call_args.args[1])
+
+    def test_borders_keep_english_names_without_cldr(self, tmp_path, caplog):
+        polities = [mock.Mock()]
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_polities", return_value=polities), \
+                mock.patch.object(ortho, "in_language", side_effect=ortho.BordersError("offline")), \
+                mock.patch.object(ortho, "colour_groups", return_value={}), \
+                mock.patch.object(ortho, "draw_borders", return_value={}) as draw, \
+                mock.patch.object(ortho, "add_borders_legend"), \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), borders="2019-06-01", language="ro")
+        assert draw.call_args.args[1] is polities and "keep their English names: offline" in caplog.text
+        assert not any(ortho.CLDR_ATTRIBUTION in line for line in attribution.call_args.args[1])
 
     def test_osm_local_unavailable_stops(self, tmp_path):
         with mock.patch.object(ortho.osm_local, "load_base", side_effect=ortho.OSMDataError("offline")):

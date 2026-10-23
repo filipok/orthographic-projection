@@ -197,6 +197,17 @@ class TestPlanning:
         args.relief_alpha = 0.3
         assert atlas._fingerprint(args) != name
 
+    def test_the_atlas_language_for_the_maps_that_name_states(self, tmp_path):
+        book = _load(tmp_path, SMALL.replace('language = "en"', 'language = "ro"'))
+        relief = book.pages[1]
+        assert atlas.page_args(book, relief, "here", str(tmp_path / "m.png")).language == "en"   # names nothing
+        relief.map["borders"] = "1914"
+        assert atlas.page_args(book, relief, "here", str(tmp_path / "m.png")).language == "ro"
+        relief.map["language"] = "en"                                                           # its own wins
+        assert atlas.page_args(book, relief, "here", str(tmp_path / "m.png")).language == "en"
+        relief.map.pop("language")
+        assert atlas.page_args(_load(tmp_path), relief, "here", str(tmp_path / "m.png")).language == "en"
+
     def test_text_scale_for_every_map_unless_its_own(self, tmp_path):
         book = _load(tmp_path, SMALL.replace('language = "en"', 'language = "en"\ntext_scale = 2'))
         assert book.text_scale == 2

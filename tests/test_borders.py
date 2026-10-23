@@ -266,3 +266,66 @@ def test_shapely_polygons_from_the_cache_are_valid():
     table = borders.read_cshapes(json.dumps(_topojson()).encode())
     assert all(shapely.is_valid(g) for g in borders._unpack(table))
     assert np.all(table["starts"] <= table["ends"])
+
+
+ROMANIAN = {"RO": "România", "TR": "Turcia", "RU": "Rusia", "DE": "Germania", "CZ": "Cehia", "MD": "Republica Moldova",
+            "IR": "Iran", "CD": "Congo - Kinshasa"}
+ENGLISH = {"RO": "Romania", "TR": "Türkiye", "RU": "Russia", "DE": "Germany", "CZ": "Czechia", "MD": "Moldova",
+           "IR": "Iran", "CD": "Congo - Kinshasa"}
+
+
+class TestRomanian:
+    @pytest.mark.parametrize("name, date, romanian", [
+        ("Rumania", "2019-06-01", "România"),                             # CShapes' spelling, by its ISO code
+        ("Moldova", "2019-06-01", "Republica Moldova"),                   # CLDR's English name
+        ("Iran (Persia)", "2019-06-01", "Iran"),                          # without what the brackets say
+        ("Iran (Persia)", "1914-07-01", "Persia"),                        # its name then
+        ("Turkey (Ottoman Empire)", "1914-07-01", "Imperiul Otoman"),
+        ("Turkey (Ottoman Empire)", "1938-01-01", "Turcia"),
+        ("Russia (Soviet Union)", "1914-07-01", "Imperiul Rus"),
+        ("Russia (Soviet Union)", "1920-01-01", "Rusia Sovietică"),
+        ("Russia (Soviet Union)", "1938-01-01", "Uniunea Sovietică"),
+        ("Russia (Soviet Union)", "2019-06-01", "Rusia"),
+        ("Germany (Prussia)", "1914-07-01", "Imperiul German"),
+        ("Germany (Prussia)", "1938-01-01", "Germania"),
+        ("German Federal Republic", "1960-01-01", "Republica Federală Germania"),
+        ("German Federal Republic", "2019-06-01", "Germania"),
+        ("Congo, Democratic Republic of (Zaire)", "1950-01-01", "Congo Belgian"),
+        ("Congo, Democratic Republic of (Zaire)", "1965-01-01", "Congo - Kinshasa"),    # CLDR's, between
+        ("Congo, Democratic Republic of (Zaire)", "1980-01-01", "Zair"),
+        ("Austria-Hungary", "1914-07-01", "Austro-Ungaria"),
+        ("Tibet", "1938-01-01", "Tibet"),
+        ("Spanish West Africa", "1938-01-01", ""),                         # no Romanian name known
+    ])
+    def test_names(self, name, date, romanian):
+        assert borders.romanian_name(name, date, ROMANIAN, ENGLISH) == romanian
+
+    def test_polities_in_romanian(self, monkeypatch):
+        monkeypatch.setattr(borders, "cldr_territories", lambda language, cache_dir=None:
+                            ROMANIAN if language == "ro" else ENGLISH)
+        when = borders.parse_when("1914-07-01")
+        polities = [borders.Polity("Rumania", "1", "Rumania", False, box(0, 0, 1, 1)),
+                    borders.Polity("Spanish Morocco", "2", "Spain", True, box(0, 0, 1, 1))]
+        ro = borders.in_language(polities, when, "ro", "cshapes")
+        assert [(p.name, p.group_name) for p in ro] == [("România", "România"), ("", "Spain")]
+        assert borders.in_language(polities, when, "en", "cshapes") == polities
+        assert borders.in_language(polities, when, "ro", "cliopatria") == polities     # as Cliopatria names them
+
+    def test_an_unnamed_state_is_not_labelled(self):
+        ax = _globe(0, 0)
+        polities = [_polity("", "big", box(-20, -20, 20, 20))]
+        borders.draw_borders(ax, polities, borders.colour_groups(polities), samples=60)
+        assert not ax.texts
+
+    def test_cldr_downloaded_once(self, tmp_path, monkeypatch):
+        asked = []
+
+        def fetch(urls, dest, label):
+            asked.append(urls[0])
+            with open(dest, "w", encoding="utf-8") as fh:
+                json.dump({"main": {"ro": {"localeDisplayNames": {"territories": {
+                    "RO": "România", "TR-alt-variant": "Türkiye", "001": "Lume"}}}}}, fh)
+        monkeypatch.setattr(borders, "_fetch", fetch)
+        assert borders.cldr_territories("ro", str(tmp_path)) == {"RO": "România"}     # countries only
+        assert borders.cldr_territories("ro", str(tmp_path)) == {"RO": "România"}
+        assert asked == [borders.CLDR_URL.format(language="ro")]

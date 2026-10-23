@@ -81,6 +81,8 @@ ATLAS_KEYS = ("title", "subtitle", "author", "edition", "paper", "dpi", "text_sc
 PAGE_KEYS = ("type", "title", "text", "questions", "orientation", "recipe", "map")
 COVER_KEYS = ("recipe", "map")
 # Options the atlas sets for every map, which a page's map may not
+# The options whose names a map writes in the atlas's language (see ortho's --language)
+NAMED_IN_LANGUAGE = ("borders",)
 RUN_OPTIONS = {"output", "output_dir", "dpi", "cache_dir", "no_cache", "config"}
 ACCENTS = ("#1d5c8c", "#2f7d3a", "#b0532a", "#6c4a9e", "#8a6d1c", "#a23a5a")
 INK, GREY, RULE, TINT = "#1f2328", "#5b636e", "#c9ced6", "#f2f4f7"
@@ -299,7 +301,14 @@ def page_args(atlas: Atlas, page: Page, where: str, output: str, cache_dir: str 
     tokens += [f"--dpi={atlas.dpi}", f"--output={output}"]
     if cache_dir:
         tokens.append(f"--cache-dir={cache_dir}")
-    return parser.parse_args(tokens)
+    args = parser.parse_args(tokens)
+    # The map's names in the atlas's language, unless the page says otherwise; only the layers that name things in
+    # it take it (so the other maps keep their file names)
+    own = any(t.startswith("--language") for t in tokens)
+    if (atlas.language in ortho.LANGUAGES and atlas.language != "en" and not own
+            and any(getattr(args, k) for k in NAMED_IN_LANGUAGE)):
+        args.language = atlas.language
+    return args
 
 
 def _fingerprint(args: argparse.Namespace) -> str:

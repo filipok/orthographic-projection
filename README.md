@@ -601,6 +601,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--provider` | Tile provider: `osm`, `osm_plain`, `osm_local` (drawn from OSM data, Romania), `google`, `google_satellite`, `nasa`, `nasa_night` (the Earth at night) | `osm` |
 | `--zoom ZOOM` | Tile zoom level: 1–4 for the whole globe; with `--radius`, up to one above its default | `3`, or chosen from `--radius` and the latitude |
 | `--dpi DPI` | Output resolution, 10–1200. The figure is 20 in, so 300 DPI = 6,000 px | `300` |
+| `--language {en,ro}` | Write the map's names in this language where the data allows: with `ro`, the states of `--borders` (CShapes) in Romanian, from Unicode CLDR | `en` |
 | `--text-scale X` | Names, lines, markers and keys X times larger on the map (0.5–4), for a map printed small: the figure is 20/X in, drawn at X times the DPI, so the image keeps its size in pixels | `1` |
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
 | `--output-dir` | Directory for auto-named output files | `.` |
@@ -1482,6 +1483,18 @@ Cliopatria otherwise):
   and under crops, ice, winds and routes; `--borders-alpha` sets their opacity
   (default 0.55). The plain map (`osm_plain`) keeps the base map's own borders
   and labels quiet underneath.
+- **In Romanian.** With `--language ro` CShapes' states are named in Romanian,
+  on the map and in the key: Unicode CLDR 47's names for its Romanian locale
+  (`România`, `Germania`, `Regatul Unit`, `Republica Moldova`), matched through
+  CLDR's English names and the ISO codes of those CShapes spells otherwise
+  (`Rumania`, `Italy/Sardinia`). A state that bore another name on the map's
+  date takes that one: `Imperiul Otoman` before 29 October 1923, `Imperiul Rus`,
+  `Rusia Sovietică`, then `Uniunea Sovietică` to 1991, `Imperiul German` to
+  1918, `Austro-Ungaria`, `Cehoslovacia`, `Iugoslavia`, `Persia` to 1935. A
+  colony with no Romanian name in either (`Spanish West Africa`) is drawn
+  unnamed. CLDR's tables (~20 KB) are downloaded once. Cliopatria's names stay
+  in English, as do the keys' titles. An atlas in Romanian gives its maps with
+  `--borders` this language.
 - **Licences.** Cliopatria is CC BY 4.0. CShapes 2.0 states no licence of its
   own (the article describing it is CC BY-NC 4.0; the R package that carries the
   data is GPL ≥ 2). Neither is shipped here: each is downloaded on first use, and
@@ -1642,8 +1655,10 @@ python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider osm_local --ro-adm
   sea and borders.
 - **For the scale.** The map's width sets what it shows: rivers at least 1/30
   of it long (30 km on a map 900 km across), lakes of at least (width/300)²
-  km², the capital, cities and towns, and on maps up to 300 km across the
-  villages. Rivers are wider the longer they are.
+  km², and places of at least 0.03 × width² people (24,300 on a map of
+  Romania 900 km across, about 90 of them; 1,200 on one 200 km across), the
+  capital whatever its size; villages only on maps up to 300 km across.
+  Rivers are wider the longer they are.
 - **Names.** The capital and cities first, the most populous first; then the
   rivers, longest first, along a stretch in sight where they run within 65° of
   level; then the lakes; then the towns and villages. Each goes in the room
@@ -1655,7 +1670,11 @@ python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider osm_local --ro-adm
   sub Munte`, `Strâmba-Jiu`; SIRUTA is downloaded once more for this), and
   `Roșiori de Vede` for OSM's `Roșiorii`; where SIRUTA lacks a diacritic OSM
   has (`Ilva Mica`), OSM's is kept. Checked against SIRUTA 2026, OSM's 319
-  municipalities and towns in Romania all match, and over 98% of its villages. A river's parts of one name that join up are one
+  municipalities and towns in Romania all match, and over 98% of its villages.
+  Transnistria's places, named only in Russian in Geofabrik's files, take
+  OSM's Romanian names (`name:ro`: `Tiraspol`, `Rîbnița`, `Dubăsari`, `Bender`,
+  which Romanian also calls Tighina), asked once of the Overpass API; 158 of
+  its 163 have one. A river's parts of one name that join up are one
   river; of a name in two languages (`Dunărea - Дунав`, `Dunav/Dunărea`) the
   Romanian part is kept, a Danube branch is named for the branch (`Brațul
   Sulina`), and `Râul Mureș` is `Mureș` where OSM names the rest of it so

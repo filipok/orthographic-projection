@@ -135,6 +135,7 @@ from biomes import (
 )
 from borders import (
     SOURCES as BORDER_SOURCES, BordersError, add_borders_legend, attribution as borders_attribution,
+    CLDR_ATTRIBUTION, LANGUAGES, in_language,
     choose_source as choose_borders_source, colour_groups, draw_borders, load_polities, parse_when,
 )
 from zoogeography import (
@@ -700,7 +701,7 @@ def validate_render_options(
     permafrost_alpha: float = 0.7, population_alpha: float = 0.7, livestock_alpha: float = 0.7,
     earthquakes: float | None = None, cyclones: int | None = None, malaria_alpha: float = 0.75,
     iucn_alpha: float = 0.45, indicator_alpha: float = 0.75, shipping_alpha: float = 0.85,
-    relief_alpha: float = 0.55, ro_admin_alpha: float = 0.0, text_scale: float = 1.0,
+    relief_alpha: float = 0.55, ro_admin_alpha: float = 0.0, text_scale: float = 1.0, language: str = "en",
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -709,6 +710,8 @@ def validate_render_options(
         beside_lat, beside_lon = beside
         if not (-90 <= beside_lat <= 90 and -180 <= beside_lon <= 180):
             raise ValueError(f"beside must be a latitude (-90 to 90) and longitude (-180 to 180), got {beside}")
+    if language not in LANGUAGES:
+        raise ValueError(f"language must be one of {', '.join(LANGUAGES)}, got {language!r}")
     if not (math.isfinite(text_scale) and MIN_TEXT_SCALE <= text_scale <= MAX_TEXT_SCALE):
         raise ValueError(f"text_scale must be between {MIN_TEXT_SCALE:g} and {MAX_TEXT_SCALE:g}, got {text_scale}")
     lat = zoom_latitude(lat, beside)
@@ -871,6 +874,7 @@ def generate_orthographic_map(
     ro_admin: str | None = None,
     ro_admin_alpha: float = 0.0,
     text_scale: float = 1.0,
+    language: str = "en",
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -892,6 +896,10 @@ def generate_orthographic_map(
         the map, for a map printed small (0.5 to 4; default 1). The image has as
         many pixels: the figure is *text_scale* times smaller than
         :data:`FIGURE_INCHES` and saved at *text_scale* times *dpi*.
+    language : str
+        ``"en"`` (default) or ``"ro"``: the names of the *borders* (CShapes'
+        states) in Romanian, from Unicode CLDR (see :func:`borders.in_language`).
+        Keys stay in English.
     background_color : str
         Ocean colour (the fallback ocean under the tiles; ``"nasa_night"``
         uses its own dark sea and land). The PNG itself is saved with a
@@ -1190,7 +1198,7 @@ def generate_orthographic_map(
         permafrost_alpha=permafrost_alpha, population_alpha=population_alpha, livestock_alpha=livestock_alpha,
         earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha, iucn_alpha=iucn_alpha,
         indicator_alpha=indicator_alpha, shipping_alpha=shipping_alpha, relief_alpha=relief_alpha,
-        ro_admin_alpha=ro_admin_alpha, text_scale=text_scale,
+        ro_admin_alpha=ro_admin_alpha, text_scale=text_scale, language=language,
     )
     population_year = resolve_population_year(population) if population is not None else None
     livestock_species = resolve_species(livestock) if livestock else None
@@ -1619,6 +1627,11 @@ def generate_orthographic_map(
         logger.info("Drawing the borders of %s (%s, alpha=%.2f) …", border_when.label, border_source, borders_alpha)
         try:
             polities = load_polities(border_when, border_source)
+            try:
+                polities = in_language(polities, border_when, language, border_source)
+            except BordersError as e:
+                logger.warning("The states keep their English names: %s", e)
+                language = "en"
             border_colours = colour_groups(polities) if polities else {}
             border_counts = [draw_borders(ax, polities, border_colours, alpha=borders_alpha) for ax in axes]
         except (BordersError, OSError) as e:
@@ -2043,7 +2056,8 @@ def generate_orthographic_map(
     if property_drawn:
         credits.append(SOIL_PROPERTY_ATTRIBUTION)
     if polities is not None and border_source is not None:
-        credits.append(borders_attribution(border_source))
+        credits.append(borders_attribution(border_source)
+                       + (f"; {CLDR_ATTRIBUTION}" if language == "ro" and border_source == "cshapes" else ""))
     if basin_list:
         credits.append(BASINS_ATTRIBUTION)
     if rivers_drawn:
@@ -2745,6 +2759,13 @@ def build_cli_parser() -> argparse.ArgumentParser:
         metavar="X",
         help=f"Draw names, lines and keys X times larger on the map, for a map printed small "
              f"({MIN_TEXT_SCALE:g}-{MAX_TEXT_SCALE:g}; default 1). The image keeps its size in pixels.",
+    )
+    imagery.add_argument(
+        "--language",
+        choices=LANGUAGES,
+        default="en",
+        help="Write the map's names in this language where the data allows: with ro, the states of --borders "
+             "(CShapes) in Romanian, from Unicode CLDR (default: en)",
     )
     imagery.add_argument(
         "-o", "--output",
@@ -3802,7 +3823,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             livestock_alpha=args.livestock_alpha, earthquakes=args.earthquakes, cyclones=args.cyclones,
             malaria_alpha=args.malaria_alpha, iucn_alpha=args.iucn_alpha, indicator_alpha=args.indicator_alpha,
             shipping_alpha=args.shipping_alpha, relief_alpha=args.relief_alpha,
-            ro_admin_alpha=args.ro_admin_alpha, text_scale=args.text_scale,
+            ro_admin_alpha=args.ro_admin_alpha, text_scale=args.text_scale, language=args.language,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -3890,6 +3911,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         ro_admin=args.ro_admin,
         ro_admin_alpha=args.ro_admin_alpha,
         text_scale=args.text_scale,
+        language=args.language,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,

@@ -19,6 +19,14 @@ their colonies, protectorates, mandates and occupied lands, to the day, from
 downloads leave those out.
 
 Both are downloaded once (~46 MB and ~4 MB) and cached in a compact form.
+
+Names in Romanian (``language="ro"``, CShapes only): Unicode CLDR 47, the
+territory names of its Romanian locale (Unicode License v3), matched to
+CShapes' English names through CLDR's English ones (:data:`CSHAPES_CODES` where
+they differ). States that no longer exist, or bore another name at the map's
+date, take their Romanian name from :data:`ROMANIAN_HISTORY` (the Ottoman
+Empire before 1923, the Soviet Union, Czechoslovakia); a colony with no
+Romanian name in either is drawn without one.
 """
 
 from __future__ import annotations
@@ -61,6 +69,49 @@ DATA_VERSION = 1          # bump when a cache changes, so old ones are rebuilt
 CLIOPATRIA_ATTRIBUTION = (f"Borders: Cliopatria {CLIOPATRIA_VERSION}, Seshat Global History Databank "
                           "(Bennett et al. 2025), CC BY 4.0")
 CSHAPES_ATTRIBUTION = "Borders: CShapes 2.0 (Schvitz et al. 2022), ETH Zurich"
+CLDR_VERSION = "47.0.0"
+CLDR_URL = ("https://raw.githubusercontent.com/unicode-org/cldr-json/" + CLDR_VERSION
+            + "/cldr-json/cldr-localenames-full/main/{language}/territories.json")
+CLDR_ATTRIBUTION = f"country names in Romanian: Unicode CLDR {CLDR_VERSION.rsplit('.', 1)[0]}"
+LANGUAGES = ("en", "ro")
+
+# CShapes' names whose ISO code CLDR's English names do not give
+CSHAPES_CODES = {
+    "Rumania": "RO", "German Federal Republic": "DE", "Italy/Sardinia": "IT", "Czech Republic": "CZ",
+    "Bosnia-Herzegovina": "BA", "Congo": "CG", "Congo, Democratic Republic of (Zaire)": "CD",
+    "Cote D'Ivoire": "CI", "East Timor": "TL", "French Guyana": "GF", "Korea, People's Republic of": "KP",
+    "Korea, Republic of": "KR", "Kyrgyz Republic": "KG", "Macedonia (FYROM/North Macedonia)": "MK",
+    "New Caledonia and Dependencies": "NC", "Palestine": "PS", "Reunion": "RE", "Surinam": "SR",
+    "Swaziland (Eswatini)": "SZ", "Trinidad and Tobago": "TT", "Turkey (Ottoman Empire)": "TR",
+    "United States of America": "US", "Vietnam, Democratic Republic of": "VN",
+}
+# Romanian names of states before a date (ISO, the day the name changed): (until, name) pairs, earliest first,
+# "" for CLDR's name; after the last, CLDR's. Places Romanian writes as English does (Alaska, Tibet) run to 9999.
+ROMANIAN_HISTORY: dict[str, tuple[tuple[str, str], ...]] = {
+    "Turkey (Ottoman Empire)": (("1923-10-29", "Imperiul Otoman"),),
+    "Russia (Soviet Union)": (("1917-11-07", "Imperiul Rus"), ("1922-12-30", "Rusia Sovietică"),
+                              ("1991-12-26", "Uniunea Sovietică")),
+    "Germany (Prussia)": (("1918-11-09", "Imperiul German"), ("9999-12-31", "Germania")),
+    "German Federal Republic": (("1990-10-03", "Republica Federală Germania"),),
+    "German Democratic Republic": (("9999-12-31", "Republica Democrată Germană"),),
+    "Austria-Hungary": (("9999-12-31", "Austro-Ungaria"),),
+    "Czechoslovakia": (("9999-12-31", "Cehoslovacia"),),
+    "Yugoslavia": (("9999-12-31", "Iugoslavia"),),
+    "Iran (Persia)": (("1935-03-21", "Persia"),),
+    "Thailand": (("1939-06-24", "Siam"),),
+    "Sri Lanka (Ceylon)": (("1972-05-22", "Ceylon"),),
+    "Myanmar (Burma)": (("1989-06-18", "Birmania"),),
+    "Congo, Democratic Republic of (Zaire)": (("1960-06-30", "Congo Belgian"), ("1971-10-27", ""),
+                                              ("1997-05-17", "Zair")),
+    "Zimbabwe (Rhodesia)": (("1980-04-18", "Rhodesia"),),
+    "Tanzania (Tanganyika)": (("1964-04-26", "Tanganyika"),),
+    "Swaziland (Eswatini)": (("2018-04-19", "Swaziland"),),
+    "Palestine": (("1948-05-15", "Palestina"),),
+    "Vietnam, Democratic Republic of": (("1976-07-02", "Republica Democrată Vietnam"),),
+    "Korea": (("9999-12-31", "Coreea"),),
+    **{same: (("9999-12-31", same),) for same in ("Aden", "Alaska", "Hawaii", "Tibet", "Zanzibar", "Sarawak",
+                                                   "Danzig")},
+}
 
 SOURCES = ("auto", "cliopatria", "cshapes")
 CLIOPATRIA_YEARS = (-3400, 2024)
@@ -322,6 +373,68 @@ def load_polities(when: When, source: str, cache_dir: str | None = None) -> list
 
 
 # ---------------------------------------------------------------------------
+# Names in Romanian
+# ---------------------------------------------------------------------------
+
+
+def cldr_territories(language: str, cache_dir: str | None = None) -> dict[str, str]:
+    """CLDR's names of the countries (ISO 3166 codes) in *language*, downloaded once."""
+    cache_dir = cache_dir or _default_cache_dir()
+    path = os.path.join(cache_dir, f"cldr_{CLDR_VERSION}_{language}_territories.json")
+    if not os.path.isfile(path):
+        os.makedirs(cache_dir, exist_ok=True)
+        try:
+            _fetch([CLDR_URL.format(language=language)], path, f"CLDR {language}")
+        except BordersError as exc:
+            raise BordersError(f"Could not read CLDR's country names: {exc}") from exc
+    try:
+        with open(path, encoding="utf-8") as fh:
+            names = json.load(fh)["main"][language]["localeDisplayNames"]["territories"]
+    except (OSError, ValueError, KeyError) as exc:
+        raise BordersError(f"CLDR's country names are not as expected: {exc!r}") from exc
+    return {code: name for code, name in names.items() if re.fullmatch(r"[A-Z]{2}", code)}
+
+
+def romanian_name(name: str, date: str, romanian: dict[str, str], english: dict[str, str]) -> str:
+    """The Romanian name of the state CShapes calls *name* on *date* (ISO), ``""`` if none is known.
+
+    :data:`ROMANIAN_HISTORY` first, for a state that bore another name then;
+    else CLDR's, through the ISO code of :data:`CSHAPES_CODES` or of CLDR's
+    English name (*name* without what it says in brackets: ``Iran (Persia)``).
+    """
+    for until, written in ROMANIAN_HISTORY.get(name, ()):
+        if date < until:
+            if written:
+                return written
+            break
+    codes = {n.lower(): code for code, n in english.items()}
+    code = (CSHAPES_CODES.get(name) or codes.get(name.lower())
+            or codes.get(re.sub(r"\s*\(.*\)$", "", name).strip().lower()))
+    return romanian.get(code, "") if code else ""
+
+
+def in_language(polities: Sequence[Polity], when: When, language: str, source: str,
+                cache_dir: str | None = None) -> list[Polity]:
+    """*polities* with their names, and their groups', in *language* (``"en"``: as the data has them).
+
+    Only CShapes' are put into Romanian; a state with no Romanian name is left
+    unnamed on the map, and a group keeps its English name in the key.
+    Cliopatria's names stay as they are.
+    """
+    if language == "en" or source != "cshapes":
+        if language != "en":
+            logger.info("Cliopatria's names are given as it has them, in English.")
+        return list(polities)
+    romanian, english = cldr_territories("ro", cache_dir), cldr_territories("en", cache_dir)
+    names = {n: romanian_name(n, when.date, romanian, english)
+             for n in {p.name for p in polities} | {p.group_name for p in polities}}
+    unnamed = sorted(n for n, ro in names.items() if not ro)
+    if unnamed:
+        logger.info("No Romanian name for %d states, left unnamed: %s", len(unnamed), ", ".join(unnamed[:8]))
+    return [p._replace(name=names[p.name], group_name=names[p.group_name] or p.group_name) for p in polities]
+
+
+# ---------------------------------------------------------------------------
 # Colours
 # ---------------------------------------------------------------------------
 
@@ -420,6 +533,8 @@ def draw_borders(ax: GeoAxes, polities: Sequence[Polity], colours: dict[str, tup
         share = counts[i] / total
         if share < LABEL_MIN_SHARE:
             break
+        if not polities[i].name:
+            continue
         xs, ys = found[i]
         # The sample point nearest the middle of the state's visible part lies inside it
         k = int(np.argmin((xs - xs.mean()) ** 2 + (ys - ys.mean()) ** 2))
