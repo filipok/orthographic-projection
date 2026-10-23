@@ -378,6 +378,30 @@ no-circles = true
 cities = 2025
 
 [[pages]]
+title = "Harta administrativă"
+text = """
+Din punct de vedere administrativ, România este împărțită în 41 de județe și municipiul
+București, capitala țării, care are la rândul lui șase sectoare. Țara are 3.181 de unități
+administrativ-teritoriale de bază: 103 municipii (inclusiv Bucureștiul), 216 orașe și 2.862 de
+comune, iar comunele sunt formate din unul sau mai multe sate. Cel mai întins județ este Timiș,
+iar cel mai mic este Ilfov, care înconjoară Bucureștiul. Pe hartă, punctele arată reședințele
+de județ.
+"""
+questions = [
+    "În ce județ locuiești? Cu ce județe se învecinează? Care este reședința lui?",
+    "Ce județe au ieșire la Marea Neagră?",
+    "Numește cinci județe aflate pe malul Dunării.",
+]
+[pages.map]
+lat = 45.9
+lon = 25.2
+provider = "osm_plain"
+radius = 390
+no-circles = true
+ro-admin = "counties"
+ro-admin-alpha = 0.5
+
+[[pages]]
 title = "Regiunile de dezvoltare: PIB pe locuitor"
 text = """
 România are opt regiuni de dezvoltare, care corespund nivelului NUTS 2 al Uniunii Europene:
