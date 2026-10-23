@@ -1,6 +1,7 @@
 """Tests for osm_local.py (no network; small Geofabrik-like and GISCO-like archives made here)."""
 
 import io
+import json
 import os
 import zipfile
 from typing import Any
@@ -202,6 +203,33 @@ SERBIA = _geofabrik(
 )
 
 
+def test_transnistria_in_romanian():
+    table = ol.read_osm([(MOLDOVA, True)], romanian={"7": "Tiraspol, oraș"})
+    assert table["place_names"].tolist() == ["Chișinău", "Tiraspol"]          # without the note after the comma
+
+
+class TestOverpass:
+    def test_romanian_names_by_id(self, monkeypatch):
+        body = json.dumps({"elements": [{"id": 7, "tags": {"name": "Тирасполь", "name:ro": "Tiraspol"}},
+                                        {"id": 8, "tags": {"name": "Бендеры"}}]}).encode()
+        asked = []
+
+        def urlopen(request, timeout=0):
+            asked.append(request.full_url)
+            if request.full_url == ol.OVERPASS_URLS[0]:
+                raise ol.urllib.error.URLError("busy")                        # the next server answers
+            return io.BytesIO(body)
+        monkeypatch.setattr(ol.urllib.request, "urlopen", urlopen)
+        assert ol.romanian_place_names() == {"7": "Tiraspol"}
+        assert asked == list(ol.OVERPASS_URLS)
+
+    def test_no_server_answers(self, monkeypatch, caplog):
+        def offline(request, timeout=0):
+            raise ol.urllib.error.URLError("offline")
+        monkeypatch.setattr(ol.urllib.request, "urlopen", offline)
+        assert ol.romanian_place_names() == {} and "left unnamed" in caplog.text
+
+
 @pytest.fixture(scope="module")
 def table():
     return ol.read_osm([(ROMANIA, True), (MOLDOVA, True), (SERBIA, False)], ol.siruta_spellings(SIRUTA))
@@ -334,11 +362,13 @@ class TestCache:
 
         monkeypatch.setattr(ol, "RemoteFile", Remote)
         monkeypatch.setattr(ol, "_download", download)
+        monkeypatch.setattr(ol, "romanian_place_names", lambda: {"7": "Tiraspol"})
         return asked
 
     def test_built_once(self, online, tmp_path):
         base = ol.load_base(str(tmp_path))
-        assert [p.name for p in base.places][:2] == ["București", "Chișinău"]
+        assert [p.name for p in base.places][:3] == ["București", "Chișinău", "Cluj-Napoca"]
+        assert "Tiraspol" in [p.name for p in base.places]
         assert len(base.land) == 1 and len(base.borders) == 1 and base.date == "22 Oct 2026"
         assert "Geofabrik extracts of 22 Oct 2026" in ol.attribution(base)
         again = ol.load_base(str(tmp_path))
@@ -394,6 +424,7 @@ class TestDrawing:
         assert ol.min_river_km(900) == 30 and ol.min_lake_km2(900) == 9
         assert ol.place_kinds(200) == set(ol.PLACE_KINDS)
         assert ol.place_kinds(900) == {"national_capital", "city", "town"}
+        assert ol.min_population(900) == pytest.approx(24_300) and ol.min_population(200) == pytest.approx(1_200)
         assert ol.place_kinds(12_000) == {"national_capital", "city"}
         assert ol.river_width(25) < ol.river_width(300) < ol.river_width(3000) == 1.6
 
@@ -408,12 +439,13 @@ class TestDrawing:
         ax = _map(900)
         named = ol.name_base(ax, _base())
         texts = {t.get_text(): t for t in ax.texts}
-        assert {"București", "Cluj-Napoca", "Sibiu", "Sânmiclăuș", "Mureș", "Lacul Mare"} <= set(texts)
-        assert "Ciugud" not in texts and "Lacul Mic" not in texts                 # too small for this scale
+        assert {"București", "Cluj-Napoca", "Sibiu", "Mureș", "Lacul Mare"} <= set(texts)
+        # Too small for this scale: a town of 20,000 (24,300 needed), a village, a pond
+        assert not {"Sânmiclăuș", "Ciugud", "Lacul Mic"} & set(texts)
         assert texts["București"].get_fontweight() == "bold"
         tilt = texts["Mureș"].get_rotation()                                      # matplotlib's, 0 to 360
         assert texts["Mureș"].get_fontstyle() == "italic" and min(tilt, 360 - tilt) < 5
-        assert named.lakes == 1 and named.places == 4
+        assert named.lakes == 1 and named.places == 3
 
     def test_a_river_named_along_its_course(self):
         slanted = ol.Water("Olt", 600, shapely.LineString([(23.0, 44.5), (25.8, 46.5)]))

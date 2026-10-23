@@ -39,7 +39,9 @@ import os
 import re
 import time
 import unicodedata
+import json
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from collections import defaultdict
@@ -72,7 +74,14 @@ NEIGHBOURS = ("hungary", "serbia", "bulgaria", "ukraine")        # rivers and la
 NEIGHBOUR_BOX = (18.5, 41.5, 32.5, 50.5)                         # (west, south, east, north), degrees
 COUNTRIES_URL = "https://gisco-services.ec.europa.eu/distribution/v2/countries/shp/CNTR_RG_01M_2024_4326.shp.zip"
 BORDERS_URL = "https://gisco-services.ec.europa.eu/distribution/v2/countries/shp/CNTR_BN_01M_2024_4326.shp.zip"
-DATA_VERSION = 1          # bump when the cache changes, so old ones are rebuilt
+DATA_VERSION = 2          # bump when the cache changes, so old ones are rebuilt
+# OSM's Romanian names (name:ro) of Moldova's places, which Geofabrik's shapefiles leave out: Transnistria's
+# towns and villages are named only in Russian there. Asked of the Overpass API, the next address if one fails.
+OVERPASS_URLS = ("https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter")
+OVERPASS_QUERY = """[out:json][timeout:120];
+area["ISO3166-1"="MD"][admin_level=2]->.md;
+node(area.md)["place"~"^(city|town|village)$"]["name:ro"];
+out tags;"""
 
 ATTRIBUTION = ("Map data © OpenStreetMap contributors (ODbL), Geofabrik extracts of {date}; "
                "land and borders © EuroGeographics (GISCO)")
@@ -350,8 +359,24 @@ def official(name: str, spellings: dict[str, str]) -> str:
     return spellings.get(_spelling_key(name), name)
 
 
-def read_osm(archives: Sequence[tuple[zipfile.ZipFile, bool]], spellings: dict[str, str] | None = None
-             ) -> dict[str, np.ndarray]:
+def romanian_place_names(urls: Sequence[str] = OVERPASS_URLS, timeout: float = 180) -> dict[str, str]:
+    """OSM's Romanian names (``name:ro``) of Moldova's places, by OSM id; ``{}`` if no server answers."""
+    request_data = urllib.parse.urlencode({"data": OVERPASS_QUERY}).encode()
+    for url in urls:
+        try:
+            request = urllib.request.Request(url, data=request_data, headers={"User-Agent": "ortho/1.0"})
+            with urllib.request.urlopen(request, timeout=timeout) as resp:
+                elements = json.load(resp)["elements"]
+            return {str(e["id"]): str(e["tags"]["name:ro"]) for e in elements if e.get("tags", {}).get("name:ro")}
+        except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, KeyError) as exc:
+            logger.info("Overpass at %s did not answer: %s", url, exc)
+    logger.warning("No Romanian names for Transnistria's places (the Overpass API did not answer): "
+                   "they are left unnamed.")
+    return {}
+
+
+def read_osm(archives: Sequence[tuple[zipfile.ZipFile, bool]], spellings: dict[str, str] | None = None,
+             romanian: dict[str, str] | None = None) -> dict[str, np.ndarray]:
     """The places, rivers and lakes of Geofabrik's *archives*, each OSM feature once (a border river is in both
     countries').
 
@@ -360,9 +385,12 @@ def read_osm(archives: Sequence[tuple[zipfile.ZipFile, bool]], spellings: dict[s
     their rivers and lakes within :data:`NEIGHBOUR_BOX`, unnamed (in Serbian,
     Bulgarian, Ukrainian or Hungarian, not as a Romanian map writes them).
     Unnamed canals are left out: the plains' irrigation and drainage canals.
-    Places are spelled as SIRUTA's *spellings* spell them (see :func:`official`).
+    Places are spelled as SIRUTA's *spellings* spell them (see :func:`official`);
+    a place named in another script only takes its Romanian name from
+    *romanian* (OSM id -> ``name:ro``), without a note after a comma
+    (``Novosavițcaia, loc. st. cf``), or is left out.
     """
-    spellings = spellings or {}
+    spellings, romanian = spellings or {}, romanian or {}
     box = shapely.box(*NEIGHBOUR_BOX)
     seen: set[str] = set()
     places: list[Place] = []
@@ -373,6 +401,8 @@ def read_osm(archives: Sequence[tuple[zipfile.ZipFile, bool]], spellings: dict[s
             for record, point in _shapes(_reader(archive, "gis_osm_places_free_1"),
                                          ("osm_id", "fclass", "population", "name")):
                 name, kind, osm_id = written(str(record["name"] or "")), str(record["fclass"]), str(record["osm_id"])
+                if not latin(name):
+                    name = written(romanian.get(osm_id, "").split(",")[0])
                 if kind in PLACE_KINDS and latin(name) and osm_id not in seen:
                     seen.add(osm_id)
                     places.append(Place(official(name, spellings), kind, int(str(record["population"] or 0)),
@@ -461,7 +491,7 @@ def ensure_osm_data(cache_dir: str | None = None) -> str:
         regions = [(region, True) for region in REGIONS] + [(region, False) for region in NEIGHBOURS]
         remote = [RemoteFile(GEOFABRIK_URL.format(region=region)) for region, _ in regions]
         archives = [(zipfile.ZipFile(io.BufferedReader(f, 1 << 20)), named) for f, (_, named) in zip(remote, regions)]
-        table = read_osm(archives, spellings)
+        table = read_osm(archives, spellings, romanian_place_names())
         for url, dest in zip((COUNTRIES_URL, BORDERS_URL), downloads):
             _download(url, dest, timeout=300, label="GISCO countries")
         with zipfile.ZipFile(downloads[0]) as countries, zipfile.ZipFile(downloads[1]) as borders:
@@ -524,6 +554,12 @@ def min_river_km(across: float) -> float:
 def min_lake_km2(across: float) -> float:
     """The smallest lake drawn on a map *across* km wide: 0.25 km² on one 150 km wide, 9 on one 900 km wide."""
     return (across / 300) ** 2
+
+
+def min_population(across: float) -> float:
+    """The fewest people of a place named on a map *across* km wide, so about as many show on any map: 24,300 on
+    one 900 km wide (Romania), 1,200 on one 200 km wide. Growing with the map's area."""
+    return 0.03 * across ** 2
 
 
 def place_kinds(across: float) -> frozenset[str]:
@@ -733,7 +769,8 @@ def name_base(ax: GeoAxes, base: Base) -> Named:
 
     The capital and cities first, the most populous first; then the rivers,
     longest first, along a stretch in sight; then the lakes, largest first;
-    then the towns and, on a map up to 300 km across, the villages. A name a
+    then the towns and, on a map up to 300 km across, the villages. Only
+    places of at least :func:`min_population` people are named. A name a
     layer already wrote (a county seat) is not written again, nor a place
     another layer marked with a dot under another name (GHSL's ``Bucharest``).
     """
@@ -742,7 +779,9 @@ def name_base(ax: GeoAxes, base: Base) -> Named:
     already = {_fold(t.get_text()) for t in ax.texts}
     space = label_space(ax)
     dots = _dots(ax)
-    places = [p for p in base.places if p.kind in kinds and _fold(p.name) not in already and not _marked(ax, p, dots)]
+    fewest = min_population(across)
+    places = [p for p in base.places if p.kind in kinds and (p.population >= fewest or p.kind == "national_capital")
+              and _fold(p.name) not in already and not _marked(ax, p, dots)]
     big = [p for p in places if p.kind in ("national_capital", "city")]
     small = [p for p in places if p.kind not in ("national_capital", "city")]
     view = _view_box(ax)
