@@ -123,9 +123,6 @@ whether the geo-spatial.org polygons' licence allows them in place of GISCO's.
 
 ### Other open work
 
-- **Atlas cache**: a new map option changes the hash of every map, so adding
-  `--rectangle` made the next build redraw all 50. The hash could leave out options
-  at their defaults.
 - **Atlas size**: the school atlas is 135 MB; a build with JPEG-compressed pages
   would fit an e-mail (25 MB).
 - **GIBS tiles** are not retried: a tile that answered HTTP 500 left a gap in the

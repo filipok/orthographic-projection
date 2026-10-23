@@ -182,6 +182,9 @@ class TestData:
             ("București", "municipality", True), ("Alba Iulia", "municipality", True),
             ("Buftea", "town", False), ("Sânmiclăuș", "town", False), ("Ciugud", "commune", False)]
         assert uats.country.bounds == pytest.approx((23.5, 44.2, 26.4, 46.2))
+        # The seats at either level: the capital first; Buftea, a town, is no seat in SIRUTA
+        assert [(u.name, u.capital) for u in counties.seats] == [("București", True), ("Alba Iulia", False)]
+        assert uats.seats == counties.seats
         assert downloads == [ra.SIRUTA_URL, ra.LAU_URL]                                 # cached
         assert sorted(os.listdir(tmp_path)) == [f"ro_admin_v{ra.DATA_VERSION}.npz"]     # downloads removed
 
@@ -292,6 +295,28 @@ class TestDrawing:
         legend = ra.add_admin_legend(ax, admin, [ra.draw_admin(ax, admin)])
         assert legend is not None and legend.get_title().get_text().startswith(
             "Counties of Romania in view: 1 county and the municipality of Bucharest\n")
+
+    def test_seats_marked_by_counties(self):
+        ax = _globe()
+        bucharest = ra.Unit("București", 40, "county", shapely.box(29, 40, 31, 42), (30, 41))
+        seats = [ra.Unit("București", 40, "municipality", bucharest.outline, (30, 41), True, 2100000, True),
+                 ra.Unit("Alba Iulia", 1, "municipality", shapely.box(18, 48, 19, 49), (18.5, 48.5), True, 63000)]
+        admin = _admin("counties")._replace(counties=[*_admin().counties, bucharest], seats=seats)
+        shown = ra.draw_admin(ax, admin)
+        assert (shown.seats, shown.capital) == (2, True)
+        texts = {t.get_text(): t for t in ax.texts}
+        assert set(texts) == {"ALBA", "ILFOV", "București", "Alba Iulia"}       # Bucharest named once, as the capital
+        assert texts["București"].get_fontweight() == "bold" and texts["Alba Iulia"].get_fontweight() == "normal"
+        assert len(ax.lines) == 3                                                # two dots, and the capital's ring
+        legend = ra.add_admin_legend(ax, admin, [shown])
+        assert legend is not None and [t.get_text() for t in legend.get_texts()][-2:] == ["Capital", "County seat"]
+
+    def test_seats_not_marked_by_uats(self):
+        ax = _globe()
+        seats = [ra.Unit("Alba Iulia", 1, "municipality", shapely.box(16, 40, 21, 52), (18.5, 49), True, 63000)]
+        shown = ra.draw_admin(ax, _admin()._replace(seats=seats))
+        assert shown.seats == 0 and not ax.lines
+        assert [t.get_text() for t in ax.texts].count("Alba Iulia") == 1      # named as a UAT, in bold
 
     def test_nothing_in_view(self):
         ax = _globe(-46, -155)

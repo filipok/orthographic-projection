@@ -75,6 +75,7 @@ _LEVEL_ALIASES = {"": "counties", "county": "counties", "judete": "counties", "j
 # SIRUTA's types of UAT (TIP): municipalities, towns and communes; a county seat is a municipality or town
 KINDS = {1: "municipality", 4: "municipality", 9: "municipality", 2: "town", 5: "town", 3: "commune"}
 SEATS = frozenset({1, 5, 9})                      # county seats, and Bucharest
+CAPITAL = 9                                       # Bucharest
 COUNTY_LEVEL, UAT_LEVEL = "1", "2"                # SIRUTA's NIV
 # Pastel fills, so that no two neighbouring counties share one
 PALETTE = [(246, 214, 170), (200, 226, 180), (196, 214, 238), (242, 200, 212), (234, 228, 164), (216, 202, 234)]
@@ -86,6 +87,7 @@ UAT_LABEL_COLOUR = "#2f2f2f"
 COMMUNE_LABEL_COLOUR = "#555555"
 # Font sizes (points) of the names of the UATs, by type
 UAT_SIZES = {"municipality": 7.0, "town": 6.5, "commune": 5.5}
+SEAT_SIZE, CAPITAL_SIZE = 7.5, 9.5                # the names of the county seats and the capital, by counties
 # A commune is named only when its name fits inside it: the name's box at most this share of its area on the map
 COMMUNE_FILL = 0.8
 SLIVER = 1e-4             # holes and parts of a union smaller than this (square degrees, ~1 km²) are gaps
@@ -109,6 +111,7 @@ class Unit(NamedTuple):
     label: tuple[float, float]      # (lon, lat) inside it, as far from its edges as can be
     seat: bool = False              # a county seat (or Bucharest)
     population: int = 0             # GISCO's, for which UATs to name first
+    capital: bool = False           # Bucharest
 
 
 class Admin(NamedTuple):
@@ -119,6 +122,7 @@ class Admin(NamedTuple):
     country: shapely.Geometry       # Romania's border, the union of the counties
     colours: dict[int, int]         # county number -> index into PALETTE, no two neighbours alike
     total_uats: int = 0             # how many UATs the data holds, even at the level of counties
+    seats: Sequence[Unit] = ()      # the county seats, the capital first, then the most populous
 
 
 class Shown(NamedTuple):
@@ -126,6 +130,8 @@ class Shown(NamedTuple):
     counties: frozenset[int]        # county numbers
     uats: Counter[str]              # UATs by kind
     border: bool = False            # Romania's border shows: some of the map lies outside it
+    seats: int = 0                  # county seats marked (at the level of counties)
+    capital: bool = False           # Bucharest among them
 
 
 def resolve_admin_level(level: str | None) -> str:
@@ -345,13 +351,13 @@ def load_admin(level: str = DEFAULT_LEVEL, cache_dir: str | None = None) -> Admi
                                          table["county_label_lon"], table["county_label_lat"])]
     counties.sort(key=lambda u: float(shapely.area(u.outline)), reverse=True)
     colours = {int(c): int(k) for c, k in zip(table["county_codes"], table["county_colours"])}
-    uats: list[Unit] = []
-    if level == "uats":
-        uats = [Unit(str(n), int(c), KINDS.get(int(k), "commune"), o, (float(x), float(y)), int(k) in SEATS, int(p))
-                for n, c, k, o, x, y, p in zip(table["names"], table["counties"], table["kinds"], _unpack(table),
-                                               table["label_lon"], table["label_lat"], table["population"])]
-        uats.sort(key=_uat_order)
-    return Admin(level, counties, uats, country, colours, len(table["codes"]))
+    every = [Unit(str(n), int(c), KINDS.get(int(k), "commune"), o, (float(x), float(y)), int(k) in SEATS, int(p),
+                  int(k) == CAPITAL)
+             for n, c, k, o, x, y, p in zip(table["names"], table["counties"], table["kinds"], _unpack(table),
+                                            table["label_lon"], table["label_lat"], table["population"])]
+    seats = sorted((u for u in every if u.seat), key=lambda u: (not u.capital, -u.population))
+    uats = sorted(every, key=_uat_order) if level == "uats" else []
+    return Admin(level, counties, uats, country, colours, len(table["codes"]), seats)
 
 
 # ---------------------------------------------------------------------------
@@ -385,10 +391,12 @@ def draw_admin(ax: GeoAxes, admin: Admin, alpha: float = 0.0, labels: bool = Tru
     """Draw Romania's border, its counties' and (at the level of UATs) its UATs' on *ax*, and name them.
 
     With *alpha*, the counties are filled in pastel colours, no two
-    neighbours alike. County names go in capitals in the middle of what shows
-    of each, largest first; then the UATs' names, municipalities (county seats
-    in bold), towns, and communes in italic where the name fits inside the
-    commune, each in the room the other layers' names leave (see
+    neighbours alike. At the level of counties, the county seats are marked
+    with a dot and named first, Bucharest with a ringed dot. County names go in
+    capitals in the middle of what shows of each, largest first; at the level
+    of UATs, the UATs' names follow, municipalities (county seats in bold),
+    towns, and communes in italic where the name fits inside the commune. Each
+    goes in the room the other layers' names leave (see
     :func:`cities.label_space`) and not where a layer already wrote it (a city).
     """
     if alpha > 0:
@@ -415,9 +423,30 @@ def draw_admin(ax: GeoAxes, admin: Admin, alpha: float = 0.0, labels: bool = Tru
     written = {_fold(t.get_text()) for t in ax.texts}
     total = frame.coverage(ax) * samples ** 2
     space = label_space(ax)
+    marked, capital = 0, False
+    if admin.level == "counties":
+        for seat in admin.seats:
+            if not on_globe(ax, *seat.label, margin=1.0) or _fold(seat.name) in written:
+                continue
+            size = CAPITAL_SIZE if seat.capital else SEAT_SIZE
+            px, py = ax.projection.transform_point(*seat.label, ccrs.PlateCarree())
+            if not space.claim(px, py, seat.name, size):
+                continue
+            marked += 1
+            capital = capital or seat.capital
+            _mark_seat(ax, px, py, size, seat.capital)
+            ax.annotate(seat.name, (px, py), xycoords="data", xytext=(0, 0.35 * size), textcoords="offset points",
+                        fontsize=size, fontweight="bold" if seat.capital else "normal", color=UAT_LABEL_COLOUR,
+                        ha="center", va="bottom", zorder=8, annotation_clip=True,
+                        path_effects=[pe.withStroke(linewidth=2.2, foreground="white")])
+        shown = shown._replace(seats=marked, capital=capital)
+    # The capital, a county of its own, is named as the capital where the seats are marked
+    by_seat = {s.county for s in admin.seats if s.capital} if admin.level == "counties" else set()
     named = 0
     for i, points in sorted(found.items(), key=lambda item: -len(item[1])):
         county = admin.counties[i]
+        if county.county in by_seat:
+            continue
         size = county_label_size(len(points) / total)
         text = county.name.upper()
         lift = _points_to_data(ax, 0.85 * size)
@@ -454,9 +483,24 @@ def draw_admin(ax: GeoAxes, admin: Admin, alpha: float = 0.0, labels: bool = Tru
                     color=COMMUNE_LABEL_COLOUR if uat.kind == "commune" else UAT_LABEL_COLOUR,
                     ha="center", va="bottom", zorder=7.8, annotation_clip=True,
                     path_effects=[pe.withStroke(linewidth=1.8, foreground=(1, 1, 1, 0.8))])
-    logger.info("Counties of Romania drawn: %d in view, %d named; UATs: %d in view, %d named.", len(found), named,
-                len(uats_in_view), uats_named)
+    logger.info("Counties of Romania drawn: %d in view, %d named, %d seats marked; UATs: %d in view, %d named.",
+                len(found), named, marked, len(uats_in_view), uats_named)
     return shown
+
+
+def _mark_seat(ax: GeoAxes, x: float, y: float, size: float, capital: bool) -> None:
+    """A county seat's dot at (*x*, *y*), or the capital's, a dot in a ring."""
+    ax.plot(x, y, "o", transform=ax.projection, markersize=0.5 * size, markerfacecolor="white",
+            markeredgecolor=COUNTY_LABEL_COLOUR, markeredgewidth=0.9, zorder=8)
+    if capital:
+        ax.plot(x, y, "o", transform=ax.projection, markersize=0.22 * size, markerfacecolor=COUNTY_LABEL_COLOUR,
+                markeredgecolor="none", zorder=8.05)
+
+
+def _seat_handle(capital: bool) -> Line2D:
+    size = CAPITAL_SIZE if capital else SEAT_SIZE
+    return Line2D([], [], linestyle="none", marker="o", markersize=0.5 * size, markerfacecolor="white",
+                  markeredgecolor=COUNTY_LABEL_COLOUR, markeredgewidth=0.9 if not capital else 2.2)
 
 
 def _plural(n: int, one: str, many: str) -> str:
@@ -485,6 +529,12 @@ def add_admin_legend(ax: GeoAxes, admin: Admin, shown: Sequence[Shown], alpha: f
     if alpha > 0:
         handles.append(mpatches.Patch(facecolor=(*_fill_colour(0), alpha), edgecolor=COUNTY_EDGE, linewidth=0.6))
         labels.append("Counties told apart by colour")
+    if any(s.capital for s in shown):
+        handles.append(_seat_handle(capital=True))
+        labels.append("Capital")
+    if any(s.seats - s.capital for s in shown):
+        handles.append(_seat_handle(capital=False))
+        labels.append("County seat")
     bucharest = any(c.name == "București" and c.county in counties for c in admin.counties)
     title = (f"Counties of Romania in view: {_plural(len(counties) - bucharest, 'county', 'counties')}"
              + (" and the municipality of Bucharest" if bucharest else ""))

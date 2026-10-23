@@ -490,7 +490,7 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "ports": {name: kind.label for name, kind in ortho.PORT_KINDS.items()},
         "relief_units": {"units": "Every unit, down to single depressions and plains (820)",
                          "regions": "The 16 major regions"},
-        "ro_admin": {"counties": "The 41 counties and Bucharest",
+        "ro_admin": {"counties": "The 41 counties and Bucharest, with their seats",
                      "uats": "Counties, and their 3,181 municipalities, towns and communes"},
         "livestock": list(ortho.LIVESTOCK_SPECIES),
         "malaria_years": [ortho.FIRST_MALARIA_YEAR, ortho.LATEST_MALARIA_YEAR],

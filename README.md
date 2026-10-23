@@ -275,7 +275,7 @@ The main script is [ortho.py](ortho.py).
 - Night lights: NASA's Black Marble, the Earth at night, as a base map
 - Optional air routes: the airline network, or the routes from chosen airports or of chosen airlines, as great-circle arcs wider for routes more airlines fly
 - Optional relief units of Romania: its 820 geomorphological units (Posea & Badea), from the Carpathians to single depressions and plains such as Depresiunea Hațegului or Câmpia Ierului, filled in their major region's colour (depressions, corridors and floodplains paler) and named, or the 16 major regions alone
-- Optional counties and UATs of Romania: the borders of its 41 counties and Bucharest, and of its 3,181 municipalities, towns and communes, named where the names fit, with the counties optionally filled so no two neighbours look alike
+- Optional counties and UATs of Romania: the borders of its 41 counties and Bucharest with the county seats, and of its 3,181 municipalities, towns and communes, named where the names fit, with the counties optionally filled so no two neighbours look alike
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
@@ -939,8 +939,10 @@ rivers = true
   Unknown Köppen-Geiger class 'Zzz'`.
 - **Drawn once.** The maps are kept in `atlas_<name>_maps/`, each named after
   its page and a hash of its options, so a build draws only the maps that are
-  new or changed: rewording a caption and building again takes seconds.
-  `--force` draws them all again; `--maps-dir` and `-o` choose other places.
+  new or changed: rewording a caption and building again takes seconds. The
+  hash leaves out options at their defaults, so a new option of this program
+  keeps the maps drawn before it; a change to how a layer draws does not show
+  in the hash, and `--force` draws them all again; `--maps-dir` and `-o` choose other places.
   The first build of the bundled atlas downloads every layer's data and takes a
   long while.
 - **A map that cannot be drawn** (no network, say) gets a placeholder naming the
@@ -1551,7 +1553,7 @@ python ortho.py --lat 46.3 --lon 25.55 --radius 100 --provider osm_plain --relie
 
 `--ro-admin` (`ro_admin=` in the API, `ro-admin` at the prompt) draws
 Romania's administrative divisions: its 41 counties (județe) and the
-municipality of Bucharest, and with `uats` the 3,181 administrative-territorial
+municipality of Bucharest, with the county seats marked, and with `uats` the 3,181 administrative-territorial
 units (UATs) within them, 103 municipalities (municipii), 216 towns (orașe)
 and 2,862 communes (comune). The borders are Eurostat's (GISCO, Local
 Administrative Units 2024, 1:1 million); the names, counties and types come
@@ -1575,6 +1577,12 @@ python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider nasa --relief-unit
   counties. By default only the borders are drawn, so the layer goes over any
   other; `--ro-admin-alpha` fills the counties in pastel colours, picked so no
   two neighbouring counties (Bucharest and Ilfov among them) share one.
+- **County seats.** With `counties`, each county seat is a dot with its name
+  and Bucharest, the capital, a ringed dot named in bold; they are placed
+  before the county names. A seat is SIRUTA's type 1 (a municipality that is a
+  county seat), so Ilfov, whose seat SIRUTA does not mark, shows none. The dot
+  is the point of the municipality's territory farthest from its edges, close
+  to the town on a map of the country but not its exact centre.
 - **Names.** County names go in bold capitals in the middle of what shows of
   each county, largest first. With `uats`, the UATs' names follow:
   municipalities (county seats in bold), towns, then communes in small italic,
@@ -1590,8 +1598,9 @@ python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider nasa --relief-unit
   `C.A. Rosetti`, with ş, ţ under a comma. Where the two differ by more than
   diacritics, SIRUTA's spelling is kept (`Sfântu Gheorghe`, `Rimetea`,
   `Piatra-Neamț`).
-- **Key.** The key counts the counties and UATs in view by type, and shows
-  Romania's border only when the map reaches beyond it.
+- **Key.** The key counts the counties and UATs in view by type, shows the
+  seats' and capital's dots when they show, and Romania's border only when the
+  map reaches beyond it.
 - **Data.** GISCO's file holds all of Europe's LAUs (~43 MB, zipped); it and
   SIRUTA (~0.9 MB) are downloaded once into `~/.cache/ortho_tiles/ro_admin/`
   and kept as one compact file (~1.7 MB). The boundaries are © EuroGeographics

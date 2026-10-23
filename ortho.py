@@ -1132,7 +1132,8 @@ def generate_orthographic_map(
     ro_admin : str, optional
         Draw Romania's administrative borders (GISCO LAU 2024, named after
         INS's SIRUTA) and name them where the names fit: ``"counties"`` for
-        the 41 counties and Bucharest, or ``"uats"`` for the 3,181
+        the 41 counties and Bucharest, with the county seats marked, or
+        ``"uats"`` for the 3,181
         municipalities, towns and communes within them as well (see
         :data:`ro_admin.LEVELS`). With *ro_admin_alpha* above 0 the counties
         are filled in pastel colours, no two neighbours alike.
@@ -3014,8 +3015,8 @@ def build_cli_parser() -> argparse.ArgumentParser:
     divisions = parser.add_argument_group("Counties and UATs of Romania (GISCO LAU 2024, INS SIRUTA)")
     divisions.add_argument("--ro-admin", nargs="?", const="counties", metavar="LEVEL",
                            help="Draw Romania's administrative borders and name them where the names fit: "
-                                "counties (the 41 counties and Bucharest; the default) or uats (the 3,181 "
-                                "municipalities, towns and communes within them as well). "
+                                "counties (the 41 counties and Bucharest, with their seats; the default) or uats "
+                                "(the 3,181 municipalities, towns and communes within them as well). "
                                 "Downloaded once (~44 MB).")
     divisions.add_argument("--ro-admin-alpha", type=float, default=0.0, metavar="ALPHA",
                            help="Fill the counties in pastel colours, no two neighbours alike, at this opacity "
