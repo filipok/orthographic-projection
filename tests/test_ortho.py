@@ -1059,7 +1059,7 @@ class TestRunCLIValidation:
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
             indicator=None, indicator_year=None, indicator_alpha=0.75, industry=None,
             shipping=None, shipping_alpha=0.85, ports=None, air_routes=None, relief_units=None,
-            relief_alpha=0.55,
+            relief_alpha=0.55, ro_admin=None, ro_admin_alpha=0.0,
             wind=None, radius=None, rectangle=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1577,6 +1577,25 @@ class TestRunCLIValidation:
             ortho.run_cli(args)
         assert "--relief-alpha is ignored" in caplog.text
 
+    def test_ro_admin_passed_to_renderer(self):
+        args = self._make_args(lat=46.75, lon=23.6, ro_admin="UATs", ro_admin_alpha=0.4)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert (kwargs["ro_admin"], kwargs["ro_admin_alpha"]) == ("UATs", 0.4)
+
+    def test_ro_admin_alpha_alone_is_ignored(self, caplog):
+        args = self._make_args(lat=46.75, lon=23.6, ro_admin_alpha=0.4)
+        with mock.patch.object(ortho, "generate_orthographic_map"), mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert "--ro-admin-alpha is ignored" in caplog.text
+
+    def test_cli_parses_ro_admin(self):
+        parse = ortho.build_cli_parser().parse_args
+        assert (parse(["--ro-admin"]).ro_admin, parse(["--ro-admin"]).ro_admin_alpha) == ("counties", 0.0)
+        assert parse(["--ro-admin", "uats", "--ro-admin-alpha", "0.3"]).ro_admin_alpha == 0.3
+        assert parse(["--city", "paris"]).ro_admin is None
+
     def test_cli_parses_relief_units(self):
         parse = ortho.build_cli_parser().parse_args
         assert (parse(["--relief-units"]).relief_units, parse(["--relief-units"]).relief_alpha) == ("units", 0.55)
@@ -1635,6 +1654,8 @@ class TestRunCLIValidation:
         ({"ports": "yachts"}, "Unknown kind of port traffic"),
         ({"relief_units": "counties"}, "Unknown level of relief units"),
         ({"relief_units": "units", "relief_alpha": 1.5}, "relief_alpha"),
+        ({"ro_admin": "villages"}, "Unknown level of Romania's administrative units"),
+        ({"ro_admin": "counties", "ro_admin_alpha": -0.1}, "ro_admin_alpha"),
         ({"shipping": "all", "shipping_alpha": 1.5}, "shipping_alpha"),
         ({"air_routes": "airline:"}, "Name an airline"),
         ({"indicator": "fertility", "indicator_year": 1900}, "Indicator years run from 1960"),
@@ -2195,6 +2216,34 @@ class TestGenerateOrthographicMapIntegration:
         draw.assert_not_called()
         assert ortho.RELIEF_ATTRIBUTION not in attribution.call_args.args[1]
 
+    def test_ro_admin_drawn_with_key_and_credit(self, tmp_path):
+        divisions = mock.Mock()
+        shown = [mock.Mock(), mock.Mock()]
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None),                 mock.patch.object(ortho, "load_admin", return_value=divisions) as loaded,                 mock.patch.object(ortho, "draw_admin", side_effect=shown) as draw,                 mock.patch.object(ortho, "add_admin_legend") as key,                 mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(45, 26), ro_admin="Județe",
+                                            ro_admin_alpha=0.3)
+        assert loaded.call_args.args[0] == "counties"
+        assert draw.call_count == 2 and draw.call_args.kwargs["alpha"] == 0.3
+        assert key.call_args.args[1:] == (divisions, shown) and key.call_args.kwargs["alpha"] == 0.3
+        assert ortho.ADMIN_ATTRIBUTION in attribution.call_args.args[1]
+
+    def test_ro_admin_unavailable_draws_nothing(self, tmp_path, caplog):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None),                 mock.patch.object(ortho, "load_admin", side_effect=ortho.AdminError("offline")),                 mock.patch.object(ortho, "draw_admin") as draw,                 mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), ro_admin="uats")
+        assert os.path.exists(result) and "Skipping Romania's counties and UATs: offline" in caplog.text
+        draw.assert_not_called()
+        assert ortho.ADMIN_ATTRIBUTION not in attribution.call_args.args[1]
+
+    def test_cities_named_before_counties_and_counties_before_relief(self, tmp_path):
+        order = []
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None),                 mock.patch.object(ortho, "load_relief", return_value=mock.Mock()),                 mock.patch.object(ortho, "load_admin", return_value=mock.Mock()),                 mock.patch.object(ortho, "load_cities", return_value=mock.Mock()),                 mock.patch.object(ortho, "draw_relief", side_effect=lambda *a, **k: order.append("relief") or {}),                 mock.patch.object(ortho, "draw_admin", side_effect=lambda *a, **k: order.append("admin") or None),                 mock.patch.object(ortho, "draw_cities", side_effect=lambda *a: order.append("cities") or []),                 mock.patch.object(ortho, "add_relief_legend"), mock.patch.object(ortho, "add_admin_legend"),                 mock.patch.object(ortho, "add_cities_legend"):
+            ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), relief_units="units", ro_admin="uats",
+                                            cities=2025)
+        assert order == ["cities", "admin", "relief"]
+
     def test_cities_named_before_relief_units(self, tmp_path):
         order = []
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
@@ -2387,6 +2436,8 @@ class TestGenerateOrthographicMapIntegration:
         ("ports:Tankers", {"ports": "tanker"}),
         ("relief-units", {"relief_units": "units"}),
         ("relief-units:Regions", {"relief_units": "regions"}),
+        ("ro-admin", {"ro_admin": "counties"}),
+        ("ro-admin:UAT", {"ro_admin": "uats"}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected

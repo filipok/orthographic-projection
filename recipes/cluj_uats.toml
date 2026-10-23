@@ -1,0 +1,8 @@
+# The municipalities, towns and communes around Cluj-Napoca, in Cluj, Sălaj, Alba, Mureș and the
+# counties beyond: county seats in bold, communes in italic, each named where its name fits.
+lat = 46.75
+lon = 23.6
+provider = "osm_plain"
+radius = 100
+ro_admin = "uats"
+output = "orthographic_map_cluj_osm_plain_r100km_uats.png"

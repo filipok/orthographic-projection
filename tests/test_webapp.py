@@ -183,6 +183,13 @@ class TestMaps:
         assert (renders[0]["relief_units"], renders[0]["relief_alpha"]) == ("regions", 0.4)
         assert "--relief-units regions --relief-alpha 0.4" in status["command"]
 
+    def test_ro_admin(self, client, renders):
+        options = client.get("/api/options").json()
+        assert list(options["ro_admin"]) == ["counties", "uats"] and options["alpha"]["ro_admin"] == 0.0
+        _, status = _render(client, lat=46.75, lon=23.6, ro_admin="uats", ro_admin_alpha=0.4)
+        assert (renders[0]["ro_admin"], renders[0]["ro_admin_alpha"]) == ("uats", 0.4)
+        assert "--ro-admin uats --ro-admin-alpha 0.4" in status["command"]
+
     def test_shipping_and_air_routes(self, client, renders):
         _, status = _render(client, city="Lisbon", shipping="fishing", shipping_alpha=0.6, air_routes="LIS")
         assert (renders[0]["shipping"], renders[0]["shipping_alpha"], renders[0]["air_routes"]) == ("fishing", 0.6,

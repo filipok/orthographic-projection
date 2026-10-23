@@ -213,6 +213,10 @@ function buildRequest() {
     req.relief_units = $("relief-units").value;
     req.relief_alpha = changed("relief-alpha", options.alpha.relief);
   }
+  if ($("ro-admin").value) {
+    req.ro_admin = $("ro-admin").value;
+    req.ro_admin_alpha = changed("ro-admin-alpha", options.alpha.ro_admin);
+  }
   const routes = selectedRoutes();
   if (routes.length) {
     req.route = routes;
@@ -391,6 +395,8 @@ function fillForm(req) {
   set("borders-alpha", req.borders_alpha);
   if (req.relief_units) pick("relief-units", req.relief_units, "level of relief units");
   set("relief-alpha", req.relief_alpha);
+  if (req.ro_admin) pick("ro-admin", req.ro_admin, "level of Romania's administrative units");
+  set("ro-admin-alpha", req.ro_admin_alpha);
   const routes = req.route || [];
   for (const name of routes) {
     if (!routeFiles.some((f) => f.name === name)) missing.push(`route file ${name}`);
@@ -781,6 +787,7 @@ async function init() {
   $("biome-alpha").value = options.alpha.biome;
   $("borders-alpha").value = options.alpha.borders;
   $("relief-alpha").value = options.alpha.relief;
+  $("ro-admin-alpha").value = options.alpha.ro_admin;
   for (const name of ["basins", "permafrost", "population", "livestock", "malaria", "iucn", "indicator", "shipping"]) {
     $(`${name}-alpha`).value = options.alpha[name];
   }
@@ -795,6 +802,7 @@ async function init() {
   $("industry-list").append(...Object.entries(options.industry).map(([name, about]) => option(name, about)));
   $("shipping").append(...Object.entries(options.shipping).map(([name, label]) => option(name, label)));
   $("ports").append(...Object.entries(options.ports).map(([name, label]) => option(name, label)));
+  $("ro-admin").append(...Object.entries(options.ro_admin).map(([name, label]) => option(name, label)));
   $("relief-units").append(...Object.entries(options.relief_units).map(([name, label]) => option(name, label)));
   $("indicator-list").append(...Object.entries(options.indicators).map(([name, title]) => option(name, title)));
   $("cities-year").append(...options.cities_years.slice().reverse().map((y) => option(String(y),

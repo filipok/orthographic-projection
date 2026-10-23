@@ -91,6 +91,9 @@ from relief import (
     LEVELS as RELIEF_LEVELS, RELIEF_ATTRIBUTION, ReliefError, add_relief_legend, draw_relief, load_relief,
     resolve_relief_level,
 )
+from ro_admin import (
+    ADMIN_ATTRIBUTION, AdminError, add_admin_legend, draw_admin, load_admin, resolve_admin_level,
+)
 from industry import (
     GROUPS as INDUSTRY_GROUPS, SECTORS as INDUSTRY_SECTORS, IndustryDataError, add_industry_legend, draw_industry,
     industry_attribution, load_plants, resolve_sectors,
@@ -681,7 +684,7 @@ def validate_render_options(
     permafrost_alpha: float = 0.7, population_alpha: float = 0.7, livestock_alpha: float = 0.7,
     earthquakes: float | None = None, cyclones: int | None = None, malaria_alpha: float = 0.75,
     iucn_alpha: float = 0.45, indicator_alpha: float = 0.75, shipping_alpha: float = 0.85,
-    relief_alpha: float = 0.55,
+    relief_alpha: float = 0.55, ro_admin_alpha: float = 0.0,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -735,7 +738,7 @@ def validate_render_options(
                         ("population_alpha", population_alpha), ("livestock_alpha", livestock_alpha),
                         ("malaria_alpha", malaria_alpha), ("iucn_alpha", iucn_alpha),
                         ("indicator_alpha", indicator_alpha), ("shipping_alpha", shipping_alpha),
-                        ("relief_alpha", relief_alpha)):
+                        ("relief_alpha", relief_alpha), ("ro_admin_alpha", ro_admin_alpha)):
         if not 0.0 <= value <= 1.0:
             raise ValueError(f"{name} must be between 0 and 1, got {value}")
     if earthquakes is not None and not MIN_MAGNITUDE <= earthquakes <= MAX_MAGNITUDE:
@@ -847,6 +850,8 @@ def generate_orthographic_map(
     air_routes: str | None = None,
     relief_units: str | None = None,
     relief_alpha: float = 0.55,
+    ro_admin: str | None = None,
+    ro_admin_alpha: float = 0.0,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -1124,6 +1129,13 @@ def generate_orthographic_map(
         ``"units"`` for all 820, from the Carpathians to single depressions
         and plains, or ``"regions"`` for the 16 major regions (see
         :data:`relief.LEVELS`); *relief_alpha* sets the fill's opacity.
+    ro_admin : str, optional
+        Draw Romania's administrative borders (GISCO LAU 2024, named after
+        INS's SIRUTA) and name them where the names fit: ``"counties"`` for
+        the 41 counties and Bucharest, or ``"uats"`` for the 3,181
+        municipalities, towns and communes within them as well (see
+        :data:`ro_admin.LEVELS`). With *ro_admin_alpha* above 0 the counties
+        are filled in pastel colours, no two neighbours alike.
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -1150,6 +1162,7 @@ def generate_orthographic_map(
         permafrost_alpha=permafrost_alpha, population_alpha=population_alpha, livestock_alpha=livestock_alpha,
         earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha, iucn_alpha=iucn_alpha,
         indicator_alpha=indicator_alpha, shipping_alpha=shipping_alpha, relief_alpha=relief_alpha,
+        ro_admin_alpha=ro_admin_alpha,
     )
     population_year = resolve_population_year(population) if population is not None else None
     livestock_species = resolve_species(livestock) if livestock else None
@@ -1179,6 +1192,12 @@ def generate_orthographic_map(
             landforms = load_relief(resolve_relief_level(relief_units))
         except (ReliefError, OSError) as e:
             logger.warning("Skipping the relief units: %s", e)
+    divisions = None
+    if ro_admin:
+        try:
+            divisions = load_admin(resolve_admin_level(ro_admin))
+        except (AdminError, OSError) as e:
+            logger.warning("Skipping Romania's counties and UATs: %s", e)
     harbours = None
     if ports:
         try:
@@ -1649,7 +1668,7 @@ def generate_orthographic_map(
             factories.append(load_plants(sector))
         except (IndustryDataError, OSError) as e:
             logger.warning("Skipping the %s: %s", INDUSTRY_SECTORS[sector].label.lower(), e)
-    # Cities are named first, then plants, ports and relief units where their names still fit
+    # Cities are named first, then plants, ports, counties and UATs, and relief units where their names still fit
     towns = None
     town_floor = cities_min if cities_min is not None else default_min_population(radius_km)
     towns_shown = 0
@@ -1665,6 +1684,9 @@ def generate_orthographic_map(
     harbours_shown = 0
     if harbours is not None:
         harbours_shown = max(draw_ports(ax, harbours) for ax in axes)
+    divisions_shown = []
+    if divisions is not None:
+        divisions_shown = [draw_admin(ax, divisions, alpha=ro_admin_alpha) for ax in axes]
     landform_counts: list[dict[int, int]] = []
     if landforms is not None:
         landform_counts = [draw_relief(ax, landforms, alpha=relief_alpha) for ax in axes]
@@ -1929,6 +1951,8 @@ def generate_orthographic_map(
         keys.append(add_ports_legend(near, harbours, harbours_shown, x=key_x))
     if landforms is not None:
         keys.append(add_relief_legend(near, landforms, landform_counts, x=key_x))
+    if divisions is not None:
+        keys.append(add_admin_legend(near, divisions, divisions_shown, alpha=ro_admin_alpha, x=key_x))
     if flights is not None:
         keys.append(add_air_routes_legend(near, flights, flights_shown, x=key_x))
     if sightings is not None:
@@ -2001,6 +2025,8 @@ def generate_orthographic_map(
         credits.append(PORTS_ATTRIBUTION)
     if landforms is not None:
         credits.append(RELIEF_ATTRIBUTION)
+    if divisions is not None:
+        credits.append(ADMIN_ATTRIBUTION)
     if flights is not None:
         credits.append(AIR_ROUTES_ATTRIBUTION)
     if sightings is not None:
@@ -2486,7 +2512,7 @@ EXTRA_LAYERS: dict[str, tuple[str, Any]] = {
     "permafrost": ("permafrost", True), "population": ("population", LATEST_POPULATION_YEAR),
     "malaria": ("malaria", "pf"), "aedes": ("aedes", "both"), "cities": ("cities", 2025),
     "shipping": ("shipping", "commercial"), "ports": ("ports", "all"), "air-routes": ("air_routes", "all"),
-    "relief-units": ("relief_units", "units"),
+    "relief-units": ("relief_units", "units"), "ro-admin": ("ro_admin", "counties"),
 }
 
 
@@ -2531,6 +2557,8 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen["ports"] = resolve_port_kind(item.split(":", 1)[1])
         elif item.startswith("relief-units:"):
             chosen["relief_units"] = resolve_relief_level(item.split(":", 1)[1])
+        elif item.startswith("ro-admin:"):
+            chosen["ro_admin"] = resolve_admin_level(item.split(":", 1)[1])
         elif item.startswith("air-routes:"):
             spec = item.split(":", 1)[1].strip()
             resolve_air_routes(spec)
@@ -2547,7 +2575,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
                              "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, indicator:NAME, industry:SECTORS, "
-                             "shipping:KIND, ports:KIND, air-routes:AIRPORTS, relief-units:regions.")
+                             "shipping:KIND, ports:KIND, air-routes:AIRPORTS, relief-units:regions, ro-admin:uats.")
     return chosen
 
 
@@ -2555,7 +2583,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, relief-units:regions …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, relief-units:regions, ro-admin:uats …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -2982,6 +3010,16 @@ def build_cli_parser() -> argparse.ArgumentParser:
                                 "Downloaded once (~1.4 MB).")
     landforms.add_argument("--relief-alpha", type=float, default=0.55, metavar="ALPHA",
                            help="Opacity of the relief units' fill (0-1, default: 0.55).")
+
+    divisions = parser.add_argument_group("Counties and UATs of Romania (GISCO LAU 2024, INS SIRUTA)")
+    divisions.add_argument("--ro-admin", nargs="?", const="counties", metavar="LEVEL",
+                           help="Draw Romania's administrative borders and name them where the names fit: "
+                                "counties (the 41 counties and Bucharest; the default) or uats (the 3,181 "
+                                "municipalities, towns and communes within them as well). "
+                                "Downloaded once (~44 MB).")
+    divisions.add_argument("--ro-admin-alpha", type=float, default=0.0, metavar="ALPHA",
+                           help="Fill the counties in pastel colours, no two neighbours alike, at this opacity "
+                                "(0-1, default: 0, borders only).")
 
     earth = parser.add_argument_group("Plate tectonics, rivers, cyclones, time zones, permafrost")
     earth.add_argument("--plates", action="store_true",
@@ -3611,6 +3649,10 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         resolve_relief_level(args.relief_units)
     elif args.relief_alpha != 0.55:
         logger.warning("--relief-alpha is ignored because no --relief-units was given.")
+    if args.ro_admin:
+        resolve_admin_level(args.ro_admin)
+    elif args.ro_admin_alpha != 0.0:
+        logger.warning("--ro-admin-alpha is ignored because no --ro-admin was given.")
     if args.air_routes:
         resolve_air_routes(args.air_routes)
     resolve_koppen_classes(args.koppen_class or [])
@@ -3700,6 +3742,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             livestock_alpha=args.livestock_alpha, earthquakes=args.earthquakes, cyclones=args.cyclones,
             malaria_alpha=args.malaria_alpha, iucn_alpha=args.iucn_alpha, indicator_alpha=args.indicator_alpha,
             shipping_alpha=args.shipping_alpha, relief_alpha=args.relief_alpha,
+            ro_admin_alpha=args.ro_admin_alpha,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -3784,6 +3827,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         air_routes=args.air_routes,
         relief_units=args.relief_units,
         relief_alpha=args.relief_alpha,
+        ro_admin=args.ro_admin,
+        ro_admin_alpha=args.ro_admin_alpha,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,

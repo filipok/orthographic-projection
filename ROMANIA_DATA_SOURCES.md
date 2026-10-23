@@ -12,6 +12,7 @@ describe them and need confirming before a layer is built on them.
 |---|---|---|
 | `--relief-units` ([relief.py](relief.py)) | geo-spatial.org relief map after Posea & Badea 1984 (Candrea et al. 2008), CC BY-SA 3.0 | 820 units, names restored from the legend |
 | `--indicator eurostat:…` ([indicators.py](indicators.py)) | Eurostat, on GISCO's NUTS boundaries at 1:10 million | NUTS 3 in Romania is the 41 counties and Bucharest, so county statistics that Eurostat holds can already be mapped |
+| `--ro-admin` ([ro_admin.py](ro_admin.py)) | GISCO LAU 2024 boundaries, © EuroGeographics; names, counties and types from INS's SIRUTA (2026, first half), CC BY 4.0 | 41 counties and Bucharest, 3,181 UATs; counties merged from their UATs |
 | `--cities` ([cities.py](cities.py)) | GHSL urban centres (JRC) | Towns of over 50,000 |
 | `--population` ([population.py](population.py)) | GPWv4 via NASA GIBS | **Wrong for Călărași county** (below); draw Romania for 2010 |
 
@@ -70,6 +71,7 @@ SIRUTA codes.
 | Source | Detail | Access |
 |---|---|---|
 | **GISCO LAU 2024** (checked) | All 3,181 UATs at 1:1 million. `GISCO_ID` is `RO_` and the SIRUTA code (`RO_1017` is Municipiul Alba Iulia), with the 2024 population and area | Europe-wide only: GeoPackage 78 MB, GeoJSON, CSV of the attributes (5.6 MB) or Parquet, in EPSG:4326, 3857 or 3035; LAU years 2011–2024. © EuroGeographics for the administrative boundaries, as for the NUTS regions already used |
+| **SIRUTA** (used) | INS's register of administrative units on data.gov.ro, CC BY 4.0, updated twice a year (`siruta_s1_2026.csv`, 0.9 MB). Every county (`NIV` 1), UAT (`NIV` 2) and locality (`NIV` 3) in capitals with diacritics (`ORAŞ DRAGOMIREŞTI`), with its county (`JUD`) and type (`TIP`: 1 county-seat municipality, 4 other municipality, 2 town, 3 commune, 9 Bucharest) | Joined to GISCO by the `SIRUTA` code: its own `LAU` column has three typos (`RO__16365`, `RO93370`, `RO104635`). GISCO's names lack many diacritics, and five differ from SIRUTA's (`Sfântul Gheorghe` for Sfântu Gheorghe, `Râmetea` for Rimetea, `Abrămuţ` for Petreu, `Suhurului`, `Dobroieşti`) |
 | **geo-spatial.org UAT polygons** (download checked) | `ro_uat_poligon.geojson` of 2019-12-20, 200 MB, from [geo-spatial.org/vechi/file_download/29535](https://geo-spatial.org/vechi/file_download/29535) (the old `www` address gives 404). Its fields include `natcode`, likely the SIRUTA code, and `countyMn`. More detailed than GISCO's 1:1 million | Licence not confirmed. The GitHub repo akaleeroy/romania-uat shows how to split and simplify it with mapshaper; the repo itself has no licence |
 
 Counties are the UATs merged by county, so county and UAT borders match exactly. In
@@ -88,16 +90,16 @@ TEMPO every locality records its county (`parentId`).
 - A query for Călărași county's 55 localities in 2024 (POP107D, all ages, both sexes)
   came back whole, e.g. `93888 ORAS LEHLIU-GARA, Anul 2024, 6213`. Queries have a
   size limit, so a national table is best asked for county by county and cached.
-- Names have no diacritics (`CALARASI`); the UAT names should come from the
-  boundaries instead.
+- Names have no diacritics (`CALARASI`); the UAT names come from SIRUTA instead, as
+  `--ro-admin` already reads them.
 - INS's reuse terms are not confirmed yet ("free, crediting INS" is as described).
 
 ## Plan
 
-1. **Counties and UATs** (`--ro-admin counties|uats`): GISCO LAU 2024 for Romania,
-   downloaded once and cached compactly as the relief layer is, counties merged from
-   the UATs. Outlines and names: counties always, municipalities and towns where they
-   fit. Works over any other layer.
+1. **Counties and UATs** (`--ro-admin counties|uats`), **done**: GISCO LAU 2024 for
+   Romania with SIRUTA's names, downloaded once and cached compactly, counties merged
+   from the UATs. Borders and names (counties always; municipalities, towns and,
+   where they fit, communes), an optional fill, over any other layer.
 2. **TEMPO in `--indicator`** (`tempo:CODE?dimension=value`), like `eurostat:`, by UAT
    or county, joined by SIRUTA code, defaulting to the totals and the latest year.
    Presets first: population (POP107D), density (with GISCO's area), population
@@ -116,8 +118,8 @@ TEMPO every locality records its county (`parentId`).
    rebuild the interwar boundaries). Worth it for a historical atlas, but the
    largest of these.
 
-To confirm before step 1 or 2: INS's reuse terms, and whether the geo-spatial.org
-polygons' licence allows them in place of GISCO's for close-ups.
+To confirm before step 2: INS's reuse terms for TEMPO. Still open for close-ups:
+whether the geo-spatial.org polygons' licence allows them in place of GISCO's.
 
 ### Other open work
 
@@ -137,6 +139,7 @@ polygons' licence allows them in place of GISCO's for close-ups.
   [R package TEMPO](https://cran.r-universe.dev/TEMPO/doc/using-tempo.html)
 - GISCO: [LAU datasets](https://gisco-services.ec.europa.eu/distribution/v2/lau/datasets.json),
   [LAU 2024 files](https://gisco-services.ec.europa.eu/distribution/v2/lau/lau-2024-files.json)
+- SIRUTA: [first half of 2026 on data.gov.ro](https://data.gov.ro/dataset/siruta_s1-2026)
 - Boundaries: [geo-spatial.org UAT polygons](https://geo-spatial.org/vechi/file_download/29535),
   [romania-uat](https://github.com/akaleeroy/romania-uat)
 - CarpatClim: [data](https://surfobs.climate.copernicus.eu/dataaccess/access_carpatclim.php),

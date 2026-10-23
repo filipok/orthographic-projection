@@ -196,6 +196,14 @@ The main script is [ortho.py](ortho.py).
 *The depressions of the Eastern Carpathians up close (plain OSM, 100 km radius, relief units and GHSL cities).*
 
 <p align="center">
+  <img src="sample_romania_counties.png" alt="A disc 390 km around central Romania on a plain map, the country's 41 counties and Bucharest filled in four pastel colours so that no two neighbours share one, each named in capitals, inside the bold border of Romania" width="48%">
+  <img src="sample_cluj_uats.png" alt="A disc 100 km around Cluj-Napoca with the borders of its counties and of the municipalities, towns and communes within them: Cluj-Napoca, Zalău and Alba Iulia in bold, towns such as Huedin and Gherla, and hundreds of communes in italic, Apahida, Feleacu, Florești and others" width="48%">
+</p>
+
+*Left: Romania's counties (plain OSM, 390 km radius, GISCO LAU 2024 and INS SIRUTA).*<br>
+*Right: The municipalities, towns and communes around Cluj-Napoca (plain OSM, 100 km radius).*
+
+<p align="center">
   <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
 </p>
 
@@ -267,6 +275,7 @@ The main script is [ortho.py](ortho.py).
 - Night lights: NASA's Black Marble, the Earth at night, as a base map
 - Optional air routes: the airline network, or the routes from chosen airports or of chosen airlines, as great-circle arcs wider for routes more airlines fly
 - Optional relief units of Romania: its 820 geomorphological units (Posea & Badea), from the Carpathians to single depressions and plains such as Depresiunea Hațegului or Câmpia Ierului, filled in their major region's colour (depressions, corridors and floodplains paler) and named, or the 16 major regions alone
+- Optional counties and UATs of Romania: the borders of its 41 counties and Bucharest, and of its 3,181 municipalities, towns and communes, named where the names fit, with the counties optionally filled so no two neighbours look alike
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
@@ -416,7 +425,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `relief-units`, `relief-units:regions` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `relief-units`, `relief-units:regions`, `ro-admin`, `ro-admin:uats` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -535,6 +544,10 @@ python ortho.py --lat 5 --lon 20 --borders 1914-07-01
 python ortho.py --lat 45.9 --lon 25.0 --radius 330 --provider osm_plain --relief-units
 python ortho.py --lat 45.9 --lon 25.0 --radius 330 --provider nasa --relief-units regions --relief-alpha 0.45
 
+# Romania's counties, or its municipalities, towns and communes too (see "Counties and UATs of Romania")
+python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider osm_plain --ro-admin --ro-admin-alpha 0.5
+python ortho.py --lat 46.75 --lon 23.6 --radius 100 --provider osm_plain --ro-admin uats
+
 # Biomes, all or some, the ecoregions within 1,200 km of Madagascar, or the realms (see "Biomes, Ecoregions and Realms")
 python ortho.py --lat 5 --lon 20 --biomes
 python ortho.py --lat 10 --lon 100 --biome-class mangroves --biome-class "tropical moist"
@@ -627,6 +640,8 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--borders-alpha ALPHA` | Opacity of the borders' fill (0–1) | `0.55` |
 | `--relief-units [LEVEL]` | Draw Romania's relief units, filled in their major region's colour and named: `units` (all 820) or `regions` (the 16 major ones) | off (`units` when given alone) |
 | `--relief-alpha ALPHA` | Opacity of the relief units' fill (0–1) | `0.55` |
+| `--ro-admin [LEVEL]` | Draw Romania's administrative borders and name them where they fit: `counties` (the 41 counties and Bucharest) or `uats` (the 3,181 municipalities, towns and communes too) | off (`counties` when given alone) |
+| `--ro-admin-alpha ALPHA` | Fill the counties in pastel colours, no two neighbours alike, at this opacity (0–1; 0 draws borders only) | `0` |
 | `--ocean-depth` | Colour the sea floor by depth and shade it, with a key (opacity: `--elevation-alpha`) | off |
 | `--ice-age` | Draw the last ice age: the land it left dry (sea ~120 m lower), its coast, and its ice sheets | off |
 | `--plates` | Draw the plate boundaries by kind and name the large plates | off |
@@ -1531,6 +1546,57 @@ python ortho.py --lat 46.3 --lon 25.55 --radius 100 --provider osm_plain --relie
   compact file. Reading the legend needs `xlrd`. The map is CC BY-SA 3.0: it is
   not shipped here, and a map drawn with it carries its credit line and, being
   an adaptation, should be shared under the same licence.
+
+## Counties and UATs of Romania
+
+`--ro-admin` (`ro_admin=` in the API, `ro-admin` at the prompt) draws
+Romania's administrative divisions: its 41 counties (județe) and the
+municipality of Bucharest, and with `uats` the 3,181 administrative-territorial
+units (UATs) within them, 103 municipalities (municipii), 216 towns (orașe)
+and 2,862 communes (comune). The borders are Eurostat's (GISCO, Local
+Administrative Units 2024, 1:1 million); the names, counties and types come
+from INS's register of them, SIRUTA (first half of 2026), joined by the SIRUTA
+code each GISCO unit carries:
+
+```powershell
+# The counties, filled so no two neighbours look alike
+python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider osm_plain --ro-admin --ro-admin-alpha 0.5
+
+# The municipalities, towns and communes around Cluj-Napoca
+python ortho.py --lat 46.75 --lon 23.6 --radius 100 --provider osm_plain --ro-admin uats
+
+# Over another layer: the counties' borders on the relief regions
+python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider nasa --relief-units regions --ro-admin
+```
+
+- **Borders.** Romania's border is drawn boldest, then the counties', then,
+  with `uats`, the UATs' in a thin grey. Each county is the union of its UATs,
+  so the two levels meet exactly, and Romania's border the union of the
+  counties. By default only the borders are drawn, so the layer goes over any
+  other; `--ro-admin-alpha` fills the counties in pastel colours, picked so no
+  two neighbouring counties (Bucharest and Ilfov among them) share one.
+- **Names.** County names go in bold capitals in the middle of what shows of
+  each county, largest first. With `uats`, the UATs' names follow:
+  municipalities (county seats in bold), towns, then communes in small italic,
+  the most populous first within each. A commune is named only where its name
+  fits inside it, so communes are named in close-ups and left out on a map of
+  the whole country. Names fit around those of cities, plants and ports, and a
+  UAT the cities layer has already named is not named again; Bucharest, a
+  county of one UAT, is named once.
+- **Spelling.** GISCO's names left out many diacritics (`Oraş Dragomiresti`)
+  and name no county, so the names are SIRUTA's, which it writes in capitals
+  (`ORAŞ DRAGOMIREŞTI`). They are written as Romanian writes them: `Câmpulung
+  la Tisa`, `Valea lui Mihai`, `Poienile de sub Munte`, `Ștefan cel Mare`,
+  `C.A. Rosetti`, with ş, ţ under a comma. Where the two differ by more than
+  diacritics, SIRUTA's spelling is kept (`Sfântu Gheorghe`, `Rimetea`,
+  `Piatra-Neamț`).
+- **Key.** The key counts the counties and UATs in view by type, and shows
+  Romania's border only when the map reaches beyond it.
+- **Data.** GISCO's file holds all of Europe's LAUs (~43 MB, zipped); it and
+  SIRUTA (~0.9 MB) are downloaded once into `~/.cache/ortho_tiles/ro_admin/`
+  and kept as one compact file (~1.7 MB). The boundaries are © EuroGeographics
+  and SIRUTA is CC BY 4.0; neither is shipped here, and a map drawn with them
+  carries their credit line.
 
 ## Ocean Depth and the Ice Age Coast
 
@@ -2685,6 +2751,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [air_routes.py](air_routes.py): the OpenFlights airline network as great-circle arcs
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [relief.py](relief.py): Romania's relief units (Posea & Badea, geo-spatial.org): names restored from the legend, fills by region, names and key
+- [ro_admin.py](ro_admin.py): Romania's counties and UATs (GISCO LAU 2024, INS SIRUTA): names and types joined by SIRUTA code, county borders from their UATs, fills, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)
 - [soil_properties.py](soil_properties.py): soil property overlay and key (SoilGrids 2.0, 5 km)
