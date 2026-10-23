@@ -759,7 +759,8 @@ $("copy").addEventListener("click", async () => {
 
 async function init() {
   options = await (await fetch("/api/options")).json();
-  const names = { osm: "OpenStreetMap", osm_plain: "OpenStreetMap, plain land", google: "Google roadmap",
+  const names = { osm: "OpenStreetMap", osm_plain: "OpenStreetMap, plain land",
+                  osm_local: "OpenStreetMap data, names in print size (Romania)", google: "Google roadmap",
                   google_satellite: "Google satellite", nasa: "NASA Blue Marble",
                   nasa_night: "NASA Black Marble (night lights)" };
   $("city").append(...options.cities.map((c) => option(c)));

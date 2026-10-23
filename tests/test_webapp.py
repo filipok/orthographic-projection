@@ -65,7 +65,7 @@ class TestPage:
     def test_options(self, client):
         options = client.get("/api/options").json()
         assert "Paris" in options["cities"]
-        assert options["providers"] == ["osm", "osm_plain", "nasa", "nasa_night"]          # no Google key set
+        assert options["providers"] == ["osm", "osm_plain", "osm_local", "nasa", "nasa_night"]          # no Google key set
         assert options["dpi"] == {"default": 150, "min": ortho.MIN_DPI, "max": 300}
         assert options["periods"][0] == ["year", "Year"] and len(options["periods"]) == 17
         assert "ph" in options["soil_properties"] and "wheat" in options["crops"]

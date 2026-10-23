@@ -44,6 +44,7 @@ class TestConstants:
     def test_tile_providers_list(self):
         assert "osm" in ortho.TILE_PROVIDERS
         assert "osm_plain" in ortho.TILE_PROVIDERS
+        assert "osm_local" in ortho.TILE_PROVIDERS
         assert "google" in ortho.TILE_PROVIDERS
         assert "google_satellite" in ortho.TILE_PROVIDERS
         assert "nasa" in ortho.TILE_PROVIDERS
@@ -1059,7 +1060,7 @@ class TestRunCLIValidation:
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
             indicator=None, indicator_year=None, indicator_alpha=0.75, industry=None,
             shipping=None, shipping_alpha=0.85, ports=None, air_routes=None, relief_units=None,
-            relief_alpha=0.55, ro_admin=None, ro_admin_alpha=0.0,
+            relief_alpha=0.55, ro_admin=None, ro_admin_alpha=0.0, text_scale=1.0,
             wind=None, radius=None, rectangle=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -1584,6 +1585,14 @@ class TestRunCLIValidation:
         kwargs = render.call_args.kwargs
         assert (kwargs["ro_admin"], kwargs["ro_admin_alpha"]) == ("UATs", 0.4)
 
+    def test_text_scale_passed_to_renderer(self):
+        args = self._make_args(city="paris", text_scale=2.0)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert render.call_args.kwargs["text_scale"] == 2.0
+        assert ortho.build_cli_parser().parse_args(["--text-scale", "2.5"]).text_scale == 2.5
+
     def test_ro_admin_alpha_alone_is_ignored(self, caplog):
         args = self._make_args(lat=46.75, lon=23.6, ro_admin_alpha=0.4)
         with mock.patch.object(ortho, "generate_orthographic_map"), mock.patch.object(ortho, "configure_tile_cache"):
@@ -1656,6 +1665,7 @@ class TestRunCLIValidation:
         ({"relief_units": "units", "relief_alpha": 1.5}, "relief_alpha"),
         ({"ro_admin": "villages"}, "Unknown level of Romania's administrative units"),
         ({"ro_admin": "counties", "ro_admin_alpha": -0.1}, "ro_admin_alpha"),
+        ({"text_scale": 5.0}, "text_scale must be between 0.5 and 4"),
         ({"shipping": "all", "shipping_alpha": 1.5}, "shipping_alpha"),
         ({"air_routes": "airline:"}, "Name an airline"),
         ({"indicator": "fertility", "indicator_year": 1900}, "Indicator years run from 1960"),
@@ -2227,6 +2237,53 @@ class TestGenerateOrthographicMapIntegration:
         assert draw.call_count == 2 and draw.call_args.kwargs["alpha"] == 0.3
         assert key.call_args.args[1:] == (divisions, shown) and key.call_args.kwargs["alpha"] == 0.3
         assert ortho.ADMIN_ATTRIBUTION in attribution.call_args.args[1]
+
+    def test_osm_local_drawn_from_data_and_named_last(self, tmp_path):
+        base = mock.Mock(date="22 Oct 2026")
+        order = []
+        with mock.patch.object(ortho.GeoAxes, "add_image") as tiles, \
+                mock.patch.object(ortho.osm_local, "load_base", return_value=base), \
+                mock.patch.object(ortho.osm_local, "draw_base", side_effect=lambda *a: order.append("base")), \
+                mock.patch.object(ortho.osm_local, "name_base", side_effect=lambda *a: order.append("names")), \
+                mock.patch.object(ortho, "load_relief", return_value=mock.Mock()), \
+                mock.patch.object(ortho, "draw_relief", side_effect=lambda *a, **k: order.append("relief") or {}), \
+                mock.patch.object(ortho, "add_relief_legend"), \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), tile_provider="osm_local",
+                                            relief_units="units")
+        tiles.assert_not_called()
+        assert order == ["base", "relief", "names"]
+        assert attribution.call_args.args[1][0] == ortho.osm_local.attribution(base)       # in place of the tiles
+
+    @pytest.mark.parametrize("scale, beside", [(1.0, None), (2.0, None), (2.0, (45, 26))])
+    def test_text_scale_draws_a_smaller_figure_at_a_higher_dpi(self, tmp_path, scale, beside):
+        saved = []
+
+        def savefig(fig, *args, **kwargs):
+            saved.append((tuple(fig.get_size_inches()), kwargs["dpi"],
+                          [ax.get_position().bounds for ax in fig.axes]))
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho.Figure, "savefig", savefig):
+            ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), text_scale=scale, beside=beside)
+        (size, dpi, boxes), = saved
+        inches = 20 / scale
+        assert size == pytest.approx((inches * (2 if beside else 1), inches)) and dpi == 20 * scale
+        if beside:                       # the globes laid out alike, whatever the figure's size
+            assert boxes[0] == pytest.approx((0.1025, 0.11, 0.385, 0.77))     # as at 20 in
+
+    def test_osm_local_unavailable_stops(self, tmp_path):
+        with mock.patch.object(ortho.osm_local, "load_base", side_effect=ortho.OSMDataError("offline")):
+            with pytest.raises(ortho.OSMDataError, match="offline"):
+                ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                                output_dir=str(tmp_path), tile_provider="osm_local")
+        assert not os.listdir(tmp_path)
+
+    def test_osm_local_has_no_tiles(self):
+        with pytest.raises(ValueError, match="drawn from data, not tiles"):
+            ortho.create_tile_source("osm_local")
+        assert ortho.tile_attribution_lines(None, "osm_local", 9) == []
 
     def test_ro_admin_unavailable_draws_nothing(self, tmp_path, caplog):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None),                 mock.patch.object(ortho, "load_admin", side_effect=ortho.AdminError("offline")),                 mock.patch.object(ortho, "draw_admin") as draw,                 mock.patch.object(ortho, "_add_attribution") as attribution:
@@ -2962,8 +3019,9 @@ class TestGenerateOrthographicMapIntegration:
 
 class TestAttribution:
     def test_every_provider_has_a_credit_source(self):
-        # Google credits come from the Map Tiles API; everything else is fixed text
-        assert set(ortho.TILE_ATTRIBUTIONS) | set(ortho.GOOGLE_MAP_TYPES) == set(ortho.TILE_PROVIDERS)
+        # Google credits come from the Map Tiles API, a base drawn from data credits its data; the rest is fixed
+        assert (set(ortho.TILE_ATTRIBUTIONS) | set(ortho.GOOGLE_MAP_TYPES) | ortho.LOCAL_PROVIDERS
+                == set(ortho.TILE_PROVIDERS))
 
     def test_credits_drawn_unclipped_in_bottom_right(self):
         import matplotlib

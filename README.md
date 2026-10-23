@@ -323,6 +323,7 @@ The interactive menu exposes these providers:
 
 - `osm`: OpenStreetMap
 - `osm_plain`: OpenStreetMap with forests, meadows, heath, farmland and sand deserts drawn as plain land, so the layers on top aren't tinted by OSM's land cover colours
+- `osm_local`: no tiles: Romania and Moldova drawn from OpenStreetMap's data (Geofabrik), with names in type sized for print (see [OpenStreetMap Drawn from Data](#openstreetmap-drawn-from-data))
 - `google`: Google road map (API key required)
 - `google_satellite`: Google satellite imagery (API key required; not available to EEA-billed projects, see below)
 - `nasa`: NASA Blue Marble satellite imagery with shaded relief and ocean-floor bathymetry; free, public domain, no key
@@ -597,9 +598,10 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--city CITY` | Pre-defined city (case-insensitive) | — |
 | `--lat LAT` | Custom latitude (-90 to 90) | — |
 | `--lon LON` | Custom longitude (-180 to 180) | — |
-| `--provider` | Tile provider: `osm`, `osm_plain`, `google`, `google_satellite`, `nasa`, `nasa_night` (the Earth at night) | `osm` |
+| `--provider` | Tile provider: `osm`, `osm_plain`, `osm_local` (drawn from OSM data, Romania), `google`, `google_satellite`, `nasa`, `nasa_night` (the Earth at night) | `osm` |
 | `--zoom ZOOM` | Tile zoom level: 1–4 for the whole globe; with `--radius`, up to one above its default | `3`, or chosen from `--radius` and the latitude |
 | `--dpi DPI` | Output resolution, 10–1200. The figure is 20 in, so 300 DPI = 6,000 px | `300` |
+| `--text-scale X` | Names, lines, markers and keys X times larger on the map (0.5–4), for a map printed small: the figure is 20/X in, drawn at X times the DPI, so the image keeps its size in pixels | `1` |
 | `-o`, `--output` | Explicit output filepath (overrides auto-naming) | — |
 | `--output-dir` | Directory for auto-named output files | `.` |
 | `--cache-dir` | OSM and NASA tile cache directory (Google tiles are never cached) | `~/.cache/ortho_tiles` |
@@ -898,6 +900,7 @@ subtitle = "România · Uniunea Europeană · Lumea"
 language = "ro"     # the labels ("Cuprins", "Întrebări și exerciții" …): "ro" or "en"
 paper = "a4"        # a4, a3 or letter
 dpi = 120           # the maps' resolution (50–300); a globe is 20 in, so 120 dpi is 2,400 px
+text_scale = 2      # every map's names, lines and keys twice as large (0.5–4; a page's text-scale wins)
 
 [cover.map]         # a map for the cover (optional)
 lat = 45.95
@@ -934,6 +937,13 @@ rivers = true
   `rectangle` fills the page instead of leaving its corners empty (see
   "Rectangular Maps"). The atlas sets `dpi` and the output for every map,
   so a page's map may not.
+- **Type for the page.** A map is drawn on a 20 in figure, and an A4 page
+  prints it about 6 in wide, so a name set in 7.5 points prints at about 3.
+  `text_scale = 2` draws every map on a 10 in figure at twice the dpi: the
+  same pixels, with names, lines, dots and keys twice as large, about 6 points
+  on the page. Fewer names fit, and the layers leave out those that would
+  overlap; county names and seats try more places, smaller sizes and every
+  side of their dot first. A page's own `text-scale` wins over the atlas's.
 - **Checked first.** Every map is checked like a command line before anything is
   drawn, and a mistake names its page: `romania_school.toml page 5 (Clima):
   Unknown Köppen-Geiger class 'Zzz'`.
@@ -1606,6 +1616,59 @@ python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider nasa --relief-unit
   and kept as one compact file (~1.7 MB). The boundaries are © EuroGeographics
   and SIRUTA is CC BY 4.0; neither is shipped here, and a map drawn with them
   carries their credit line.
+
+## OpenStreetMap Drawn from Data
+
+OSM's tiles are drawn for screens, one tile pixel to a screen pixel, and their
+names are part of the picture. Shrunk onto a page, a map of Romania at zoom 9
+puts some 700 tile pixels in an inch, and the names come out 1-2 points high,
+too small to read. `--provider osm_local` draws no tiles: it draws the land,
+lakes, rivers, borders and places from OpenStreetMap's data, and names them as
+the other layers name places, at a set size in points, clear of one another:
+
+```powershell
+# Romania and Moldova: towns, rivers and lakes named for print
+python ortho.py --lat 45.95 --lon 24.95 --radius 450 --no-circles --provider osm_local
+
+# Under the counties: the base names only what the counties layer leaves
+python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider osm_local --ro-admin --ro-admin-alpha 0.5
+```
+
+- **What it draws.** The land and the borders between countries (GISCO,
+  1:1 million, the whole world), the sea around them, and in Romania and
+  Moldova the lakes, rivers and places OSM maps. The neighbours' rivers and
+  lakes near Romania (Hungary, Serbia, Bulgaria, Ukraine) are drawn without
+  names. Beyond them, and on maps of Europe or the world, there is only land,
+  sea and borders.
+- **For the scale.** The map's width sets what it shows: rivers at least 1/30
+  of it long (30 km on a map 900 km across), lakes of at least (width/300)²
+  km², the capital, cities and towns, and on maps up to 300 km across the
+  villages. Rivers are wider the longer they are.
+- **Names.** The capital and cities first, the most populous first; then the
+  rivers, longest first, along a stretch in sight where they run within 65° of
+  level; then the lakes; then the towns and villages. Each goes in the room
+  other layers' names leave, after theirs, and a place another layer has named
+  (a county seat) is not named again.
+- **Spelling.** The names are OSM's `name`, as Romania and Moldova write them,
+  with ş, ţ under a comma. A place in Romania is spelled as INS's register,
+  SIRUTA, spells it where the two differ only in case or hyphens (`Poienile de
+  sub Munte`, `Strâmba-Jiu`; SIRUTA is downloaded once more for this), and
+  `Roșiori de Vede` for OSM's `Roșiorii`; where SIRUTA lacks a diacritic OSM
+  has (`Ilva Mica`), OSM's is kept. Checked against SIRUTA 2026, OSM's 319
+  municipalities and towns in Romania all match, and over 98% of its villages. A river's parts of one name that join up are one
+  river; of a name in two languages (`Dunărea - Дунав`, `Dunav/Dunărea`) the
+  Romanian part is kept, a Danube branch is named for the branch (`Brațul
+  Sulina`), and `Râul Mureș` is `Mureș` where OSM names the rest of it so
+  (`Râul Doamnei` keeps its word). Names only in another script (Transnistria's
+  towns, the Serbian and Bulgarian rivers) are left out, as are unnamed canals,
+  the plains' irrigation and drainage channels.
+- **Data.** Geofabrik's free shapefiles are 0.2-1.8 GB per country, mostly
+  buildings, roads and land use; only the places, waterways and water areas
+  are read from them, with HTTP range requests (~280 MB in all, most of it
+  Ukraine's). With GISCO's countries (~33 MB) they are read once into
+  `~/.cache/ortho_tiles/osm_local/` (~70 MB). To bring the data up to date,
+  delete that file; the credit line gives the extracts' date. OSM's data is
+  © OpenStreetMap contributors under the ODbL.
 
 ## Ocean Depth and the Ice Age Coast
 
@@ -2634,6 +2697,7 @@ the globe:
 | Layer | Credit line |
 |---|---|
 | `osm`, `osm_plain` tiles | *Map tiles © OpenStreetMap contributors* |
+| `osm_local` base | *Map data © OpenStreetMap contributors (ODbL), Geofabrik extracts of* (their date)*; land and borders © EuroGeographics (GISCO)* |
 | `nasa` tiles | *Imagery: NASA Blue Marble, via NASA GIBS (ESDIS)* |
 | `nasa_night` tiles | *Imagery: NASA Black Marble 2016 (VIIRS night lights), via NASA GIBS (ESDIS)* |
 | `google`, `google_satellite` tiles | *Google Maps* plus the copyright string returned by the Map Tiles API |
@@ -2760,6 +2824,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [air_routes.py](air_routes.py): the OpenFlights airline network as great-circle arcs
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
 - [relief.py](relief.py): Romania's relief units (Posea & Badea, geo-spatial.org): names restored from the legend, fills by region, names and key
+- [osm_local.py](osm_local.py): the `osm_local` base map: Romania's and Moldova's places, rivers and lakes from Geofabrik's OpenStreetMap extracts (read in parts), GISCO's land and borders, drawn and named for print
 - [ro_admin.py](ro_admin.py): Romania's counties and UATs (GISCO LAU 2024, INS SIRUTA): names and types joined by SIRUTA code, county borders from their UATs, fills, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)

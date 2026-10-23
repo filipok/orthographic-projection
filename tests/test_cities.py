@@ -282,6 +282,31 @@ class TestDrawing:
         assert cities.draw_cities(ax, found, 1_000_000) == [0, 1]                # still drawn
         assert [t.get_text() for t in ax.texts] == ["Midtown"]
 
+    def test_bold_capitals_take_their_measured_width(self):
+        proj = globe_projection(45, 25)
+        ax = Figure(figsize=(10, 10), dpi=72).add_subplot(projection=proj)
+        ax.set_extent((-1e6, 1e6, -1e6, 1e6), crs=proj)
+        to_map = ax.transData.inverted()
+        # A name 73 points wide bold, estimated at 54: a second one 60 points to its right clears the estimate only
+        (x0, y), (x1, _) = to_map.transform([(300, 360), (360, 360)])
+        assert cities.bold_width("MARAMUREȘ", 10) > 1.3 * 0.6 * 10 * len("MARAMUREȘ")
+        plain, bold = cities.LabelSpace(ax), cities.LabelSpace(ax)
+        assert plain.claim(x0, y, "MARAMUREȘ", 10) and plain.claim(x1, y, "MARAMUREȘ", 10)
+        assert bold.claim(x0, y, "MARAMUREȘ", 10, bold=True) and not bold.claim(x1, y, "MARAMUREȘ", 10, bold=True)
+
+    def test_a_name_goes_round_its_point_where_there_is_room(self):
+        proj = globe_projection(45, 25)
+        ax = Figure(figsize=(10, 10), dpi=72).add_subplot(projection=proj)
+        ax.set_extent((-1e6, 1e6, -1e6, 1e6), crs=proj)
+        space = cities.LabelSpace(ax)
+        assert space.claim(0.0, 0.0, "Sibiu", 8)
+        # Another name for the same point goes below it; then no room is left
+        assert [space.claim_around(0.0, 0.0, "Sibiu", 8) for _ in range(2)] == ["below", None]
+        beside = cities.LabelSpace(ax)
+        assert beside.claim_around(0.0, 0.0, "Sibiu", 8, sides=("right",)) == "right"
+        assert beside.claim_around(0.0, 0.0, "Sibiu", 8, sides=("right", "left")) == "left"
+        assert cities.side_offset("left", 8) == {"xytext": (-3.6, 0), "ha": "right", "va": "center"}
+
     def test_layers_share_the_room_for_names(self):
         ax = _globe()
         assert cities.label_space(ax) is cities.label_space(ax)

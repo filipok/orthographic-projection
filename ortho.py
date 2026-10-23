@@ -94,6 +94,8 @@ from relief import (
 from ro_admin import (
     ADMIN_ATTRIBUTION, AdminError, add_admin_legend, draw_admin, load_admin, resolve_admin_level,
 )
+import osm_local
+from osm_local import OSMDataError
 from industry import (
     GROUPS as INDUSTRY_GROUPS, SECTORS as INDUSTRY_SECTORS, IndustryDataError, add_industry_legend, draw_industry,
     industry_attribution, load_plants, resolve_sectors,
@@ -397,6 +399,7 @@ MAJOR_METROPOLISES = {
 TILE_PROVIDERS = [
     "osm",
     "osm_plain",
+    "osm_local",
     "google",
     "google_satellite",
     "nasa",
@@ -416,7 +419,11 @@ TILE_ATTRIBUTIONS = {
 
 # Land and sea drawn under the tiles, so a tile that fails to download is not
 # blank: the map's own colours where they differ from the light defaults
-FALLBACK_COLOURS = {"nasa_night": ("#04050f", "#0b0d18")}     # (sea, land) of Black Marble
+FALLBACK_COLOURS = {"nasa_night": ("#04050f", "#0b0d18"),     # (sea, land) of Black Marble
+                    # Drawn from data: the sea under GISCO's land (Natural Earth's coarser land would show)
+                    "osm_local": (osm_local.WATER_COLOUR, osm_local.WATER_COLOUR)}
+# Providers drawn from data rather than tiles (see osm_local)
+LOCAL_PROVIDERS = frozenset({"osm_local"})
 
 
 def _to_rgba(img: Any) -> np.ndarray:
@@ -571,6 +578,8 @@ def create_tile_source(
         tile_source = CachedNASA(cache=cache_dir or False, **tile_kwargs)
     elif provider == "nasa_night":
         tile_source = CachedNASANight(cache=cache_dir or False, **tile_kwargs)
+    elif provider in LOCAL_PROVIDERS:
+        raise ValueError(f"{provider!r} is drawn from data, not tiles (see osm_local)")
     elif provider in GOOGLE_MAP_TYPES:
         if cache_dir:
             logger.info("Google tiles are not cached (Google Maps Platform terms).")
@@ -584,8 +593,10 @@ def create_tile_source(
     return BufferedTileSource(tile_source, tile_buffer_factor=tile_buffer_factor)
 
 
-def tile_attribution_lines(tiles: BufferedTileSource, tile_provider: str, zoom: int) -> list[str]:
-    """Return the credit lines the tile provider requires for a render at *zoom*."""
+def tile_attribution_lines(tiles: BufferedTileSource | None, tile_provider: str, zoom: int) -> list[str]:
+    """Return the credit lines the tile provider requires for a render at *zoom* (none without tiles)."""
+    if tiles is None:
+        return []
     if isinstance(tiles.tile_source, GoogleMapTiles):
         return tiles.tile_source.attribution_lines(zoom)
     return [TILE_ATTRIBUTIONS[tile_provider.lower()]]
@@ -598,6 +609,11 @@ DEFAULT_DPI = 300
 MIN_DPI = 10
 # 20 in × 1200 dpi is already 24 000 px square (~2.3 GB of RGBA in memory)
 MAX_DPI = 1200
+# A map is drawn on a figure this many inches high, its type and lines sized in points on it. With a text scale,
+# the figure is that many times smaller and drawn at that many times the dpi: as many pixels, its names, lines
+# and keys that many times larger on the map (for a map printed small, as in an atlas)
+FIGURE_INCHES = 20
+MIN_TEXT_SCALE, MAX_TEXT_SCALE = 0.5, 4.0
 
 
 # Whole-globe renders take zoom 1-4: zoom 4 already fetches ~150 tiles.
@@ -684,7 +700,7 @@ def validate_render_options(
     permafrost_alpha: float = 0.7, population_alpha: float = 0.7, livestock_alpha: float = 0.7,
     earthquakes: float | None = None, cyclones: int | None = None, malaria_alpha: float = 0.75,
     iucn_alpha: float = 0.45, indicator_alpha: float = 0.75, shipping_alpha: float = 0.85,
-    relief_alpha: float = 0.55, ro_admin_alpha: float = 0.0,
+    relief_alpha: float = 0.55, ro_admin_alpha: float = 0.0, text_scale: float = 1.0,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -693,6 +709,8 @@ def validate_render_options(
         beside_lat, beside_lon = beside
         if not (-90 <= beside_lat <= 90 and -180 <= beside_lon <= 180):
             raise ValueError(f"beside must be a latitude (-90 to 90) and longitude (-180 to 180), got {beside}")
+    if not (math.isfinite(text_scale) and MIN_TEXT_SCALE <= text_scale <= MAX_TEXT_SCALE):
+        raise ValueError(f"text_scale must be between {MIN_TEXT_SCALE:g} and {MAX_TEXT_SCALE:g}, got {text_scale}")
     lat = zoom_latitude(lat, beside)
     if radius_km is not None:
         if not (math.isfinite(radius_km) and MIN_RADIUS_KM <= radius_km <= MAX_RADIUS_KM):
@@ -852,6 +870,7 @@ def generate_orthographic_map(
     relief_alpha: float = 0.55,
     ro_admin: str | None = None,
     ro_admin_alpha: float = 0.0,
+    text_scale: float = 1.0,
 ) -> str:
     """
     Generate an orthographic map projection centered at a specific point.
@@ -868,13 +887,21 @@ def generate_orthographic_map(
         Tile zoom level (1–4). Higher values fetch exponentially more tiles.
     dpi : int
         Dots per inch for the output image. 300+ is high resolution.
+    text_scale : float
+        How many times larger the names, lines, markers and keys are drawn on
+        the map, for a map printed small (0.5 to 4; default 1). The image has as
+        many pixels: the figure is *text_scale* times smaller than
+        :data:`FIGURE_INCHES` and saved at *text_scale* times *dpi*.
     background_color : str
         Ocean colour (the fallback ocean under the tiles; ``"nasa_night"``
         uses its own dark sea and land). The PNG itself is saved with a
         transparent background.
     tile_provider : str
         One of :data:`TILE_PROVIDERS`: ``"osm"``, ``"osm_plain"``, ``"google"``,
-        ``"google_satellite"``, ``"nasa"``, ``"nasa_night"`` (the Earth at night).
+        ``"google_satellite"``, ``"nasa"``, ``"nasa_night"`` (the Earth at night), or
+        ``"osm_local"``, no tiles but Romania and Moldova drawn from OpenStreetMap's
+        data and named in print-size type (see :mod:`osm_local`; raises
+        :class:`osm_local.OSMDataError` if the data cannot be had).
     tile_kwargs : dict, optional
         Extra keyword arguments forwarded to the tile source constructor.
         Google providers accept ``api_key`` (default: ``$GOOGLE_MAPS_API_KEY``),
@@ -1163,7 +1190,7 @@ def generate_orthographic_map(
         permafrost_alpha=permafrost_alpha, population_alpha=population_alpha, livestock_alpha=livestock_alpha,
         earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha, iucn_alpha=iucn_alpha,
         indicator_alpha=indicator_alpha, shipping_alpha=shipping_alpha, relief_alpha=relief_alpha,
-        ro_admin_alpha=ro_admin_alpha,
+        ro_admin_alpha=ro_admin_alpha, text_scale=text_scale,
     )
     population_year = resolve_population_year(population) if population is not None else None
     livestock_species = resolve_species(livestock) if livestock else None
@@ -1285,12 +1312,16 @@ def generate_orthographic_map(
     tile_kwargs = tile_kwargs or {}
     if radius_km is not None:
         tile_buffer_factor = min(tile_buffer_factor, RADIUS_TILE_BUFFER)
-    tiles = create_tile_source(
-        tile_provider=tile_provider,
-        tile_buffer_factor=tile_buffer_factor,
-        cache_dir=tile_cache_dir,
-        **tile_kwargs,
-    )
+    tiles, base = None, None
+    if tile_provider.lower() in LOCAL_PROVIDERS:
+        base = osm_local.load_base()          # raises OSMDataError: without it there is no map
+    else:
+        tiles = create_tile_source(
+            tile_provider=tile_provider,
+            tile_buffer_factor=tile_buffer_factor,
+            cache_dir=tile_cache_dir,
+            **tile_kwargs,
+        )
 
     # Steps 2-4: One full-hemisphere Orthographic globe per centre: the
     # requested point and, beside it, its antipode (both_hemispheres) or
@@ -1309,7 +1340,11 @@ def generate_orthographic_map(
     elif beside is not None:
         centres.append((beside[0], beside[1], normalise_bearing(beside_up)))
         logger.info("Adding a second globe, centred at lat=%.4f, lon=%.4f", *beside)
-    fig = Figure(figsize=(20 * len(centres), 20))
+    inches = FIGURE_INCHES / text_scale
+    fig = Figure(figsize=(inches * len(centres), inches))
+    if text_scale != 1:
+        logger.info("Text scale %g: drawing on a %g in figure at %g dpi", text_scale, inches, dpi * text_scale)
+    dpi = dpi * text_scale                    # the figure's resolution, for as many pixels as asked
     if radius_km is not None:
         logger.info("Showing %s km around the centre%s", f"{radius_km:,g}",
                     f", cut to a {rectangle:.3g}:1 rectangle" if rectangle is not None else "")
@@ -1342,6 +1377,11 @@ def generate_orthographic_map(
 
         # Step 5: Register the tiles. Cartopy downloads them later, inside
         # savefig; failed tiles come out transparent (see BufferedTileSource).
+        # A base drawn from data is drawn now instead.
+        if base is not None:
+            osm_local.draw_base(ax, base)
+            continue
+        assert tiles is not None
         ax.add_image(
             tiles,
             zoom,
@@ -1691,6 +1731,10 @@ def generate_orthographic_map(
     landform_counts: list[dict[int, int]] = []
     if landforms is not None:
         landform_counts = [draw_relief(ax, landforms, alpha=relief_alpha) for ax in axes]
+    if base is not None:
+        # The base map's names last, in the room the layers' names leave
+        for ax in axes:
+            osm_local.name_base(ax, base)
     sightings = None
     if taxon is not None:
         try:
@@ -1974,6 +2018,8 @@ def generate_orthographic_map(
 
     # Step 7e: Data credits required by the tile and dataset licences
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
+    if base is not None:
+        credits.append(osm_local.attribution(base))
     if vegetation_credit:
         credits.append(vegetation_credit)
     if biome_layer is not None:
@@ -2046,10 +2092,14 @@ def generate_orthographic_map(
     _add_attribution(axes[-1], credits)
 
     # Step 8: Export
-    logger.info("Fetching '%s' tiles at zoom %d and saving to '%s' at %d DPI …",
-                tile_provider, zoom, output_filename, dpi)
+    if tiles is None:
+        logger.info("Saving to '%s' at %g DPI …", output_filename, dpi)
+    else:
+        logger.info("Fetching '%s' tiles at zoom %d and saving to '%s' at %g DPI …",
+                    tile_provider, zoom, output_filename, dpi)
     fig.savefig(output_filename, dpi=dpi, bbox_inches="tight", transparent=True)
-    _report_tile_failures(tiles)
+    if tiles is not None:
+        _report_tile_failures(tiles)
     if vegetation is not None and vegetation.failed_tiles:
         logger.warning("%d of %d vegetation tiles could not be downloaded (first error: %s).",
                        len(vegetation.failed_tiles), vegetation.total_tiles, vegetation.failed_tiles[0][1])
@@ -2073,9 +2123,9 @@ def antipode(lat: float, lon: float) -> tuple[float, float]:
 
 
 # Side-by-side globes are each the size of a single render's globe (the
-# default subplot height of a 20 in figure), with a 1 in gap between them.
-_GLOBE_SIZE_IN = 0.77 * 20
-_GLOBE_GAP_IN = 1.0
+# default subplot height of the figure), a twentieth of its height apart.
+_GLOBE_SHARE = 0.77
+_GLOBE_GAP_SHARE = 0.05
 
 
 def _add_globe_axes(
@@ -2095,10 +2145,11 @@ def _add_globe_axes(
     else:
         # A centred row of equal square globes
         fig_w, fig_h = fig.get_size_inches()
-        row_w = count * _GLOBE_SIZE_IN + (count - 1) * _GLOBE_GAP_IN
-        left = (fig_w - row_w) / 2 + index * (_GLOBE_SIZE_IN + _GLOBE_GAP_IN)
+        size, gap = _GLOBE_SHARE * fig_h, _GLOBE_GAP_SHARE * fig_h
+        row_w = count * size + (count - 1) * gap
+        left = (fig_w - row_w) / 2 + index * (size + gap)
         ax = fig.add_axes(
-            (left / fig_w, 0.11, _GLOBE_SIZE_IN / fig_w, _GLOBE_SIZE_IN / fig_h),
+            (left / fig_w, 0.11, size / fig_w, size / fig_h),
             projection=proj,
         )
     if not isinstance(ax, GeoAxes):
@@ -2686,6 +2737,14 @@ def build_cli_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_DPI,
         help=f"Output DPI, {MIN_DPI}-{MAX_DPI} (default: {DEFAULT_DPI})",
+    )
+    imagery.add_argument(
+        "--text-scale",
+        type=float,
+        default=1.0,
+        metavar="X",
+        help=f"Draw names, lines and keys X times larger on the map, for a map printed small "
+             f"({MIN_TEXT_SCALE:g}-{MAX_TEXT_SCALE:g}; default 1). The image keeps its size in pixels.",
     )
     imagery.add_argument(
         "-o", "--output",
@@ -3554,7 +3613,7 @@ def run_interactive(tile_cache_dir: str | None = None) -> None:
             **climate_means,
             up=up,
         )
-    except GoogleTilesError as e:
+    except (GoogleTilesError, OSMDataError) as e:
         print(f"\n{e}")
         sys.exit(1)
 
@@ -3743,7 +3802,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             livestock_alpha=args.livestock_alpha, earthquakes=args.earthquakes, cyclones=args.cyclones,
             malaria_alpha=args.malaria_alpha, iucn_alpha=args.iucn_alpha, indicator_alpha=args.indicator_alpha,
             shipping_alpha=args.shipping_alpha, relief_alpha=args.relief_alpha,
-            ro_admin_alpha=args.ro_admin_alpha,
+            ro_admin_alpha=args.ro_admin_alpha, text_scale=args.text_scale,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -3830,6 +3889,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         relief_alpha=args.relief_alpha,
         ro_admin=args.ro_admin,
         ro_admin_alpha=args.ro_admin_alpha,
+        text_scale=args.text_scale,
         koppen_classes=args.koppen_class,
         trewartha=args.trewartha,
         trewartha_classes=args.trewartha_class,
@@ -3884,7 +3944,7 @@ def run_cli(args: argparse.Namespace) -> None:
 
     try:
         generate_orthographic_map(**plan.kwargs)
-    except GoogleTilesError as e:
+    except (GoogleTilesError, OSMDataError) as e:
         logger.error("%s", e)
         sys.exit(1)
 

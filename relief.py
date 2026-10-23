@@ -447,17 +447,17 @@ def visible_units(ax: GeoAxes, units: Sequence[Unit], samples: int = 300) -> dic
     return {int(i): point_index[unit_index == i] for i in np.unique(unit_index)}
 
 
-def anchors(unit: Unit, lon: np.ndarray, lat: np.ndarray) -> list[int]:
+def anchors(unit: Unit, lon: np.ndarray, lat: np.ndarray, count: int = ANCHORS) -> list[int]:
     """Where to try naming *unit*, among its visible points (*lon*, *lat*), best first: the one deepest inside
     it, clear of its edges as a name of a long, bent unit needs to be, the one nearest the middle of what
-    shows, then others less deep, in case names already placed cover those."""
+    shows, then others less deep, in case names already placed cover those (*count* in all, at most)."""
     # Distances in degrees of latitude: longitudes shrink by the cosine of the unit's latitude
     shrink = float(np.cos(np.radians(np.mean(lat))))
     edge = shapely.affinity.scale(unit.outline.boundary, shrink, 1, origin=(0, 0))
     depth = shapely.distance(shapely.points(lon * shrink, lat), edge)
     middle = (lon - lon.mean()) ** 2 + (lat - lat.mean()) ** 2
     by_depth = np.argsort(-depth, kind="stable")
-    others = by_depth[:: max(1, len(by_depth) // ANCHORS)][1:ANCHORS]
+    others = by_depth[:: max(1, len(by_depth) // count)][1:count]
     return list(dict.fromkeys([int(by_depth[0]), int(np.argmin(middle)), *(int(k) for k in others)]))
 
 
@@ -529,7 +529,8 @@ def draw_relief(ax: GeoAxes, relief: Relief, alpha: float = 0.55, labels: bool =
         place = next(((float(x[points[k]]), float(y[points[k]]) - lift, text)
                       for k in anchors(unit, lon[points], lat[points])
                       for text in short_names(unit.name)
-                      if space.claim(float(x[points[k]]), float(y[points[k]]) - lift, text, size, point=0)), None)
+                      if space.claim(float(x[points[k]]), float(y[points[k]]) - lift, text, size, point=0,
+                                     bold=group or relief.level == "regions")), None)
         if place is None:
             continue
         if group:

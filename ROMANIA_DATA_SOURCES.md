@@ -13,6 +13,7 @@ describe them and need confirming before a layer is built on them.
 | `--relief-units` ([relief.py](relief.py)) | geo-spatial.org relief map after Posea & Badea 1984 (Candrea et al. 2008), CC BY-SA 3.0 | 820 units, names restored from the legend |
 | `--indicator eurostat:…` ([indicators.py](indicators.py)) | Eurostat, on GISCO's NUTS boundaries at 1:10 million | NUTS 3 in Romania is the 41 counties and Bucharest, so county statistics that Eurostat holds can already be mapped |
 | `--ro-admin` ([ro_admin.py](ro_admin.py)) | GISCO LAU 2024 boundaries, © EuroGeographics; names, counties and types from INS's SIRUTA (2026, first half), CC BY 4.0 | 41 counties and Bucharest, 3,181 UATs; counties merged from their UATs |
+| `--provider osm_local` ([osm_local.py](osm_local.py)) | OpenStreetMap via Geofabrik's free shapefiles of Romania and Moldova (and the neighbours' rivers and lakes), ODbL; GISCO Countries 2024 at 1:1 million for land and borders | Places, rivers and lakes named in print-size type, in place of OSM's tiles, whose names print at 1-2 pt. OSM's names, not checked against SIRUTA |
 | `--cities` ([cities.py](cities.py)) | GHSL urban centres (JRC) | Towns of over 50,000 |
 | `--population` ([population.py](population.py)) | GPWv4 via NASA GIBS | **Wrong for Călărași county** (below); draw Romania for 2010 |
 
@@ -134,6 +135,9 @@ whether the geo-spatial.org polygons' licence allows them in place of GISCO's.
   [TEMPO API, table description (POP107D)](http://statistici.insse.ro:8077/tempo-ins/matrix/POP107D),
   [population by domicile to locality level](https://insse.ro/cms/sites/default/files/com_presa/com_pdf/popdom1ian2021r.pdf),
   [R package TEMPO](https://cran.r-universe.dev/TEMPO/doc/using-tempo.html)
+- OpenStreetMap: [Geofabrik's Romania extract](https://download.geofabrik.de/europe/romania.html)
+  (the free shapefiles' layers are described in Geofabrik's
+  [free-shapefiles format](https://download.geofabrik.de/osm-data-in-gis-formats-free.pdf))
 - GISCO: [LAU datasets](https://gisco-services.ec.europa.eu/distribution/v2/lau/datasets.json),
   [LAU 2024 files](https://gisco-services.ec.europa.eu/distribution/v2/lau/lau-2024-files.json)
 - SIRUTA: [first half of 2026 on data.gov.ro](https://data.gov.ro/dataset/siruta_s1-2026)

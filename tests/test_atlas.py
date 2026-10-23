@@ -117,6 +117,8 @@ class TestReading:
         ('title = "A"\npaper = "b5"', "paper must be one of a4, a3, letter"),
         ('title = "A"\nlanguage = "fr"', "language must be one of en, ro"),
         ('title = "A"\ndpi = 5000', "dpi must be a whole number"),
+        ('title = "A"\ntext_scale = 9', "text_scale must be a number from 0.5 to 4"),
+        ('title = "A"\ntext_scale = "big"', "text_scale must be a number"),
         ('title = "A"\n[[pages]]\ntitle = "S"\ntype = "section"\n[pages.map]\ncity = "Paris"', "a section page has no map"),
         ('title = "A"\n[[pages]]\ntitle = "M"\ntype = "map"', "a map page needs a map table or a recipe"),
         ('title = "A"\n[[pages]]\ntitle = "M"\n[pages.map]\ncity = "Paris"\ndpi = 300', "dpi is set for the whole atlas"),
@@ -194,6 +196,16 @@ class TestPlanning:
         assert atlas._fingerprint(args) == name
         args.relief_alpha = 0.3
         assert atlas._fingerprint(args) != name
+
+    def test_text_scale_for_every_map_unless_its_own(self, tmp_path):
+        book = _load(tmp_path, SMALL.replace('language = "en"', 'language = "en"\ntext_scale = 2'))
+        assert book.text_scale == 2
+        args = atlas.page_args(book, book.pages[1], "here", str(tmp_path / "m.png"))
+        assert args.text_scale == 2
+        plain = atlas.page_args(_load(tmp_path), book.pages[1], "here", str(tmp_path / "m.png"))
+        assert plain.text_scale == 1 and atlas._fingerprint(plain) != atlas._fingerprint(args)
+        book.pages[1].map["text-scale"] = 1.5
+        assert atlas.page_args(book, book.pages[1], "here", str(tmp_path / "m.png")).text_scale == 1.5
 
     def test_slugs_drop_diacritics(self):
         assert atlas._slug("Harta fizică a României") == "harta-fizica-a-romaniei"
@@ -352,6 +364,7 @@ class TestFiles:
         atlases, routes = dirs
         text = SMALL.replace('elevation = true', 'elevation = true\nroute = ["../routes/line.geojson"]\n'
                                                  'route-legend = true\ntemperature = "July"')
+        text = text.replace('language = "en"', 'language = "en"\ntext_scale = 2.5')
         (atlases / "small.toml").write_text("# My atlas\n# for class 8\n" + text, encoding="utf-8")
         data = atlas.read_atlas_json(str(atlases), str(routes), "small", FIELDS)["atlas"]
         relief = data["pages"][1]
@@ -368,6 +381,7 @@ class TestFiles:
                [(p.kind, p.title, atlas.paragraphs(p.text), p.questions) for p in before.pages]
         assert again.pages[1].map["route"] == ["../routes/line.geojson"]
         assert again.cover.map == {"city": "Paris"}
+        assert data["text_scale"] == 2.5 and again.text_scale == 2.5
 
     def test_options_the_form_lacks_are_kept(self, dirs, tmp_path):
         atlases, routes = dirs

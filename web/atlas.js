@@ -149,7 +149,8 @@ for (const button of document.querySelectorAll("[data-add]")) {
 
 // --- Settings and cover ----------------------------------------------------------------------
 
-const SETTINGS = ["title", "subtitle", "author", "edition", "language", "paper", "dpi"];
+const SETTINGS = ["title", "subtitle", "author", "edition", "language", "paper", "dpi", "text_scale"];
+const NUMBERS = new Set(["dpi", "text_scale"]);
 
 function renderSettings() {
   for (const key of SETTINGS) {
@@ -163,7 +164,7 @@ function renderSettings() {
 
 for (const key of SETTINGS) {
   $(key).addEventListener("input", () => {
-    current.atlas[key] = key === "dpi" ? ($(key).value ? Number($(key).value) : null) : $(key).value;
+    current.atlas[key] = NUMBERS.has(key) ? ($(key).value ? Number($(key).value) : null) : $(key).value;
     setDirty(true);
   });
 }
@@ -379,6 +380,9 @@ async function init() {
   $("dpi").min = options.atlas.dpi.min;
   $("dpi").max = options.atlas.dpi.max;
   $("dpi").placeholder = String(options.atlas.dpi.default);
+  $("text_scale").min = options.atlas.text_scale.min;
+  $("text_scale").max = options.atlas.text_scale.max;
+  $("text_scale").placeholder = String(options.atlas.text_scale.default);
   for (const el of document.querySelectorAll(".editable")) el.hidden = !options.editable;
   const wanted = new URLSearchParams(location.search).get("name") || "romania_school";
   await load(await loadNames(wanted));

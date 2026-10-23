@@ -77,7 +77,7 @@ IMAGE_PPI = 300                 # maps are scaled down to this on the page, to k
 PAGE_KINDS = ("map", "section", "text")
 ORIENTATIONS = ("auto", "portrait", "landscape")
 LANDSCAPE_ASPECT = 1.25         # "auto" turns a page whose map is this much wider than tall
-ATLAS_KEYS = ("title", "subtitle", "author", "edition", "paper", "dpi", "language", "cover", "pages")
+ATLAS_KEYS = ("title", "subtitle", "author", "edition", "paper", "dpi", "text_scale", "language", "cover", "pages")
 PAGE_KEYS = ("type", "title", "text", "questions", "orientation", "recipe", "map")
 COVER_KEYS = ("recipe", "map")
 # Options the atlas sets for every map, which a page's map may not
@@ -121,6 +121,7 @@ class Atlas:
     edition: str = ""
     paper: str = "a4"
     dpi: int = DEFAULT_ATLAS_DPI
+    text_scale: float = 1.0                       # every map's, unless its own map table sets text-scale
     language: str = "en"
     cover: Page | None = None                     # a map for the cover, without text
     pages: list[Page] = field(default_factory=list)
@@ -214,6 +215,11 @@ def parse_atlas(data: dict[str, Any], path: str) -> Atlas:
     dpi = data.get("dpi", DEFAULT_ATLAS_DPI)
     if isinstance(dpi, bool) or not isinstance(dpi, int) or not MIN_ATLAS_DPI <= dpi <= MAX_ATLAS_DPI:
         raise AtlasError(f"{where}: dpi must be a whole number from {MIN_ATLAS_DPI} to {MAX_ATLAS_DPI}")
+    text_scale = data.get("text_scale", 1.0)
+    if (isinstance(text_scale, bool) or not isinstance(text_scale, (int, float))
+            or not ortho.MIN_TEXT_SCALE <= text_scale <= ortho.MAX_TEXT_SCALE):
+        raise AtlasError(f"{where}: text_scale must be a number from {ortho.MIN_TEXT_SCALE:g} "
+                         f"to {ortho.MAX_TEXT_SCALE:g}")
     cover = None
     if "cover" in data:
         if not isinstance(data["cover"], dict):
@@ -226,7 +232,7 @@ def parse_atlas(data: dict[str, Any], path: str) -> Atlas:
     return Atlas(
         path=os.path.abspath(path), title=title, subtitle=_string(data, "subtitle", where),
         author=_string(data, "author", where), edition=str(data.get("edition", "")), paper=paper, dpi=dpi,
-        language=language, cover=cover,
+        text_scale=float(text_scale), language=language, cover=cover,
         pages=[_page(page, f"{where} page {i}") for i, page in enumerate(pages, 1)],
     )
 
@@ -288,6 +294,8 @@ def page_args(atlas: Atlas, page: Page, where: str, output: str, cache_dir: str 
     if page.recipe:
         recipe = os.path.join(atlas.base_dir, page.recipe)
         tokens = ortho._recipe_tokens(parser, recipe, tokens) + tokens
+    if atlas.text_scale != 1:
+        tokens = [f"--text-scale={atlas.text_scale:g}"] + tokens       # first: a recipe's or page's own wins
     tokens += [f"--dpi={atlas.dpi}", f"--output={output}"]
     if cache_dir:
         tokens.append(f"--cache-dir={cache_dir}")
@@ -873,6 +881,7 @@ def read_atlas_json(atlases_dir: str, routes_dir: str, name: str, fields: Collec
     base = path.parent
     data: dict[str, Any] = {"title": atlas.title, "subtitle": atlas.subtitle, "author": atlas.author,
                             "edition": atlas.edition, "paper": atlas.paper, "dpi": atlas.dpi,
+                            "text_scale": atlas.text_scale,
                             "language": atlas.language}
     if atlas.cover is not None:
         data["cover"] = {k: v for k, v in _page_json(atlas.cover, base, routes_dir, fields, f"{path.name} cover").items()
@@ -989,6 +998,8 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
             lines.append(f"{key} = {json.dumps(str(value), ensure_ascii=False)}")
     if data.get("dpi") is not None:
         lines.append(f"dpi = {int(data['dpi'])}")
+    if data.get("text_scale") not in (None, "", 1, 1.0):
+        lines.append(f"text_scale = {float(data['text_scale']):g}")
     cover = data.get("cover")
     if cover:
         lines.append("")

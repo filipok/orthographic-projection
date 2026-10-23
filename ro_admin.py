@@ -54,7 +54,7 @@ from matplotlib.lines import Line2D
 import frame
 from biomes import _download, _key, on_globe, visible_points
 from borders import _pack, _unpack
-from cities import label_space
+from cities import label_space, side_offset
 from relief import _points_to_data, anchors, visible_units
 
 logger = logging.getLogger(__name__)
@@ -88,6 +88,9 @@ COMMUNE_LABEL_COLOUR = "#555555"
 # Font sizes (points) of the names of the UATs, by type
 UAT_SIZES = {"municipality": 7.0, "town": 6.5, "commune": 5.5}
 SEAT_SIZE, CAPITAL_SIZE = 7.5, 9.5                # the names of the county seats and the capital, by counties
+# Where to try a county's name (see relief.anchors), and the smallest size it may shrink to for room
+COUNTY_ANCHORS = 24
+MIN_COUNTY_SIZE = 7.0
 # A commune is named only when its name fits inside it: the name's box at most this share of its area on the map
 COMMUNE_FILL = 0.8
 SLIVER = 1e-4             # holes and parts of a union smaller than this (square degrees, ~1 km²) are gaps
@@ -430,14 +433,15 @@ def draw_admin(ax: GeoAxes, admin: Admin, alpha: float = 0.0, labels: bool = Tru
                 continue
             size = CAPITAL_SIZE if seat.capital else SEAT_SIZE
             px, py = ax.projection.transform_point(*seat.label, ccrs.PlateCarree())
-            if not space.claim(px, py, seat.name, size):
+            side = space.claim_around(px, py, seat.name, size, bold=seat.capital)
+            if side is None:
                 continue
             marked += 1
             capital = capital or seat.capital
             _mark_seat(ax, px, py, size, seat.capital)
-            ax.annotate(seat.name, (px, py), xycoords="data", xytext=(0, 0.35 * size), textcoords="offset points",
+            ax.annotate(seat.name, (px, py), xycoords="data", textcoords="offset points", **side_offset(side, size),
                         fontsize=size, fontweight="bold" if seat.capital else "normal", color=UAT_LABEL_COLOUR,
-                        ha="center", va="bottom", zorder=8, annotation_clip=True,
+                        zorder=8, annotation_clip=True,
                         path_effects=[pe.withStroke(linewidth=2.2, foreground="white")])
         shown = shown._replace(seats=marked, capital=capital)
     # The capital, a county of its own, is named as the capital where the seats are marked
@@ -447,16 +451,20 @@ def draw_admin(ax: GeoAxes, admin: Admin, alpha: float = 0.0, labels: bool = Tru
         county = admin.counties[i]
         if county.county in by_seat:
             continue
-        size = county_label_size(len(points) / total)
         text = county.name.upper()
-        lift = _points_to_data(ax, 0.85 * size)
-        place = next(((float(x[points[k]]), float(y[points[k]]) - lift)
-                      for k in anchors(county, lon[points], lat[points])
-                      if space.claim(float(x[points[k]]), float(y[points[k]]) - lift, text, size, point=0)), None)
+        tries = anchors(county, lon[points], lat[points], COUNTY_ANCHORS)
+        largest = county_label_size(len(points) / total)
+        # At its size, else smaller where the seats' names leave less room
+        place = next(((float(x[points[k]]), float(y[points[k]]) - _points_to_data(ax, 0.85 * size), size)
+                      for size in dict.fromkeys([largest, max(MIN_COUNTY_SIZE, 0.8 * largest)])
+                      for k in tries
+                      if space.claim(float(x[points[k]]), float(y[points[k]]) - _points_to_data(ax, 0.85 * size),
+                                     text, size, point=0, bold=True)), None)
         if place is None:
             continue
+        at_x, at_y, size = place
         named += 1
-        ax.annotate(text, place, xycoords="data", xytext=(0, 0.25 * size), textcoords="offset points",
+        ax.annotate(text, (at_x, at_y), xycoords="data", xytext=(0, 0.25 * size), textcoords="offset points",
                     fontsize=size, fontweight="bold", color=COUNTY_LABEL_COLOUR, ha="center", va="bottom",
                     zorder=7.85, annotation_clip=True,
                     path_effects=[pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.85))])
@@ -473,7 +481,7 @@ def draw_admin(ax: GeoAxes, admin: Admin, alpha: float = 0.0, labels: bool = Tru
             if width * height * (ax.figure.dpi / 72) ** 2 > COMMUNE_FILL * _area_on_map(ax, uat, px, py):
                 continue
         lift = _points_to_data(ax, 0.85 * size)
-        if not space.claim(px, py - lift, uat.name, size, point=0):
+        if not space.claim(px, py - lift, uat.name, size, point=0, bold=uat.seat):
             continue
         uats_named += 1
         written.add(_fold(uat.name))

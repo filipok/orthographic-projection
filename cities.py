@@ -34,7 +34,9 @@ import re
 import sqlite3
 import unicodedata
 import zipfile
-from typing import NamedTuple
+from functools import lru_cache
+from collections.abc import Sequence
+from typing import Any, NamedTuple
 
 import numpy as np
 import shapely
@@ -44,7 +46,9 @@ import matplotlib.patches as mpatches
 import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
+from matplotlib.font_manager import FontProperties
 from matplotlib.lines import Line2D
+from matplotlib.textpath import TextToPath
 
 import frame
 from biomes import _download, _key, on_globe
@@ -377,9 +381,23 @@ def anchor(cities: Cities, i: int) -> tuple[float, float]:
     return point.x, point.y
 
 
+# Where a name may go around its point, in the order tried
+SIDES = ("above", "below", "right", "left", "above right", "above left", "below right", "below left")
+
+
+@lru_cache(maxsize=4096)
+def bold_width(text: str, size: float) -> float:
+    """The width (points) of *text* in bold *size*-point type, measured: bold capitals (county names) run some
+    30% wider than the estimate from the length that suits plain lower case."""
+    width, _, _ = TextToPath().get_text_width_height_descent(text, FontProperties(size=size, weight="bold"),
+                                                              ismath=False)
+    return float(width)
+
+
 class LabelSpace:
     """Room for names on a globe: a name above a point fits if it stays on the map (the disc, or a rectangle) and
-    clear of every name and point already placed (the sizes of names are estimated from their length)."""
+    clear of every name and point already placed (the sizes of names are estimated from their length, those in
+    bold measured)."""
 
     def __init__(self, ax: GeoAxes):
         self.ax = ax
@@ -387,20 +405,55 @@ class LabelSpace:
         self.dpi = ax.figure.dpi
         self.placed: list[tuple[float, float, float, float]] = []
 
-    def claim(self, x: float, y: float, text: str, size: float, point: float | None = None) -> bool:
-        """Whether *text* in *size* points fits above (*x*, *y*) (map coordinates); if so it is placed, with the
-        point under it (*point* pixels across; about a quarter of the type size by default)."""
+    def claim(self, x: float, y: float, text: str, size: float, point: float | None = None,
+              bold: bool = False) -> bool:
+        """Whether *text* in *size* points (*bold* or not) fits above (*x*, *y*) (map coordinates); if so it is
+        placed, with the point under it (*point* pixels across; about a quarter of the type size by default)."""
+        return self.claim_around(x, y, text, size, point, bold, sides=("above",)) is not None
+
+    def claim_around(self, x: float, y: float, text: str, size: float, point: float | None = None,
+                     bold: bool = False, sides: Sequence[str] = SIDES) -> str | None:
+        """The first of *sides* of the point (*x*, *y*) where *text* fits, as :meth:`claim` places it above;
+        ``None`` if it fits on none. See :func:`side_offset` for where to write it."""
         px, py = self.to_pixels.transform((x, y))
-        gap = 0.25 * size * self.dpi / 72
-        half_w = 0.3 * size * len(text) * self.dpi / 72
-        box = (px - half_w, py + gap, px + half_w, py + gap + 1.2 * size * self.dpi / 72)
-        if not frame.box_inside(self.ax, box, 0.97):
-            return False
-        if any(box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in self.placed):
-            return False
+        scale = self.dpi / 72
+        gap = 0.25 * size * scale
+        # A bold name measured, with a letter's room beside it, as the estimate from the length leaves
+        width = (bold_width(text, size) + 0.6 * size if bold else 0.6 * size * len(text)) * scale
+        height = 1.2 * size * scale
+        boxes = {"above": (px - width / 2, py + gap, px + width / 2, py + gap + height),
+                 "below": (px - width / 2, py - gap - height, px + width / 2, py - gap),
+                 "right": (px + 1.5 * gap, py - height / 2, px + 1.5 * gap + width, py + height / 2),
+                 "left": (px - 1.5 * gap - width, py - height / 2, px - 1.5 * gap, py + height / 2),
+                 "above right": (px + gap, py + gap, px + gap + width, py + gap + height),
+                 "above left": (px - gap - width, py + gap, px - gap, py + gap + height),
+                 "below right": (px + gap, py - gap - height, px + gap + width, py - gap),
+                 "below left": (px - gap - width, py - gap - height, px - gap, py - gap)}
         half = (point / 2) if point is not None else gap
-        self.placed += [box, (px - half, py - half, px + half, py + half)]
-        return True
+        dot = (px - half, py - half, px + half, py + half)
+        for side in sides:
+            box = boxes[side]
+            if not frame.box_inside(self.ax, box, 0.97):
+                continue
+            if any(box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in self.placed):
+                continue
+            self.placed += [box, dot]
+            return side
+        return None
+
+
+def side_offset(side: str, size: float) -> dict[str, Any]:
+    """How to write a name of *size* points on *side* of its point (see :meth:`LabelSpace.claim_around`): the
+    ``xytext`` offset in points and the alignment, for ``annotate``."""
+    up, across = 0.35 * size, 0.45 * size
+    return {"above": {"xytext": (0, up), "ha": "center", "va": "bottom"},
+            "below": {"xytext": (0, -up), "ha": "center", "va": "top"},
+            "right": {"xytext": (across, 0), "ha": "left", "va": "center"},
+            "left": {"xytext": (-across, 0), "ha": "right", "va": "center"},
+            "above right": {"xytext": (0.3 * size, up), "ha": "left", "va": "bottom"},
+            "above left": {"xytext": (-0.3 * size, up), "ha": "right", "va": "bottom"},
+            "below right": {"xytext": (0.3 * size, -up), "ha": "left", "va": "top"},
+            "below left": {"xytext": (-0.3 * size, -up), "ha": "right", "va": "top"}}[side]
 
 
 def label_space(ax: GeoAxes) -> LabelSpace:
