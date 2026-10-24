@@ -27,7 +27,6 @@ from typing import NamedTuple
 import numpy as np
 
 import cartopy.crs as ccrs
-import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.collections import LineCollection
 from matplotlib.legend import Legend
@@ -381,8 +380,7 @@ def _draw_airports(ax: GeoAxes, routes: AirRoutes, scale: float, labels: bool, l
         named += 1
         ax.annotate(name, (x, y), xycoords="data", xytext=(0, 0.5 * np.sqrt(size) + 1), textcoords="offset points",
                     fontsize=font, fontweight="bold" if picked else "normal", color="#222222", ha="center",
-                    va="bottom", zorder=8, annotation_clip=True,
-                    path_effects=[pe.withStroke(linewidth=2.2, foreground="white")])
+                    va="bottom", zorder=8, annotation_clip=True)
 
 
 def add_air_routes_legend(ax: GeoAxes, routes: AirRoutes, shown: int, y: float = -0.01, x: float = 0.5) -> Legend:

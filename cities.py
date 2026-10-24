@@ -43,7 +43,6 @@ import shapely
 
 import cartopy.crs as ccrs
 import matplotlib.patches as mpatches
-import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 from matplotlib.font_manager import FontProperties
@@ -497,8 +496,7 @@ def draw_cities(ax: GeoAxes, cities: Cities, min_population: int, alpha: float =
                 markeredgecolor="#222222", markeredgewidth=0.8, zorder=8)
         ax.annotate(cities.names[i], (x, y), xycoords="data", xytext=(0, 0.35 * size), textcoords="offset points",
                     fontsize=size, fontweight="bold" if cities.population[i] >= 10e6 else "normal",
-                    color="#222222", ha="center", va="bottom", zorder=8, annotation_clip=True,
-                    path_effects=[pe.withStroke(linewidth=2.5, foreground="white")])
+                    color="#222222", ha="center", va="bottom", zorder=8, annotation_clip=True)
     logger.info("Urban centres drawn: %d of over %s people, %d named.", len(shown), f"{min_population:,}", named)
     return shown
 

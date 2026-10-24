@@ -54,7 +54,6 @@ import shapely
 from shapely.geometry import shape
 
 import cartopy.crs as ccrs
-import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.collections import LineCollection
 
@@ -738,7 +737,7 @@ def _name_river(ax: GeoAxes, space: LabelSpace, river: Water) -> bool:
                 continue
             ax.text(x, y, river.name, transform=ax.projection, fontsize=size, fontstyle="italic",
                     color=WATER_LABEL_COLOUR, rotation=angle, rotation_mode="anchor", ha="center", va="bottom",
-                    zorder=7.65, path_effects=[pe.withStroke(linewidth=2.0, foreground=(1, 1, 1, 0.85))])
+                    zorder=7.65)
             return True
     return False
 
@@ -766,7 +765,7 @@ def _name_place(ax: GeoAxes, space: LabelSpace, place: Place) -> bool:
     ax.annotate(place.name, (px, py), xycoords="data", textcoords="offset points", **side_offset(side, size),
                 fontsize=size, fontweight="bold" if place.kind == "national_capital" else "normal",
                 color=VILLAGE_COLOUR if village else PLACE_COLOUR, zorder=7.65,
-                annotation_clip=True, path_effects=[pe.withStroke(linewidth=2.0, foreground=(1, 1, 1, 0.85))])
+                annotation_clip=True)
     return True
 
 
@@ -780,8 +779,7 @@ def _name_lake(ax: GeoAxes, space: LabelSpace, lake: Water) -> bool:
         return False
     ax.annotate(lake.name, (px, py - lift), xycoords="data", xytext=(0, 0.25 * LAKE_SIZE),
                 textcoords="offset points", fontsize=LAKE_SIZE, fontstyle="italic", color=WATER_LABEL_COLOUR,
-                ha="center", va="bottom", zorder=7.65, annotation_clip=True,
-                path_effects=[pe.withStroke(linewidth=2.0, foreground=(1, 1, 1, 0.85))])
+                ha="center", va="bottom", zorder=7.65, annotation_clip=True)
     return True
 
 
@@ -807,7 +805,7 @@ def _name_area(ax: GeoAxes, space: LabelSpace, label: Label) -> bool:
         country = label.kind == "country"
         ax.text(x, y, label.name, transform=ax.projection, fontsize=size, ha="center", va="center",
                 fontstyle="normal" if country else "italic", color=COUNTRY_COLOUR if country else WATER_LABEL_COLOUR,
-                zorder=7.65, clip_on=True, path_effects=[pe.withStroke(linewidth=2.0, foreground=(1, 1, 1, 0.85))])
+                zorder=7.65, clip_on=True)
         return True
     return False
 

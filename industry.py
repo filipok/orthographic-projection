@@ -38,7 +38,6 @@ from typing import NamedTuple
 import numpy as np
 
 import cartopy.crs as ccrs
-import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
@@ -290,7 +289,7 @@ def draw_industry(ax: GeoAxes, plants: list[Plants], labels: bool = True, limit:
             named += 1
             ax.annotate(name, (x, y), xycoords="data", xytext=(0, 0.5 * np.sqrt(size) + 1),
                         textcoords="offset points", fontsize=font, color="#222222", ha="center", va="bottom",
-                        zorder=8, annotation_clip=True, path_effects=[pe.withStroke(linewidth=2.2, foreground="white")])
+                        zorder=8, annotation_clip=True)
     logger.info("Industry drawn: %s.", ", ".join(f"{n:,} {SECTORS[s].label.lower()}" for s, n in counts.items()
                                                  if s in SECTORS))
     return counts

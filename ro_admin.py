@@ -46,7 +46,6 @@ from shapely.ops import polylabel
 
 import cartopy.crs as ccrs
 import matplotlib.patches as mpatches
-import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
@@ -441,8 +440,7 @@ def draw_admin(ax: GeoAxes, admin: Admin, alpha: float = 0.0, labels: bool = Tru
             _mark_seat(ax, px, py, size, seat.capital)
             ax.annotate(seat.name, (px, py), xycoords="data", textcoords="offset points", **side_offset(side, size),
                         fontsize=size, fontweight="bold" if seat.capital else "normal", color=UAT_LABEL_COLOUR,
-                        zorder=8, annotation_clip=True,
-                        path_effects=[pe.withStroke(linewidth=2.2, foreground="white")])
+                        zorder=8, annotation_clip=True)
         shown = shown._replace(seats=marked, capital=capital)
     # The capital, a county of its own, is named as the capital where the seats are marked
     by_seat = {s.county for s in admin.seats if s.capital} if admin.level == "counties" else set()
@@ -466,8 +464,7 @@ def draw_admin(ax: GeoAxes, admin: Admin, alpha: float = 0.0, labels: bool = Tru
         named += 1
         ax.annotate(text, (at_x, at_y), xycoords="data", xytext=(0, 0.25 * size), textcoords="offset points",
                     fontsize=size, fontweight="bold", color=COUNTY_LABEL_COLOUR, ha="center", va="bottom",
-                    zorder=7.85, annotation_clip=True,
-                    path_effects=[pe.withStroke(linewidth=2.2, foreground=(1, 1, 1, 0.85))])
+                    zorder=7.85, annotation_clip=True)
 
     alone = {c for c, n in Counter(u.county for u in admin.uats).items() if n == 1}    # Bucharest, its own county
     uats_named = 0
@@ -489,8 +486,7 @@ def draw_admin(ax: GeoAxes, admin: Admin, alpha: float = 0.0, labels: bool = Tru
                     fontsize=size, fontweight="bold" if uat.seat else "normal",
                     fontstyle="italic" if uat.kind == "commune" else "normal",
                     color=COMMUNE_LABEL_COLOUR if uat.kind == "commune" else UAT_LABEL_COLOUR,
-                    ha="center", va="bottom", zorder=7.8, annotation_clip=True,
-                    path_effects=[pe.withStroke(linewidth=1.8, foreground=(1, 1, 1, 0.8))])
+                    ha="center", va="bottom", zorder=7.8, annotation_clip=True)
     logger.info("Counties of Romania drawn: %d in view, %d named, %d seats marked; UATs: %d in view, %d named.",
                 len(found), named, marked, len(uats_in_view), uats_named)
     return shown

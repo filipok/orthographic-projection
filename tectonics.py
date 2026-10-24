@@ -38,7 +38,6 @@ import shapely
 from shapely.geometry import shape
 
 import cartopy.crs as ccrs
-import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.collections import LineCollection
 from matplotlib.legend import Legend
@@ -288,8 +287,7 @@ def draw_plates(ax: GeoAxes, plates: Plates, labels: bool = True, linewidth: flo
     for name, (lon, lat), area in zip(plates.names, plates.label_points, plates.areas):
         if area >= PLATE_LABEL_MIN_AREA and on_globe(ax, float(lon), float(lat), margin=0.85):
             ax.text(lon, lat, f"{name} Plate", transform=ccrs.PlateCarree(), fontsize=12, fontstyle="italic",
-                    color="#3a2a1a", ha="center", va="center", zorder=8,
-                    path_effects=[pe.withStroke(linewidth=3, foreground="white")])
+                    color="#3a2a1a", ha="center", va="center", zorder=8)
 
 
 def depth_colours(depth: np.ndarray) -> list[str]:

@@ -17,7 +17,6 @@ import shapely
 
 import cartopy.crs as ccrs
 import cartopy.io.shapereader as shapereader
-import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.collections import LineCollection
 
@@ -98,8 +97,7 @@ def draw_time_zones(ax: GeoAxes, zones: list[tuple[float, str, shapely.Geometry]
             labelled.add(label)
             text = label.replace("UTC", "UTC ").replace(":00", "") if offset else "UTC"
             ax.text(point.x, point.y, text, transform=ccrs.PlateCarree(), fontsize=10, color="#3a2a10",
-                    ha="center", va="center", zorder=8,
-                    path_effects=[pe.withStroke(linewidth=2.5, foreground="white")])
+                    ha="center", va="center", zorder=8)
     logger.info("Time zones drawn (%d labelled).", len(labelled))
 
 

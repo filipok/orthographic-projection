@@ -48,7 +48,6 @@ from shapely.geometry import shape
 
 import cartopy.crs as ccrs
 import matplotlib.patches as mpatches
-import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 
@@ -549,8 +548,7 @@ def draw_borders(ax: GeoAxes, polities: Sequence[Polity], colours: dict[str, tup
             continue
         placed.append(box)
         ax.text(xs[k], ys[k], polities[i].name, transform=ax.projection, fontsize=size, color="#222222",
-                ha="center", va="center", zorder=8, clip_on=True,
-                path_effects=[pe.withStroke(linewidth=2.5, foreground="white")])
+                ha="center", va="center", zorder=8, clip_on=True)
     return counts
 
 

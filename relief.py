@@ -52,7 +52,6 @@ from shapely.geometry import shape
 
 import cartopy.crs as ccrs
 import matplotlib.patches as mpatches
-import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 
@@ -542,7 +541,7 @@ def draw_relief(ax: GeoAxes, relief: Relief, alpha: float = 0.55, labels: bool =
                     fontsize=size, fontstyle="italic",
                     fontweight="bold" if group or relief.level == "regions" else "normal",
                     color=GROUP_LABEL_COLOUR if group else LABEL_COLOUR, ha="center", va="bottom", zorder=7.9,
-                    annotation_clip=True, path_effects=[pe.withStroke(linewidth=2, foreground=(1, 1, 1, 0.8))])
+                    annotation_clip=True)
     logger.info("Relief units drawn: %d in view, %d named, and %d of the groups they make up.", len(counts),
                 named, groups_named)
     return counts

@@ -28,7 +28,6 @@ from typing import NamedTuple
 import numpy as np
 
 import cartopy.crs as ccrs
-import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
@@ -242,7 +241,7 @@ def draw_ports(ax: GeoAxes, ports: Ports, labels: bool = True, limit: int = LABE
             named += 1
             ax.annotate(name, (x, y), xycoords="data", xytext=(0, 0.5 * np.sqrt(size) + 1),
                         textcoords="offset points", fontsize=font, color="#0b2545", ha="center", va="bottom",
-                        zorder=8, annotation_clip=True, path_effects=[pe.withStroke(linewidth=2.2, foreground="white")])
+                        zorder=8, annotation_clip=True)
     logger.info("Ports drawn: %d.", len(seen))
     return len(seen)
 

@@ -38,7 +38,6 @@ from shapely.geometry import shape
 import cartopy.crs as ccrs
 import cartopy.io.shapereader as shapereader
 import matplotlib.patches as mpatches
-import matplotlib.patheffects as pe
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.collections import LineCollection
 from matplotlib.legend import Legend
@@ -252,7 +251,7 @@ def draw_rivers(ax: GeoAxes, rivers: Sequence[River], labels: bool = True) -> No
             continue
         placed.append(box)
         ax.text(x, y, name, transform=ax.projection, fontsize=fontsize, fontstyle="italic", color=RIVER_COLOUR,
-                ha="center", va="bottom", zorder=8, path_effects=[pe.withStroke(linewidth=2.5, foreground="white")])
+                ha="center", va="bottom", zorder=8)
 
 
 # ---------------------------------------------------------------------------
