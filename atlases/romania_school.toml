@@ -15,6 +15,7 @@ language = "ro"
 paper = "a4"
 dpi = 120
 text_scale = 2      # the maps print about 6 in wide: names, lines and keys twice as large
+notes = "appendix"  # the captions and questions at the back, so each map takes the page's width
 
 [cover.map]
 lat = 45.95

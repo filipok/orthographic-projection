@@ -106,6 +106,7 @@ class TestReading:
         assert book.pages[1].map == {"lat": 50, "lon": 12, "radius": 2000, "elevation": True}
         assert book.cover is not None and book.cover.map == {"city": "Paris"}
         assert [key for key, _ in book.maps()] == ["cover", "2", "3"]
+        assert book.notes == "below"
 
     def test_paragraphs_join_lines_and_split_at_blank_lines(self, tmp_path):
         assert atlas.paragraphs(_load(tmp_path).pages[1].text) == [
@@ -119,6 +120,7 @@ class TestReading:
         ('title = "A"\ndpi = 5000', "dpi must be a whole number"),
         ('title = "A"\ntext_scale = 9', "text_scale must be a number from 0.5 to 4"),
         ('title = "A"\ntext_scale = "big"', "text_scale must be a number"),
+        ('title = "A"\nnotes = "margin"', "notes must be one of below, appendix"),
         ('title = "A"\n[[pages]]\ntitle = "S"\ntype = "section"\n[pages.map]\ncity = "Paris"', "a section page has no map"),
         ('title = "A"\n[[pages]]\ntitle = "M"\ntype = "map"', "a map page needs a map table or a recipe"),
         ('title = "A"\n[[pages]]\ntitle = "M"\n[pages.map]\ncity = "Paris"\ndpi = 300', "dpi is set for the whole atlas"),
@@ -320,6 +322,42 @@ class TestBuilding:
         assert all(book.pages[chunk[-1]].kind != "section" for chunk in chunks)   # no part title at a page's foot
         assert atlas.write_pdf(book, str(tmp_path / "a.pdf")) == 1 + 2 + 60
 
+    def test_notes_in_an_appendix(self, tmp_path, renders):
+        book = _load(tmp_path, SMALL.replace('language = "en"', 'language = "en"\nnotes = "appendix"'))
+        writer = atlas._Atlas(book, {}, {})
+        assert writer.appendix_parts() == ["notes", "questions"]
+        assert [row[:2] for row in writer.contents_rows()[-3:]] == [
+            ("appendix", "Appendices"), ("map", "Notes on the maps"), ("map", "Questions and exercises")]
+        numbers = [3, 4, 5, 6]                                      # after the cover and the contents
+        appendices, refs = writer.appendices(numbers)
+        assert [(part, number, len(pages)) for part, number, pages in appendices] == [
+            ("notes", 7, 1), ("questions", 8, 1)]
+        # Only "Relief" has notes; "Both sides" has none, and the page of text keeps its own
+        assert refs == {1: [("Notes on the maps", 7), ("Questions and exercises", 8)]}
+        notes = [row.text for _, row in appendices[0][2][0]]
+        assert notes == ["Part I · Europe", "Relief", "First paragraph, over two lines.", "Second paragraph."]
+        questions = [(row.left, row.text, row.right) for _, row in appendices[1][2][0]]
+        assert questions[1:] == [("", "Relief", "p. 4"), ("1.", "Which mountains?", ""), ("2.", "Which rivers?", "")]
+        # The map page draws its title and map, and where its notes are, but not the notes
+        page = writer.content(1, ("Europe", atlas.ACCENTS[0]), 4, refs[1])
+        texts = [t.get_text() for t in page.fig.texts]
+        assert "Relief" in texts and "Notes on the maps p. 7 · Questions and exercises p. 8" in texts
+        assert not any("paragraph" in t or "mountains" in t for t in texts)
+        out = tmp_path / "a.pdf"
+        result = atlas.build_atlas(book, str(out), str(tmp_path / "maps"), cache_dir=str(tmp_path / "cache"))
+        assert result.pages == 6 + 2 == len(_media_boxes(out))
+
+    def test_the_map_takes_the_page_without_its_notes(self, tmp_path, renders):
+        sizes = []
+        for notes in ("below", "appendix"):
+            book = _load(tmp_path, SMALL.replace('language = "en"', f'language = "en"\nnotes = "{notes}"'))
+            atlas.build_atlas(book, str(tmp_path / "a.pdf"), str(tmp_path / "maps"), cache_dir=str(tmp_path / "c"))
+            images = {p.key: p.path for p in atlas.plan_maps(book, str(tmp_path / "maps"), str(tmp_path / "c"))}
+            page = atlas._Atlas(book, images, {}).content(1, ("Europe", atlas.ACCENTS[0]), 4)
+            sizes.append(page.fig.axes[0].get_position().width * page.width)
+        margin = atlas._Atlas(book, {}, {}).margin
+        assert sizes[0] < sizes[1] == pytest.approx(atlas.PAPER_SIZES["a4"][0] - 2 * margin)
+
     def test_text_is_wrapped_to_the_width(self):
         sheet = atlas._Sheet(atlas.PAPER_SIZES["a4"])
         prop = sheet.font(10)
@@ -382,7 +420,7 @@ class TestFiles:
         atlases, routes = dirs
         text = SMALL.replace('elevation = true', 'elevation = true\nroute = ["../routes/line.geojson"]\n'
                                                  'route-legend = true\ntemperature = "July"')
-        text = text.replace('language = "en"', 'language = "en"\ntext_scale = 2.5')
+        text = text.replace('language = "en"', 'language = "en"\ntext_scale = 2.5\nnotes = "appendix"')
         (atlases / "small.toml").write_text("# My atlas\n# for class 8\n" + text, encoding="utf-8")
         data = atlas.read_atlas_json(str(atlases), str(routes), "small", FIELDS)["atlas"]
         relief = data["pages"][1]
@@ -400,6 +438,7 @@ class TestFiles:
         assert again.pages[1].map["route"] == ["../routes/line.geojson"]
         assert again.cover.map == {"city": "Paris"}
         assert data["text_scale"] == 2.5 and again.text_scale == 2.5
+        assert data["notes"] == "appendix" and again.notes == "appendix"
 
     def test_options_the_form_lacks_are_kept(self, dirs, tmp_path):
         atlases, routes = dirs
@@ -489,4 +528,7 @@ class TestBundledAtlas:
         out = tmp_path / "proof.pdf"
         result = atlas.build_atlas(book, str(out), str(tmp_path / "maps"), proof=True,
                                    cache_dir=str(tmp_path / "cache"))
-        assert renders == [] and result.pages == 1 + len(atlas._Atlas(book, {}, {}).contents_chunks()) + len(book.pages)
+        writer = atlas._Atlas(book, {}, {})
+        appendix = sum(len(pages) for _, _, pages in writer.appendices(list(range(len(book.pages))))[0])
+        assert book.notes == "appendix" and appendix > 1
+        assert renders == [] and result.pages == 1 + len(writer.contents_chunks()) + len(book.pages) + appendix

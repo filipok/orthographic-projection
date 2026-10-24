@@ -502,7 +502,8 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "atlas": {"papers": list(atlases.PAPER_SIZES), "languages": list(atlases.LABELS),
                   "dpi": {"default": atlases.DEFAULT_ATLAS_DPI, "min": atlases.MIN_ATLAS_DPI,
                           "max": min(atlases.MAX_ATLAS_DPI, settings.max_dpi)},
-                  "text_scale": {"default": 1.0, "min": ortho.MIN_TEXT_SCALE, "max": ortho.MAX_TEXT_SCALE}},
+                  "text_scale": {"default": 1.0, "min": ortho.MIN_TEXT_SCALE, "max": ortho.MAX_TEXT_SCALE},
+                  "notes": list(atlases.NOTE_PLACES)},
     }
 
 

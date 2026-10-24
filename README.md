@@ -875,7 +875,8 @@ last settings in the browser.
 
 `atlas.py` binds many maps into one printable PDF: a cover, the contents, a
 title page for each part, and a page for each map with its title, a caption
-and questions for the reader. An atlas is a TOML file;
+and questions for the reader, under the map or gathered in two appendices at
+the back. An atlas is a TOML file;
 [atlases/romania_school.toml](atlases/romania_school.toml) is a school atlas in
 Romanian, in three parts: **România** (position, relief, the relief units and
 two close-ups of them, rivers, climate, temperatures, precipitation,
@@ -903,6 +904,7 @@ language = "ro"     # the labels ("Cuprins", "Întrebări și exerciții" …): 
 paper = "a4"        # a4, a3 or letter
 dpi = 120           # the maps' resolution (50–300); a globe is 20 in, so 120 dpi is 2,400 px
 text_scale = 2      # every map's names, lines and keys twice as large (0.5–4; a page's text-scale wins)
+notes = "appendix"  # the captions and questions at the back ("below": under each map, the default)
 
 [cover.map]         # a map for the cover (optional)
 lat = 45.95
@@ -946,6 +948,13 @@ rivers = true
   on the page. Fewer names fit, and the layers leave out those that would
   overlap; county names and seats try more places, smaller sizes and every
   side of their dot first. A page's own `text-scale` wins over the atlas's.
+- **Captions and questions at the back.** With `notes = "appendix"` a map
+  page holds its title and the map alone, as wide as the text, and the
+  captions and the questions go into two appendices after the last page,
+  "Explicații" and "Întrebări și exerciții" ("Notes on the maps" and
+  "Questions and exercises" in English), by part, each entry headed by its
+  map's title and page. A map page's foot gives the pages of its entries, and
+  the contents list both appendices. The bundled atlas prints this way.
 - **Checked first.** Every map is checked like a command line before anything is
   drawn, and a mistake names its page: `romania_school.toml page 5 (Clima):
   Unknown Köppen-Geiger class 'Zzz'`.

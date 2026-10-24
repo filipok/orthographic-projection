@@ -458,7 +458,8 @@ class TestAtlases:
             page = client.get("/atlas")
             assert page.status_code == 200 and 'id="pages"' in page.text
             assert client.get("/static/atlas.js").status_code == 200
-            assert client.get("/api/options").json()["atlas"]["papers"] == ["a4", "a3", "letter"]
+            options = client.get("/api/options").json()["atlas"]
+            assert options["papers"] == ["a4", "a3", "letter"] and options["notes"] == ["below", "appendix"]
 
     def test_listed_and_read(self, atlas_store):
         with atlas_store[0]() as client:

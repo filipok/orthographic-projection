@@ -149,7 +149,7 @@ for (const button of document.querySelectorAll("[data-add]")) {
 
 // --- Settings and cover ----------------------------------------------------------------------
 
-const SETTINGS = ["title", "subtitle", "author", "edition", "language", "paper", "dpi", "text_scale"];
+const SETTINGS = ["title", "subtitle", "author", "edition", "language", "paper", "dpi", "text_scale", "notes"];
 const NUMBERS = new Set(["dpi", "text_scale"]);
 
 function renderSettings() {
@@ -262,7 +262,7 @@ $("create").addEventListener("click", async () => {
   if (dirty && !confirm("Leave this atlas without saving its changes?")) return;
   try {
     await json(atlasUrl(name), "PUT", {
-      atlas: { title: "New atlas", language: "en", paper: "a4", pages: [] },
+      atlas: { title: "New atlas", language: "en", paper: "a4", notes: "below", pages: [] },
       overwrite: names.some((a) => a.name === name),
     });
     await loadNames(name);
@@ -377,6 +377,7 @@ async function init() {
   options = await getJSON("/api/options");
   $("language").replaceChildren(...options.atlas.languages.map((l) => option(l, { en: "English", ro: "Română" }[l] ?? l)));
   $("paper").replaceChildren(...options.atlas.papers.map((p) => option(p, p.toUpperCase())));
+  $("notes").replaceChildren(...options.atlas.notes.map((n) => option(n, { below: "Under each map", appendix: "In an appendix" }[n] ?? n)));
   $("dpi").min = options.atlas.dpi.min;
   $("dpi").max = options.atlas.dpi.max;
   $("dpi").placeholder = String(options.atlas.dpi.default);

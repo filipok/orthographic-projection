@@ -7,6 +7,7 @@ reader and the map's options, as a recipe holds them::
 
     title = "School atlas"
     language = "en"            # the labels: "en" or "ro"
+    notes = "appendix"         # captions and questions at the back, the maps the page's width
 
     [[pages]]
     type = "section"
@@ -77,7 +78,9 @@ IMAGE_PPI = 300                 # maps are scaled down to this on the page, to k
 PAGE_KINDS = ("map", "section", "text")
 ORIENTATIONS = ("auto", "portrait", "landscape")
 LANDSCAPE_ASPECT = 1.25         # "auto" turns a page whose map is this much wider than tall
-ATLAS_KEYS = ("title", "subtitle", "author", "edition", "paper", "dpi", "text_scale", "language", "cover", "pages")
+ATLAS_KEYS = ("title", "subtitle", "author", "edition", "paper", "dpi", "text_scale", "language", "notes", "cover",
+              "pages")
+NOTE_PLACES = ("below", "appendix")       # a map's caption and questions: under it, or at the back of the atlas
 PAGE_KEYS = ("type", "title", "text", "questions", "orientation", "recipe", "map")
 COVER_KEYS = ("recipe", "map")
 # Options the atlas sets for every map, which a page's map may not
@@ -91,10 +94,10 @@ INK, GREY, RULE, TINT = "#1f2328", "#5b636e", "#c9ced6", "#f2f4f7"
 LABELS = {
     "en": {"contents": "Contents", "questions": "Questions and exercises", "part": "Part",
            "proof": "The map is drawn when the atlas is built", "failed": "This map could not be drawn",
-           "in_part": "In this part"},
+           "in_part": "In this part", "appendix": "Appendices", "notes": "Notes on the maps", "page": "p. {}"},
     "ro": {"contents": "Cuprins", "questions": "Întrebări și exerciții", "part": "Partea",
            "proof": "Harta va fi desenată la construirea atlasului", "failed": "Harta nu a putut fi desenată",
-           "in_part": "În această parte"},
+           "in_part": "În această parte", "appendix": "Anexe", "notes": "Explicații", "page": "p. {}"},
 }
 
 
@@ -126,6 +129,7 @@ class Atlas:
     dpi: int = DEFAULT_ATLAS_DPI
     text_scale: float = 1.0                       # every map's, unless its own map table sets text-scale
     language: str = "en"
+    notes: str = "below"                          # where the maps' captions and questions go: NOTE_PLACES
     cover: Page | None = None                     # a map for the cover, without text
     pages: list[Page] = field(default_factory=list)
 
@@ -215,6 +219,9 @@ def parse_atlas(data: dict[str, Any], path: str) -> Atlas:
     language = _string(data, "language", where, "en").lower()
     if language not in LABELS:
         raise AtlasError(f"{where}: language must be one of {', '.join(LABELS)}, not {language!r}")
+    notes = _string(data, "notes", where, "below").lower()
+    if notes not in NOTE_PLACES:
+        raise AtlasError(f"{where}: notes must be one of {', '.join(NOTE_PLACES)}, not {notes!r}")
     dpi = data.get("dpi", DEFAULT_ATLAS_DPI)
     if isinstance(dpi, bool) or not isinstance(dpi, int) or not MIN_ATLAS_DPI <= dpi <= MAX_ATLAS_DPI:
         raise AtlasError(f"{where}: dpi must be a whole number from {MIN_ATLAS_DPI} to {MAX_ATLAS_DPI}")
@@ -235,7 +242,7 @@ def parse_atlas(data: dict[str, Any], path: str) -> Atlas:
     return Atlas(
         path=os.path.abspath(path), title=title, subtitle=_string(data, "subtitle", where),
         author=_string(data, "author", where), edition=str(data.get("edition", "")), paper=paper, dpi=dpi,
-        text_scale=float(text_scale), language=language, cover=cover,
+        text_scale=float(text_scale), language=language, notes=notes, cover=cover,
         pages=[_page(page, f"{where} page {i}") for i, page in enumerate(pages, 1)],
     )
 
@@ -492,6 +499,19 @@ def _image_aspect(path: str | None, page: Page) -> float:
     return 2.0 * shape if wide else shape
 
 
+class _Row(NamedTuple):
+    """One line of an appendix: *text* at *indent* from the margin, then *advance* inches down to the next."""
+    text: str
+    size: float
+    bold: bool
+    color: str
+    indent: float
+    advance: float
+    left: str = ""              # a question's number, at the margin
+    right: str = ""             # the map's page, at the right margin
+    mark: str = INK             # the number's colour
+
+
 class _Atlas:
     """Writes an atlas's pages into a PDF, numbering them as it goes."""
 
@@ -514,16 +534,34 @@ class _Atlas:
             entries.append((i, section, page, ACCENTS[(section - 1) % len(ACCENTS)] if section else ACCENTS[0]))
         return entries
 
+    def appendix_parts(self) -> list[str]:
+        """The appendices, in order: ``"notes"`` (the captions) and ``"questions"``, those with anything in them."""
+        if self.atlas.notes != "appendix":
+            return []
+        maps = [page for page in self.atlas.pages if page.kind == "map"]
+        return [part for part, wanted in (("notes", any(page.text.strip() for page in maps)),
+                                          ("questions", any(page.questions for page in maps))) if wanted]
+
+    def contents_rows(self) -> list[tuple[str, str, str, int]]:
+        """What the contents list, in order: each page's kind, title, accent and part, then the appendices."""
+        rows = [(page.kind, page.title, accent, section) for _, section, page, accent in self.entries()]
+        parts = self.appendix_parts()
+        if parts:
+            rows.append(("appendix", self.atlas.labels["appendix"], GREY, 0))
+            rows += [("map", self.atlas.labels[part], GREY, 0) for part in parts]
+        return rows
+
     def contents_chunks(self) -> list[list[int]]:
-        """The indexes of the pages each contents page lists: a section takes two lines, and starts no page's foot."""
+        """The indexes of the rows each contents page lists: a section takes two lines, and starts no page's foot."""
         sheet_h = self.portrait[1] - 2 * self.margin - 1.3
         per = max(10, int(sheet_h / 0.27))
         chunks: list[list[int]] = []
         chunk: list[int] = []
         used = 0
-        for i, page in enumerate(self.atlas.pages):
-            cost = 2 if page.kind == "section" else 1
-            if chunk and used + cost + (page.kind == "section") > per:
+        for i, (kind, *_) in enumerate(self.contents_rows()):
+            heading = kind in ("section", "appendix")
+            cost = 2 if heading else 1
+            if chunk and used + cost + heading > per:
                 chunks.append(chunk)
                 chunk, used = [], 0
             chunk.append(i)
@@ -539,6 +577,9 @@ class _Atlas:
                     "Creator": "orthographic-projection atlas.py"}
         first_page = 2 + len(self.contents_chunks())    # the cover, then the contents
         numbers = [first_page + i for i in range(len(atlas.pages))]
+        # The appendices after the pages, and where each map's notes start in them
+        appendices, refs = self.appendices(numbers)
+        rows = numbers + ([appendices[0][1]] + [number for _, number, _ in appendices] if appendices else [])
         count = 0
         os.makedirs(os.path.dirname(os.path.abspath(output)), exist_ok=True)
         with PdfPages(output, metadata={k: v for k, v in metadata.items() if v}) as pdf:
@@ -548,7 +589,7 @@ class _Atlas:
                 count += 1
 
             emit(self.cover())
-            for sheet in self.contents(numbers):
+            for sheet in self.contents(rows):
                 emit(sheet)
             current = ("", ACCENTS[0])
             for i, section, page, accent in self.entries():
@@ -556,7 +597,10 @@ class _Atlas:
                     current = (page.title, accent)
                     emit(self.section(i, section, accent, numbers))
                 else:
-                    emit(self.content(i, current, numbers[i]))
+                    emit(self.content(i, current, numbers[i], refs.get(i, [])))
+            for part, number, pages in appendices:
+                for n, placed in enumerate(pages):
+                    emit(self.appendix_sheet(part, placed, number + n, first=n == 0))
         return count
 
     def _frame(self, sheet: _Sheet, number: int, section_title: str, accent: str) -> float:
@@ -597,7 +641,8 @@ class _Atlas:
         return sheet
 
     def contents(self, numbers: Sequence[int]) -> list[_Sheet]:
-        entries = self.entries()
+        """The contents pages; *numbers* are the page numbers of :meth:`contents_rows`."""
+        rows = self.contents_rows()
         sheets = []
         for n, chunk in enumerate(self.contents_chunks()):
             sheet = _Sheet(self.portrait)
@@ -606,19 +651,20 @@ class _Atlas:
             sheet.text(m, top - 0.1 * s, self.atlas.labels["contents"], sheet.font(22, bold=True), va="top")
             y = top - 0.9 * s
             for i in chunk:
-                _, section, page, accent = entries[i]
+                kind, page_title, accent, section = rows[i]
                 number = str(numbers[i])
-                if page.kind == "section":
+                if kind in ("section", "appendix"):
                     y -= 0.12 * s
                     prop = sheet.font(12, bold=True)
-                    label = f"{self.atlas.labels['part']} {_roman(section)} · {page.title}"
+                    label = (f"{self.atlas.labels['part']} {_roman(section)} · {page_title}" if kind == "section"
+                             else page_title)
                     sheet.text(m, y, label, prop, accent, va="baseline")
                     sheet.text(sheet.width - m, y, number, prop, accent, ha="right", va="baseline")
                     y -= 0.15 * s
                 else:
                     prop = sheet.font(10.5)
                     indent = m + 0.3 * s
-                    title = sheet.fit(page.title, prop, sheet.width - 2 * m - 1.2 * s)
+                    title = sheet.fit(page_title, prop, sheet.width - 2 * m - 1.2 * s)
                     sheet.text(indent, y, title, prop, INK, va="baseline")
                     sheet.text(sheet.width - m, y, number, prop, INK, ha="right", va="baseline")
                     end = indent + sheet.measure(title, prop) + 0.08 * s
@@ -714,9 +760,108 @@ class _Atlas:
                 row -= leading
         return y - height
 
-    def content(self, index: int, current: tuple[str, str], number: int) -> _Sheet:
-        """A map page or a page of text: header, title, map, caption and questions."""
+    def appendices(self, numbers: Sequence[int]) -> tuple[list[tuple[str, int, list[list[tuple[float, _Row]]]]],
+                                                          dict[int, list[tuple[str, int]]]]:
+        """The appendices, after the pages numbered *numbers*: each one's part, first page number and pages
+        (each the rows on it, by their top); and, by page index, where that map's notes are."""
+        out: list[tuple[str, int, list[list[tuple[float, _Row]]]]] = []
+        refs: dict[int, list[tuple[str, int]]] = {}
+        number = (numbers[-1] + 1) if numbers else 2 + len(self.contents_chunks())
+        for part in self.appendix_parts():
+            pages, starts = self._appendix(part, numbers)
+            out.append((part, number, pages))
+            for index, n in starts.items():
+                refs.setdefault(index, []).append((self.atlas.labels[part], number + n))
+            number += len(pages)
+        return out, refs
+
+    def _appendix(self, part: str, numbers: Sequence[int]) -> tuple[list[list[tuple[float, _Row]]], dict[int, int]]:
+        """The pages of one appendix, each the rows on it by their top; and on which of them each map's entry starts.
+
+        The maps' entries follow the pages, a part's title before its first, and an entry's title is kept with
+        its first two lines.
+        """
+        sheet = _Sheet(self.portrait)
+        m, s = self.margin, sheet.scale
+        width = sheet.width - 2 * m
+        size = 10
+        leading = size * 1.42 / 72 * s
+        prop, title_prop = sheet.font(size), sheet.font(11, bold=True)
+        blocks: list[tuple[int, list[_Row], int, float]] = []    # the page, its rows, how many keep together, gap
+        section_title, shown = "", 0
+        for i, section, page, accent in self.entries():
+            if page.kind == "section":
+                section_title = page.title
+            if page.kind != "map" or not (page.text.strip() if part == "notes" else page.questions):
+                continue
+            head: list[_Row] = []
+            if section and section != shown:
+                shown = section
+                head.append(_Row(f"{self.atlas.labels['part']} {_roman(section)} · {section_title}", 12, True,
+                                 accent, 0, 0.42 * s))
+            right = self.atlas.labels["page"].format(numbers[i])
+            head.append(_Row(sheet.fit(page.title, title_prop, width - 0.9 * s), 11, True, INK, 0, 0.3 * s,
+                             right=right))
+            body: list[_Row] = []
+            if part == "notes":
+                for paragraph in paragraphs(page.text):
+                    body += [_Row(line, size, False, INK, 0, leading) for line in sheet.wrap(paragraph, prop, width)]
+                    body[-1] = body[-1]._replace(advance=1.5 * leading)
+            else:
+                for k, question in enumerate(page.questions, 1):
+                    wrapped = sheet.wrap(" ".join(question.split()), prop, width - 0.3 * s)
+                    body += [_Row(line, size, False, INK, 0.3 * s, leading, left=f"{k}." if j == 0 else "",
+                                  mark=accent) for j, line in enumerate(wrapped)]
+                    body[-1] = body[-1]._replace(advance=1.25 * leading)
+            gap = 0.2 * s if len(head) > 1 else 0.1 * s
+            blocks.append((i, head + body, len(head) + min(2, len(body)), gap))
+        top = sheet.height - m - 0.3 * s - 0.05 * s           # below the running header, as _frame leaves it
+        bottom = m + 0.35 * s
+        pages: list[list[tuple[float, _Row]]] = [[]]
+        starts: dict[int, int] = {}
+        y = top - 0.85 * s                                    # below the appendix's title, on its first page
+        for i, rows, keep, gap in blocks:
+            if pages[-1] and y - gap - sum(row.advance for row in rows[:keep]) < bottom:
+                pages.append([])
+                y = top
+            elif pages[-1]:
+                y -= gap
+            starts[i] = len(pages) - 1
+            for n, row in enumerate(rows):
+                if n >= keep and y - row.advance < bottom:
+                    pages.append([])
+                    y = top
+                pages[-1].append((y, row))
+                y -= row.advance
+        return pages, starts
+
+    def appendix_sheet(self, part: str, placed: Sequence[tuple[float, _Row]], number: int, first: bool) -> _Sheet:
+        """One page of an appendix: its title on the *first*, then the rows *placed*."""
+        sheet = _Sheet(self.portrait)
+        m, s = self.margin, sheet.scale
+        top = self._frame(sheet, number, self.atlas.labels["appendix"], ACCENTS[0])
+        if first:
+            sheet.text(m, top - 0.1 * s, self.atlas.labels[part], sheet.font(22, bold=True), va="top")
+        for y, row in placed:
+            prop = sheet.font(row.size, row.bold)
+            if row.left:
+                sheet.text(m, y, row.left, prop, row.mark, va="top")
+            sheet.text(m + row.indent, y, row.text, prop, row.color, va="top")
+            if row.right:
+                sheet.text(sheet.width - m, y, row.right, sheet.font(row.size - 1), GREY, ha="right", va="top")
+        return sheet
+
+    def content(self, index: int, current: tuple[str, str], number: int,
+                refs: Sequence[tuple[str, int]] = ()) -> _Sheet:
+        """A map page or a page of text: header, title, map, caption and questions.
+
+        With the notes in an appendix, a map page has its title and the map alone, the width of the page, and
+        *refs* (each appendix and its page) at its foot.
+        """
         page = self.atlas.pages[index]
+        text, questions = page.text, page.questions
+        if page.kind == "map" and self.atlas.notes == "appendix":
+            text, questions = "", []
         key = str(index + 1)
         aspect = _image_aspect(self.images.get(key), page) if page.kind == "map" else 1.0
         landscape = page.orientation == "landscape" or (page.orientation == "auto" and aspect >= LANDSCAPE_ASPECT)
@@ -735,9 +880,9 @@ class _Atlas:
         bottom = m + 0.35 * s
         # The text and questions take what they need, smaller if they would leave the map too little
         for size in (10.5, 10, 9.5, 9, 8.5, 8):
-            text_h = body_top - self._paragraphs(sheet, page.text, m, body_top, width, size, draw=False)
-            q_h = body_top - self._questions(sheet, page.questions, m, body_top, width, size - 0.5, accent, False)
-            gap = 0.18 * s if page.text and page.questions else 0
+            text_h = body_top - self._paragraphs(sheet, text, m, body_top, width, size, draw=False)
+            q_h = body_top - self._questions(sheet, questions, m, body_top, width, size - 0.5, accent, False)
+            gap = 0.18 * s if text and questions else 0
             below = text_h + q_h + gap
             if page.kind != "map" or body_top - bottom - below >= 0.5 * (body_top - bottom):
                 break
@@ -749,9 +894,12 @@ class _Atlas:
             y = map_bottom - 0.12 * s
         else:
             y = body_top
-        y = self._paragraphs(sheet, page.text, m, y, width, size)
-        if page.questions:
-            self._questions(sheet, page.questions, m, y - gap, width, size - 0.5, accent)
+        y = self._paragraphs(sheet, text, m, y, width, size)
+        if questions:
+            self._questions(sheet, questions, m, y - gap, width, size - 0.5, accent)
+        if refs:
+            line = " · ".join(f"{label} {self.atlas.labels['page'].format(n)}" for label, n in refs)
+            sheet.text(sheet.width - m, m * 0.55, line, sheet.font(8), GREY, ha="right", va="bottom")
         return sheet
 
     def _map(self, sheet: _Sheet, key: str, page: Page, x: float, y: float, w: float, h: float) -> None:
@@ -892,7 +1040,7 @@ def read_atlas_json(atlases_dir: str, routes_dir: str, name: str, fields: Collec
     data: dict[str, Any] = {"title": atlas.title, "subtitle": atlas.subtitle, "author": atlas.author,
                             "edition": atlas.edition, "paper": atlas.paper, "dpi": atlas.dpi,
                             "text_scale": atlas.text_scale,
-                            "language": atlas.language}
+                            "language": atlas.language, "notes": atlas.notes}
     if atlas.cover is not None:
         data["cover"] = {k: v for k, v in _page_json(atlas.cover, base, routes_dir, fields, f"{path.name} cover").items()
                          if k in ("recipe", "map", "kept")}
@@ -1010,6 +1158,8 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
         lines.append(f"dpi = {int(data['dpi'])}")
     if data.get("text_scale") not in (None, "", 1, 1.0):
         lines.append(f"text_scale = {float(data['text_scale']):g}")
+    if data.get("notes") not in (None, "", "below"):
+        lines.append(f"notes = {json.dumps(str(data['notes']))}")
     cover = data.get("cover")
     if cover:
         lines.append("")
