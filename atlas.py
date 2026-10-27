@@ -25,6 +25,21 @@ reader and the map's options, as a recipe holds them::
     elevation = true
     rivers = true
 
+A map page can hold a second map under the first, in a ``[pages.second]``
+table with its own heading: ``layout = "pair"`` gives them the same size, to
+compare them; ``layout = "detail"`` keeps the first as large as on a page of its
+own and fits the second, a detail, into the room left under it::
+
+    [[pages]]
+    title = "January and July"
+    heading = "January"        # over the first map
+    [pages.map]
+    temperature = "january"
+    [pages.second]
+    title = "July"
+    [pages.second.map]
+    temperature = "july"
+
 Run ``python atlas.py atlases/romania_school.toml`` to draw every map (each
 checked like a command line first) and write the PDF. The maps are kept in a
 folder beside it and drawn again only when their options change, so editing
@@ -81,7 +96,10 @@ LANDSCAPE_ASPECT = 1.25         # "auto" turns a page whose map is this much wid
 ATLAS_KEYS = ("title", "subtitle", "author", "edition", "paper", "dpi", "text_scale", "language", "notes", "cover",
               "pages")
 NOTE_PLACES = ("below", "appendix")       # a map's caption and questions: under it, or at the back of the atlas
-PAGE_KEYS = ("type", "title", "text", "questions", "orientation", "recipe", "map")
+PAGE_KEYS = ("type", "title", "text", "questions", "orientation", "recipe", "map", "heading", "layout", "second")
+SECOND_KEYS = ("title", "recipe", "map")
+LAYOUTS = ("pair", "detail")    # a second map: as large as the first, or in the room under it
+MIN_DETAIL = 1.5                # inches a detail keeps at least under its map, on A4
 COVER_KEYS = ("recipe", "map")
 # Options the atlas sets for every map, which a page's map may not
 # The options whose names a map writes in the atlas's language (see ortho's --language)
@@ -115,6 +133,9 @@ class Page:
     orientation: str = "auto"
     recipe: str | None = None                     # as written: relative to the atlas file
     map: dict[str, Any] = field(default_factory=dict)
+    heading: str = ""                             # over the first map, on a page of two
+    layout: str = "pair"                          # with a second map: LAYOUTS
+    second: Page | None = None                    # a map under the first, its title its heading
 
 
 @dataclass
@@ -142,9 +163,15 @@ class Atlas:
         return LABELS[self.language]
 
     def maps(self) -> list[tuple[str, Page]]:
-        """The pages with a map, the cover first, each with a key naming it: ``"cover"`` or its number."""
+        """The maps, the cover first, each with a key naming it: ``"cover"``, its page's number, or the number and
+        ``b`` for a page's second map."""
         found = [("cover", self.cover)] if self.cover is not None else []
-        return found + [(str(i), page) for i, page in enumerate(self.pages, 1) if page.kind == "map"]
+        for i, page in enumerate(self.pages, 1):
+            if page.kind == "map":
+                found.append((str(i), page))
+                if page.second is not None:
+                    found.append((f"{i}b", page.second))
+        return found
 
 
 # ---------------------------------------------------------------------------
@@ -202,8 +229,25 @@ def _page(data: Any, where: str) -> Page:
     if orientation not in ORIENTATIONS:
         raise AtlasError(f"{where}: orientation must be one of {', '.join(ORIENTATIONS)}, not {orientation!r}")
     recipe = _string(data, "recipe", where) or None
+    second = None
+    if "second" in data:
+        if kind != "map":
+            raise AtlasError(f"{where}: a {kind} page has no map to put a second one under")
+        if not isinstance(data["second"], dict):
+            raise AtlasError(f"{where}: second must be a table holding a title and a map or a recipe")
+        _unknown(data["second"], SECOND_KEYS, f"{where} second")
+        second = _page({**data["second"], "type": "map"}, f"{where} second")
+        if orientation == "landscape":
+            raise AtlasError(f"{where}: a page of two maps is portrait, one map under the other")
+    for key in ("heading", "layout"):
+        if key in data and second is None:
+            raise AtlasError(f"{where}: {key} is for a page with a second map")
+    layout = _string(data, "layout", where, "pair")
+    if layout not in LAYOUTS:
+        raise AtlasError(f"{where}: layout must be one of {', '.join(LAYOUTS)}, not {layout!r}")
     return Page(kind, title, _string(data, "text", where), [q for q in questions if q.strip()], orientation,
-                recipe, _map_options(data.get("map", {}), where))
+                recipe, _map_options(data.get("map", {}), where), _string(data, "heading", where).strip(), layout,
+                second)
 
 
 def parse_atlas(data: dict[str, Any], path: str) -> Atlas:
@@ -864,7 +908,8 @@ class _Atlas:
             text, questions = "", []
         key = str(index + 1)
         aspect = _image_aspect(self.images.get(key), page) if page.kind == "map" else 1.0
-        landscape = page.orientation == "landscape" or (page.orientation == "auto" and aspect >= LANDSCAPE_ASPECT)
+        landscape = page.second is None and (page.orientation == "landscape"
+                                             or (page.orientation == "auto" and aspect >= LANDSCAPE_ASPECT))
         sheet = _Sheet(self.landscape if landscape and page.kind == "map" else self.portrait)
         m, s = self.margin, sheet.scale
         section_title, accent = current
@@ -890,7 +935,11 @@ class _Atlas:
             logger.warning("The text of page %d (%s) leaves its map little room; shorten it.", number, page.title)
         if page.kind == "map":
             map_bottom = bottom + below + (0.2 * s if below else 0)
-            self._map(sheet, key, page, m, map_bottom, width, body_top - map_bottom)
+            if page.second is not None:
+                self._two_maps(sheet, index, accent, m, map_bottom, width, body_top - map_bottom)
+            else:
+                # Nothing below it: the map right under the title, the room it leaves at the foot
+                self._map(sheet, key, page, m, map_bottom, width, body_top - map_bottom, top=not below)
             y = map_bottom - 0.12 * s
         else:
             y = body_top
@@ -902,14 +951,37 @@ class _Atlas:
             sheet.text(sheet.width - m, m * 0.55, line, sheet.font(8), GREY, ha="right", va="bottom")
         return sheet
 
-    def _map(self, sheet: _Sheet, key: str, page: Page, x: float, y: float, w: float, h: float) -> None:
-        """The map of *page* fitted into the box at (*x*, *y*), *w* by *h* inches, centred."""
+    def _two_maps(self, sheet: _Sheet, index: int, accent: str, x: float, y: float, w: float, h: float) -> None:
+        """The two maps of page *index* in the box at (*x*, *y*), *w* by *h* inches, one under the other, each under
+        its heading: as large as each other for a pair; for a detail, the first as wide as the box (if it leaves
+        the detail room enough) and the detail in the room under it."""
+        page = self.atlas.pages[index]
+        assert page.second is not None
+        s = sheet.scale
+        gap = 0.2 * s
+        parts = ((str(index + 1), page, page.heading), (f"{index + 1}b", page.second, page.second.title))
+        heads = [0.3 * s if heading else 0.0 for _, _, heading in parts]
+        if page.layout == "detail":
+            first = min(w / _image_aspect(self.images.get(parts[0][0]), page), h - gap - sum(heads) - MIN_DETAIL * s)
+            heights = [heads[0] + first, h - gap - heads[0] - first]
+        else:
+            heights = [(h - gap) / 2] * 2
+        top = y + h
+        for (key, part, heading), head, height in zip(parts, heads, heights):
+            if heading:
+                sheet.text(x, top, heading, sheet.font(12, bold=True), accent, va="top")
+            self._map(sheet, key, part, x, top - height, w, height - head, top=True)
+            top -= height + gap
+
+    def _map(self, sheet: _Sheet, key: str, page: Page, x: float, y: float, w: float, h: float,
+             top: bool = False) -> None:
+        """The map of *page* fitted into the box at (*x*, *y*), *w* by *h* inches, centred, or at its *top*."""
         if h <= 0.2:
             return
         path = self.images.get(key)
         aspect = _image_aspect(path, page)
         fit_w, fit_h = (w, w / aspect) if w / aspect <= h else (h * aspect, h)
-        left, bottom = x + (w - fit_w) / 2, y + (h - fit_h) / 2
+        left, bottom = x + (w - fit_w) / 2, y + (h - fit_h if top else (h - fit_h) / 2)
         if path and os.path.isfile(path):
             pixels = _load_image(path, (round(fit_w * IMAGE_PPI), round(fit_h * IMAGE_PPI)))
             ax = sheet.axes(left, bottom, fit_w, fit_h)
@@ -1024,6 +1096,10 @@ def _page_json(page: Page, base_dir: Path, routes_dir: str, fields: Collection[s
         except recipe_store.RecipeError as e:
             raise AtlasError(str(e)) from None
         out.update(recipe=page.recipe, map=request, kept=kept)
+        if page.second is not None:
+            second = _page_json(page.second, base_dir, routes_dir, fields, f"{where} second")
+            out.update(heading=page.heading, layout=page.layout,
+                       second={k: second[k] for k in ("title", "recipe", "map", "kept")})
     return out
 
 
@@ -1128,6 +1204,17 @@ def _map_lines(table: str, request: dict[str, Any], kept: Sequence[Sequence[Any]
     return lines
 
 
+def _map_table(table: str, part: dict[str, Any], base_dir: str, routes_dir: str, fields: Collection[str]) -> list[str]:
+    """A map's recipe line and its ``[<table>.map]`` table, as the web form sends the map."""
+    lines = []
+    if part.get("recipe"):
+        lines.append(f"recipe = {json.dumps(part['recipe'], ensure_ascii=False)}")
+    if part.get("map") or part.get("kept") or not part.get("recipe"):
+        lines += _map_lines(f"{table}.map", part.get("map") or {}, part.get("kept") or [], base_dir, routes_dir,
+                            fields)
+    return lines
+
+
 DEFAULT_HEADER = "# An atlas for atlas.py: python atlas.py <this file>."
 
 
@@ -1184,11 +1271,15 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
         if page.get("orientation", "auto") != "auto":
             lines.append(f"orientation = {json.dumps(page['orientation'])}")
         if kind == "map":
-            if page.get("recipe"):
-                lines.append(f"recipe = {json.dumps(page['recipe'], ensure_ascii=False)}")
-            if page.get("map") or page.get("kept") or not page.get("recipe"):
-                lines += _map_lines("pages.map", page.get("map") or {}, page.get("kept") or [], base_dir,
-                                    routes_dir, fields)
+            second = page.get("second")
+            if second and page.get("heading"):
+                lines.append(f"heading = {json.dumps(str(page['heading']), ensure_ascii=False)}")
+            if second and page.get("layout", "pair") != "pair":
+                lines.append(f"layout = {json.dumps(page['layout'])}")
+            lines += _map_table("pages", page, base_dir, routes_dir, fields)
+            if second:
+                lines += ["[pages.second]", f"title = {json.dumps(str(second.get('title', '')), ensure_ascii=False)}"]
+                lines += _map_table("pages.second", second, base_dir, routes_dir, fields)
     return "\n".join(lines) + "\n"
 
 

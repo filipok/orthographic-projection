@@ -58,7 +58,13 @@ function summary(page) {
     else parts.push(`${key.replaceAll("_", "-")} ${Array.isArray(value) ? value.join(", ") : value}`);
   }
   for (const [key, value] of page.kept || []) parts.push(`${key} ${Array.isArray(value) ? value.join(", ") : value}`);
-  return parts.join(" · ") || "no options yet";
+  let line = parts.join(" · ") || "no options yet";
+  // A second map is kept as the atlas file has it: the form shows it, but does not edit it
+  if (page.second) {
+    const how = page.layout === "detail" ? "a detail" : "a second map";
+    line += ` — and ${how}, ${page.second.title}: ${summary(page.second)}`;
+  }
+  return line;
 }
 
 function lastMap(before = Infinity) {

@@ -64,6 +64,46 @@ text = "A page of text."
 """
 
 
+TWO_MAPS = """
+title = "Two maps a page"
+language = "en"
+
+[[pages]]
+title = "January and July"
+heading = "January"
+questions = ["Where is it warmest?"]
+[pages.map]
+lat = 46
+lon = 25
+radius = 400
+temperature = "january"
+[pages.second]
+title = "July"
+[pages.second.map]
+lat = 46
+lon = 25
+radius = 400
+temperature = "july"
+
+[[pages]]
+title = "Relief"
+layout = "detail"
+[pages.map]
+lat = 46
+lon = 25
+radius = 400
+elevation = true
+[pages.second]
+title = "Detail: the Făgăraș Mountains"
+[pages.second.map]
+lat = 45.7
+lon = 24.8
+radius = 100
+elevation = true
+no-key = true
+"""
+
+
 def _write(tmp_path, text=SMALL, name="test.toml"):
     path = tmp_path / name
     path.write_text(text, encoding="utf-8")
@@ -111,6 +151,34 @@ class TestReading:
     def test_paragraphs_join_lines_and_split_at_blank_lines(self, tmp_path):
         assert atlas.paragraphs(_load(tmp_path).pages[1].text) == [
             "First paragraph, over two lines.", "Second paragraph."]
+
+    def test_a_page_of_two_maps(self, tmp_path):
+        book = _load(tmp_path, TWO_MAPS)
+        pair, relief = book.pages
+        assert (pair.heading, pair.layout, pair.second.title) == ("January", "pair", "July")
+        assert pair.second.map["temperature"] == "july" and pair.questions == ["Where is it warmest?"]
+        assert (relief.heading, relief.layout, relief.second.title) == ("", "detail", "Detail: the Făgăraș Mountains")
+        assert [key for key, _ in book.maps()] == ["1", "1b", "2", "2b"]
+
+    @pytest.mark.parametrize("text, message", [
+        ('title = "A"\n[[pages]]\ntitle = "T"\ntext = "x"\n[pages.second]\ntitle = "S"\n[pages.second.map]\ncity = "Paris"',
+         "a text page has no map to put a second one under"),
+        ('title = "A"\n[[pages]]\ntitle = "M"\nlayout = "detail"\n[pages.map]\ncity = "Paris"',
+         "layout is for a page with a second map"),
+        ('title = "A"\n[[pages]]\ntitle = "M"\nheading = "H"\n[pages.map]\ncity = "Paris"',
+         "heading is for a page with a second map"),
+        ('title = "A"\n[[pages]]\ntitle = "M"\nlayout = "side"\n[pages.map]\ncity = "Paris"\n'
+         '[pages.second]\ntitle = "S"\n[pages.second.map]\ncity = "Rome"', "layout must be one of pair, detail"),
+        ('title = "A"\n[[pages]]\ntitle = "M"\norientation = "landscape"\n[pages.map]\ncity = "Paris"\n'
+         '[pages.second]\ntitle = "S"\n[pages.second.map]\ncity = "Rome"', "a page of two maps is portrait"),
+        ('title = "A"\n[[pages]]\ntitle = "M"\n[pages.map]\ncity = "Paris"\n[pages.second]\ntitle = "S"\n'
+         'text = "x"\n[pages.second.map]\ncity = "Rome"', "second: unknown key 'text'"),
+        ('title = "A"\n[[pages]]\ntitle = "M"\n[pages.map]\ncity = "Paris"\n[pages.second]\n'
+         '[pages.second.map]\ncity = "Rome"', "second needs a title"),
+    ])
+    def test_two_map_mistakes_are_named(self, tmp_path, text, message):
+        with pytest.raises(atlas.AtlasError, match=re.escape(message)):
+            _load(tmp_path, text)
 
     @pytest.mark.parametrize("text, message", [
         ('title = "A"\npapr = "a4"', "unknown key 'papr'. Did you mean 'paper'?"),
@@ -357,6 +425,43 @@ class TestBuilding:
             sizes.append(page.fig.axes[0].get_position().width * page.width)
         margin = atlas._Atlas(book, {}, {}).margin
         assert sizes[0] < sizes[1] == pytest.approx(atlas.PAPER_SIZES["a4"][0] - 2 * margin)
+        # With nothing below it, the map sits under the title and leaves the room it does not need at the foot
+        box = page.fig.axes[0].get_position()
+        assert (1 - box.y1) * page.height < 1.5 < box.y0 * page.height
+
+    def test_two_maps_on_a_page(self, tmp_path, renders):
+        book = _load(tmp_path, TWO_MAPS)
+        result = atlas.build_atlas(book, str(tmp_path / "a.pdf"), str(tmp_path / "maps"), cache_dir=str(tmp_path / "c"))
+        assert len(renders) == 4 and not result.failures
+        assert renders[3]["show_keys"] is False and renders[2]["show_keys"] is True     # the detail leaves out its key
+        images = {p.key: p.path for p in atlas.plan_maps(book, str(tmp_path / "maps"), str(tmp_path / "c"))}
+        writer = atlas._Atlas(book, images, {})
+        # A pair: the same size, one under the other, each under its heading, on a portrait page
+        page = writer.content(0, ("", atlas.ACCENTS[0]), 3)
+        first, second = (ax.get_position() for ax in page.fig.axes)
+        assert (page.width, page.height) == atlas.PAPER_SIZES["a4"]
+        assert first.width == pytest.approx(second.width) and first.height == pytest.approx(second.height)
+        assert second.y1 < first.y0
+        texts = [t.get_text() for t in page.fig.texts]
+        assert "January" in texts and "July" in texts
+        # A detail: the first map, a 7:5 rectangle, as wide as the page, the detail in the room under it
+        wide = tmp_path / "wide.png"
+        Image.new("RGB", (700, 500), "white").save(wide)
+        writer.images["2"] = str(wide)
+        page = writer.content(1, ("", atlas.ACCENTS[0]), 4)
+        main, detail = (ax.get_position() for ax in page.fig.axes)
+        margin = writer.margin
+        assert main.width * page.width == pytest.approx(page.width - 2 * margin)
+        assert detail.y1 < main.y0 and detail.height * page.height >= atlas.MIN_DETAIL * 0.9
+        assert "Detail: the Făgăraș Mountains" in [t.get_text() for t in page.fig.texts]
+
+    def test_a_tall_first_map_leaves_its_detail_room(self, tmp_path):
+        book = _load(tmp_path, TWO_MAPS)
+        tall = tmp_path / "tall.png"
+        Image.new("RGB", (100, 300), "white").save(tall)       # far taller than the page could fit with a detail
+        page = atlas._Atlas(book, {"2": str(tall)}, {}).content(1, ("", atlas.ACCENTS[0]), 4)
+        main, detail = (ax.get_position() for ax in page.fig.axes)
+        assert detail.height * page.height >= atlas.MIN_DETAIL * 0.99 and detail.y1 < main.y0
 
     def test_text_is_wrapped_to_the_width(self):
         sheet = atlas._Sheet(atlas.PAPER_SIZES["a4"])
@@ -440,6 +545,20 @@ class TestFiles:
         assert data["text_scale"] == 2.5 and again.text_scale == 2.5
         assert data["notes"] == "appendix" and again.notes == "appendix"
 
+    def test_a_second_map_survives_the_web_form(self, dirs, tmp_path):
+        atlases, routes = dirs
+        (atlases / "two.toml").write_text(TWO_MAPS, encoding="utf-8")
+        data = atlas.read_atlas_json(str(atlases), str(routes), "two", FIELDS)["atlas"]
+        pair, relief = data["pages"]
+        assert pair["heading"] == "January" and pair["second"]["title"] == "July"
+        assert pair["second"]["map"]["temperature"] == "july"
+        assert relief["layout"] == "detail" and ["no-key", True] in [list(k) for k in relief["second"]["kept"]]
+        atlas.write_atlas(str(atlases), str(routes), "two", data, FIELDS, overwrite=True, cache_dir=str(tmp_path / "c"))
+        again = atlas.load_atlas(str(atlases / "two.toml"))
+        before = atlas.parse_atlas(tomllib.loads(TWO_MAPS), str(atlases / "two.toml"))
+        assert [(p.heading, p.layout, p.second.title, p.second.map) for p in again.pages] == \
+               [(p.heading, p.layout, p.second.title, p.second.map) for p in before.pages]
+
     def test_options_the_form_lacks_are_kept(self, dirs, tmp_path):
         atlases, routes = dirs
         (atlases / "a.toml").write_text('title = "A"\n[[pages]]\ntitle = "M"\n[pages.map]\ncity = "Paris"\n'
@@ -520,7 +639,7 @@ class TestBundledAtlas:
     def test_every_map_checks_out(self, tmp_path):
         book = atlas.load_atlas(str(BUNDLED))
         plans = atlas.plan_maps(book, str(tmp_path / "maps"), str(tmp_path / "cache"))
-        assert len(plans) == 1 + sum(p.kind == "map" for p in book.pages)
+        assert len(plans) == 1 + sum(p.kind == "map" for p in book.pages) + sum(p.second is not None for p in book.pages)
         assert len({p.path for p in plans}) == len(plans)          # each map has a file of its own
 
     def test_proof_lays_out_every_page(self, tmp_path, renders):
