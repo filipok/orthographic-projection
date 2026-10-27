@@ -72,13 +72,26 @@ questions = [
     "Unde se află Câmpia Română față de Carpații Meridionali?",
     "Ce înseamnă că relieful României este dispus „în trepte” și „concentric”?",
 ]
+layout = "detail"
 [pages.map]
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
 no-circles = true
 elevation = true
+[pages.second]
+title = "Detaliu: Munții Făgărașului"
+[pages.second.map]
+lat = 45.68
+lon = 24.75
+provider = "osm_local"
+radius = 100
+rectangle = "5:2"
+no-circles = true
+elevation = true
+no-key = true
 
 [[pages]]
 title = "Unitățile majore de relief"
@@ -191,7 +204,8 @@ questions = [
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
 no-circles = true
 koppen = true
 
@@ -211,46 +225,46 @@ questions = [
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
 no-circles = true
 temperature = "year"
 
 [[pages]]
-title = "Temperatura medie în ianuarie"
+title = "Temperatura medie în ianuarie și în iulie"
 text = """
 În ianuarie, temperatura medie este negativă aproape peste tot: între 0 °C și −4 °C în câmpii
 și podișuri, sub −10 °C pe culmile Carpaților. Litoralul Mării Negre are iernile cele mai
 blânde. Iarna, Crivățul, un vânt rece și uscat dinspre est, aduce geruri și viscole în Moldova,
 în Bărăgan și în Dobrogea.
-"""
-questions = [
-    "Unde sunt cele mai blânde ierni din România? De ce?",
-    "Ce este Crivățul și ce regiuni afectează?",
-]
-[pages.map]
-lat = 45.95
-lon = 24.95
-provider = "osm_local"
-radius = 450
-no-circles = true
-temperature = "january"
 
-[[pages]]
-title = "Temperatura medie în iulie"
-text = """
 În iulie, cele mai mari temperaturi medii, de 22–23 °C, sunt în sudul Câmpiei Române și în
 Dobrogea, iar cele mai mici, sub 8 °C, pe vârfurile Carpaților. Diferența dintre luna cea mai
 caldă și cea mai rece depășește 20 °C în câmpie, semn al caracterului continental al climei.
 """
 questions = [
+    "Unde sunt cele mai blânde ierni din România? De ce?",
+    "Ce este Crivățul și ce regiuni afectează?",
     "Calculează diferența dintre temperatura medie din iulie și cea din ianuarie pentru orașul tău.",
     "De ce este mai mică această diferență pe litoral?",
 ]
+heading = "Ianuarie"
 [pages.map]
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
+no-circles = true
+temperature = "january"
+[pages.second]
+title = "Iulie"
+[pages.second.map]
+lat = 45.95
+lon = 24.95
+provider = "osm_local"
+radius = 395
+rectangle = "7:5"
 no-circles = true
 temperature = "july"
 
@@ -270,7 +284,8 @@ questions = [
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
 no-circles = true
 precipitation = "year"
 
@@ -291,7 +306,8 @@ questions = [
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
 no-circles = true
 landcover = true
 
@@ -312,7 +328,8 @@ questions = [
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
 no-circles = true
 soil = true
 
@@ -332,7 +349,8 @@ questions = [
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
 no-circles = true
 crop = ["wheat", "maize", "sunflower"]
 
@@ -352,7 +370,8 @@ questions = [
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
 no-circles = true
 population = 2010
 
@@ -372,7 +391,8 @@ questions = [
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
 no-circles = true
 cities = 2025
 
@@ -417,7 +437,8 @@ questions = [
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
 no-circles = true
 indicator = "eurostat:gdp-per-person"
 
@@ -437,7 +458,8 @@ questions = [
 lat = 45.95
 lon = 24.95
 provider = "osm_local"
-radius = 450
+radius = 395
+rectangle = "7:5"
 no-circles = true
 industry = "steel,refineries,petrochemicals,cement,power"
 
@@ -485,43 +507,44 @@ earthquakes = 5
 plates = true
 
 [[pages]]
-title = "România în 1914"
+title = "România în 1914 și România Mare"
 text = """
 În 1914, Regatul României cuprindea Muntenia, Oltenia, Moldova de la vest de Prut și Dobrogea
 (cu Cadrilaterul, din 1913). Transilvania, Banatul, Crișana, Maramureșul și Bucovina făceau
-parte din Austro-Ungaria, iar Basarabia din Imperiul Rus. Harta arată statele la 1 iulie 1914
-(CShapes 2.0).
+parte din Austro-Ungaria, iar Basarabia din Imperiul Rus. Prima hartă arată statele la 1 iulie
+1914 (CShapes 2.0).
+
+În 1918, provinciile locuite în majoritate de români s-au unit cu Regatul României: Basarabia
+(27 martie), Bucovina (28 noiembrie), apoi Transilvania, Banatul, Crișana și Maramureșul, la
+1 Decembrie 1918, la Alba Iulia: Marea Unire. Granițele au fost recunoscute prin tratatele de
+pace din 1919–1920. A doua hartă arată statele la 1 ianuarie 1938.
 """
 questions = [
     "Ce provincii locuite de români se aflau în 1914 în afara Regatului României?",
     "Ce state se învecinau cu Regatul României în 1914?",
-]
-[pages.map]
-lat = 46.0
-lon = 25.5
-provider = "natural_earth"
-radius = 900
-no-circles = true
-borders = "1914-07-01"
-
-[[pages]]
-title = "România Mare, după Unirea din 1918"
-text = """
-În 1918, provinciile locuite în majoritate de români s-au unit cu Regatul României: Basarabia
-(27 martie), Bucovina (28 noiembrie), apoi Transilvania, Banatul, Crișana și Maramureșul, la
-1 Decembrie 1918, la Alba Iulia: Marea Unire. Granițele au fost recunoscute prin tratatele de
-pace din 1919–1920. Harta arată statele la 1 ianuarie 1938.
-"""
-questions = [
-    "Compară această hartă cu cea din 1914. Ce provincii s-au unit cu România?",
+    "Compară cele două hărți. Ce provincii s-au unit cu România?",
     "De ce este 1 Decembrie Ziua Națională a României?",
 ]
+heading = "România în 1914"
 [pages.map]
 lat = 46.0
 lon = 25.5
 provider = "natural_earth"
-radius = 900
+radius = 550
+rectangle = "7:5"
 no-circles = true
+no-key = true
+borders = "1914-07-01"
+[pages.second]
+title = "România Mare, după Unirea din 1918"
+[pages.second.map]
+lat = 46.0
+lon = 25.5
+provider = "natural_earth"
+radius = 550
+rectangle = "7:5"
+no-circles = true
+no-key = true
 borders = "1938-01-01"
 
 # ---------------------------------------------------------------------------------------------

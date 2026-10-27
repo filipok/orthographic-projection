@@ -287,6 +287,7 @@ The main script is [ortho.py](ortho.py).
 - Any compass direction at the top of the globe (south up, or the direction toward a place), with text kept upright
 - Optional route overlays loaded from GeoJSON files, drawn as great-circle polylines and translucent filled areas
 - Optional route key below the globe, with short labels and grouping set in the GeoJSON
+- Keys stacked below the map and never wider than it: a key that would be gets fewer columns, and its long labels and title wrap, so the image stays as wide as the map and prints as large as the page allows
 - Bundled historical route sets: the Portuguese voyages of discovery and the Viking Age
 - Graceful error handling for network tile fetch failures
 - Automatic attribution block crediting the tile provider and any datasets used
@@ -694,6 +695,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--up-toward PLACE` | Put the direction toward a city or `LAT,LON` at the top (instead of `--up`) | — |
 | `--circles-from PLACE` | Measure the distance circles from a city or `LAT,LON` instead of the map's centre, marked with a hollow ring | the centre |
 | `--no-circles` | Leave out the distance circles | off |
+| `--no-key` | Leave out the keys under the map (the credits stay), e.g. for a detail under a map with the same key | off |
 | `--config FILE` | Read settings from a TOML recipe file; the command line overrides it (see "Recipe Files") | — |
 
 > **Note:** `--city` and `--lat` are mutually exclusive. When using `--lat`, `--lon` is required.
@@ -887,7 +889,10 @@ January temperatures, precipitation, biomes, population, cities, GDP and
 unemployment by region, night lights, shipping, Europe in 1914) and **Lumea**
 (the two hemispheres, the states, relief and the ocean floor, plate tectonics,
 climates, currents, biomes, population, cities, life expectancy, GDP, time zones,
-shipping, the polar regions): 52 pages, 50 maps.
+shipping, the polar regions): 51 pages, 51 maps. Most of Romania's maps are cut
+to a 7:5 rectangle around the country, which prints it larger than a disc does;
+January and July, and 1914 and 1938, share a page each, and the physical map has
+a close-up of the Făgăraș Mountains under it (see "Two maps on a page").
 
 ```powershell
 python atlas.py atlases/romania_school.toml           # draws the maps and writes atlas_romania_school.pdf
@@ -926,11 +931,11 @@ questions = ["Numește cele trei ramuri ale Carpaților Românești."]
 [pages.map]         # the map's options, exactly as a recipe has them
 lat = 45.95
 lon = 24.95
-provider = "osm_plain"
-radius = 450
+provider = "osm_local"
+radius = 395
+rectangle = "7:5"   # a rectangle around Romania, wider on the page than a disc
 no-circles = true
 elevation = true
-rivers = true
 ```
 
 - **Editing.** Change the text, reorder the `[[pages]]` tables, delete or add
@@ -949,12 +954,42 @@ rivers = true
   overlap; county names and seats try more places, smaller sizes and every
   side of their dot first. A page's own `text-scale` wins over the atlas's.
 - **Captions and questions at the back.** With `notes = "appendix"` a map
-  page holds its title and the map alone, as wide as the text, and the
+  page holds its title and the map alone, as wide as the text and right under
+  the title, the room it leaves at the foot of the page, and the
   captions and the questions go into two appendices after the last page,
   "Explicații" and "Întrebări și exerciții" ("Notes on the maps" and
   "Questions and exercises" in English), by part, each entry headed by its
   map's title and page. A map page's foot gives the pages of its entries, and
   the contents list both appendices. The bundled atlas prints this way.
+- **Two maps on a page.** A `[pages.second]` table, with a `title` (its
+  heading) and a map or recipe, puts a second map under the first.
+  `layout = "pair"` (the default) makes them the same size, to compare them,
+  as January and July; `heading` names the first. `layout = "detail"` keeps
+  the first map as large as on a page of its own and fits the second, a close-up,
+  into the room left under it; with the same key as the map above, the
+  detail can leave its own out with `no-key = true`. A page of two maps is
+  portrait, and the web form keeps its second map as it is, without editing it.
+
+  ```toml
+  [[pages]]
+  title = "Harta fizică a României"
+  layout = "detail"
+  [pages.map]
+  lat = 45.95
+  lon = 24.95
+  radius = 395
+  rectangle = "7:5"
+  elevation = true
+  [pages.second]
+  title = "Detaliu: Munții Făgărașului"
+  [pages.second.map]
+  lat = 45.68
+  lon = 24.75
+  radius = 100
+  rectangle = "5:2"
+  elevation = true
+  no-key = true
+  ```
 - **Checked first.** Every map is checked like a command line before anything is
   drawn, and a mistake names its page: `romania_school.toml page 5 (Clima):
   Unknown Köppen-Geiger class 'Zzz'`.
@@ -1302,9 +1337,8 @@ python ortho.py --city tokyo --radius 800 --rectangle 1.414:1
 - **Labels, arrows and keys use the whole rectangle.** City, river, border and
   relief names, port dots, wind and current arrows and the biome and border
   keys' counts reach into the corners. Distance circles that run off the top
-  edge are labelled on their east side. The credits get a pale backing in
-  the bottom-right corner, which is map now, and names it would cover are
-  left out.
+  edge are labelled on their east side. The credits go under the map, at its
+  right, above the keys, so they cover none of it.
 - It works with `--beside` (both globes are cut alike) and in recipes, the web
   app (the **Shape** menu under the radius) and atlases, where a wide
   rectangle turns its page to landscape (see "Atlases (PDF)").
