@@ -4,6 +4,68 @@ This project generates high-resolution orthographic globe images centered on a s
 
 The main script is [ortho.py](ortho.py).
 
+## Contents
+
+- [Sample Output](#sample-output)
+- [Features](#features)
+- [Supported Cities](#supported-cities)
+- [Supported Tile Providers](#supported-tile-providers)
+- [Requirements](#requirements)
+- [Setup](#setup)
+- [Usage](#usage)
+  - [Interactive Mode](#interactive-mode)
+  - [CLI Mode](#cli-mode)
+  - [Recipe Files](#recipe-files)
+  - [Output Naming](#output-naming)
+  - [Web App](#web-app)
+  - [Atlases (PDF)](#atlases-pdf)
+- [Programmatic Use](#programmatic-use)
+- [Testing](#testing)
+- [Notes](#notes)
+- [Turning the Globe](#turning-the-globe)
+- [Both Hemispheres](#both-hemispheres)
+- [Two Places Side by Side](#two-places-side-by-side)
+- [Route Overlays](#route-overlays)
+  - [File format](#file-format)
+  - [Route key](#route-key)
+  - [Bundled route files](#bundled-route-files)
+- [Radius Maps](#radius-maps)
+  - [Rectangular Maps](#rectangular-maps)
+- [Prevailing Winds](#prevailing-winds)
+- [Climate Means](#climate-means)
+- [Temperatures over the Sea](#temperatures-over-the-sea)
+- [Historical Borders](#historical-borders)
+- [Relief Units of Romania](#relief-units-of-romania)
+- [Counties and UATs of Romania](#counties-and-uats-of-romania)
+- [OpenStreetMap Drawn from Data](#openstreetmap-drawn-from-data)
+- [Europe and the World Drawn from Natural Earth](#europe-and-the-world-drawn-from-natural-earth)
+- [Ocean Depth and the Ice Age Coast](#ocean-depth-and-the-ice-age-coast)
+- [Plate Tectonics](#plate-tectonics)
+- [Ocean Currents](#ocean-currents)
+- [Rivers and Basins](#rivers-and-basins)
+- [Cyclones, Time Zones and Permafrost](#cyclones-time-zones-and-permafrost)
+- [Population Density](#population-density)
+- [Livestock](#livestock)
+- [Malaria and Aedes Mosquitoes](#malaria-and-aedes-mosquitoes)
+- [Species Records](#species-records)
+- [Species Ranges](#species-ranges)
+- [Cities](#cities)
+- [Statistics](#statistics)
+- [Industry](#industry)
+- [Shipping, Ports and Air Routes](#shipping-ports-and-air-routes)
+- [Polar Ice](#polar-ice)
+- [Elevation](#elevation)
+- [Vegetation](#vegetation)
+- [Biomes, Ecoregions and Realms](#biomes-ecoregions-and-realms)
+- [Soil Groups](#soil-groups)
+- [Soil Properties](#soil-properties)
+- [Crop Areas](#crop-areas)
+- [Köppen-Geiger Climate Overlay](#köppen-geiger-climate-overlay)
+- [Trewartha Climate Overlay](#trewartha-climate-overlay)
+- [Data Sources & Licensing](#data-sources--licensing)
+  - [Google tiles (API key required)](#google-tiles-api-key-required)
+- [Project Files](#project-files)
+
 ## Sample Output
 
 <p align="center">
@@ -276,7 +338,8 @@ The main script is [ortho.py](ortho.py).
 - Optional air routes: the airline network, or the routes from chosen airports or of chosen airlines, as great-circle arcs wider for routes more airlines fly
 - Optional relief units of Romania: its 820 geomorphological units (Posea & Badea), from the Carpathians to single depressions and plains such as Depresiunea Hațegului or Câmpia Ierului, filled in their major region's colour (depressions, corridors and floodplains paler) and named, or the 16 major regions alone
 - Optional counties and UATs of Romania: the borders of its 41 counties and Bucharest with the county seats, and of its 3,181 municipalities, towns and communes, named where the names fit, with the counties optionally filled so no two neighbours look alike
-- Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key
+- Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key, or only outlined
+- Optional European Union and NATO of today: a thin gold line round the EU's 27 members with their outermost regions, NATO's 32 within the North Atlantic Treaty's area shaded pale blue, with a key
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
 - Optional prevailing winds for the year, a season or a month: arrows of the 1991–2020 mean surface wind, coloured by how steady it is
@@ -642,7 +705,9 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--ice-year YEAR` | Year of the sea ice maxima, 1979 on; implies `--ice` | latest published |
 | `--borders WHEN` | Draw the states of a year (`1500`, `-500`, `500 BC`) or, from 1886, a day (`1914-08-01`), filled, outlined and named, with a key | — |
 | `--borders-source SOURCE` | `cliopatria` (3400 BCE–2024), `cshapes` (1886–2019, with colonies) or `auto` (CShapes in its years, Cliopatria otherwise) | `auto` |
-| `--borders-alpha ALPHA` | Opacity of the borders' fill (0–1) | `0.55` |
+| `--borders-alpha ALPHA` | Opacity of the borders' fill (0–1); `0` outlines the states only, without a key | `0.55` |
+| `--no-borders-names` | Leave the states of `--borders` unnamed | off |
+| `--alliance NAME` | Draw today's European Union (`eu`, a gold line round its land) or NATO (`nato`, its land shaded pale blue), with a key; repeat for both | — |
 | `--relief-units [LEVEL]` | Draw Romania's relief units, filled in their major region's colour and named: `units` (all 820) or `regions` (the 16 major ones) | off (`units` when given alone) |
 | `--relief-alpha ALPHA` | Opacity of the relief units' fill (0–1) | `0.55` |
 | `--ro-admin [LEVEL]` | Draw Romania's administrative borders and name them where they fit: `counties` (the 41 counties and Bucharest) or `uats` (the 3,181 municipalities, towns and communes too) | off (`counties` when given alone) |
@@ -703,7 +768,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
-Historical borders, Relief units of Romania, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
+Historical borders, The European Union and NATO, Relief units of Romania, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
 Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Shipping, ports and air routes (World Bank and IMF, OpenFlights), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
@@ -1517,7 +1582,9 @@ Cliopatria otherwise):
   present one (*Zimbabwe (Rhodesia)*, *Mali*), and border changes under
   10,000 km² are not recorded. It is read from the copy in the `cshapes` R
   package on CRAN (~4 MB), the only one that records each territory's status
-  and ruler.
+  and ruler. CShapes moves Crimea to Russia on 18 March 2014; the maps keep it
+  in Ukraine, as the UN General Assembly (resolution 68/262), Romania and the
+  EU do.
 
 - **Names** are placed in the middle of what shows of each state, larger for
   bigger states; a state covering less than 0.2% of the map is not named, nor is
@@ -1525,8 +1592,22 @@ Cliopatria otherwise):
   lists the 10 largest states or empires on the map in their colours.
 - **Layering.** The borders are drawn over the climate, biome and soil colours
   and under crops, ice, winds and routes; `--borders-alpha` sets their opacity
-  (default 0.55). The plain map (`osm_plain`) keeps the base map's own borders
-  and labels quiet underneath.
+  (default 0.55). At 0 the states are outlined only and the key, which would
+  show their colours, is left out; `--no-borders-names` leaves them unnamed too,
+  as on the school atlas's cover. The plain map (`osm_plain`) keeps the base
+  map's own borders and labels quiet underneath.
+- **The EU and NATO.** `--alliance eu` draws a thin gold line round the EU's
+  land and `--alliance nato` shades NATO's pale blue, each as it is today
+  (Natural Earth): the EU's 27 members with
+  Åland, the outermost regions (French Guiana, Réunion, the Azores, the Canary
+  Islands …) and all of Cyprus, but not Greenland, the Faroe Islands or the
+  Dutch Caribbean; NATO's 32 members within Article 6's area (Europe, North
+  America, Turkey and the North Atlantic islands north of the Tropic of Cancer,
+  so Greenland and Svalbard but not Hawaii). The shade lies under the borders'
+  lines and the EU's line over them. Islands under ~200 km² are left out, bar
+  each country's largest, and round the EU straits under ~30 km are closed, so
+  the line reads as one outline on a globe. The key names them in
+  `--language`. It needs no `--borders`.
 - **In Romanian.** With `--language ro` CShapes' states are named in Romanian,
   on the map and in the key: Unicode CLDR 47's names for its Romanian locale
   (`România`, `Germania`, `Regatul Unit`, `Republica Moldova`), matched through
@@ -2776,7 +2857,7 @@ to the attribution block.
 | Volcanoes of the World v5, Holocene volcanoes | Global Volcanism Program (2025), Smithsonian Institution | Free to use with citation | [doi:10.5479/si.GVP.VOTW5-2025.5.3](https://doi.org/10.5479/si.GVP.VOTW5-2025.5.3) |
 | Global Drifter Program near-surface velocity climatology, annual means at 0.25°, used at 1° | Laurindo, L. C. et al. (2017), NOAA AOML | Public domain (US government) | [doi:10.1016/j.dsr.2017.04.009](https://doi.org/10.1016/j.dsr.2017.04.009) |
 | HydroBASINS level 4 (HydroSHEDS) | Lehner, B. & Grill, G. (2013), WWF | Free for scientific, educational and commercial use, with citation ([licence](https://www.hydrosheds.org/products/hydrobasins)) | [doi:10.1002/hyp.9740](https://doi.org/10.1002/hyp.9740) |
-| Natural Earth 1:10m rivers and time zones | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
+| Natural Earth 1:10m rivers, time zones and countries (for `--alliance`) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | IBTrACS v04r01, tropical cyclone tracks since 1980 | Knapp, K. R. et al. (2010), NOAA NCEI | Public domain (US government) | [doi:10.1175/2009BAMS2755.1](https://doi.org/10.1175/2009BAMS2755.1) |
 | Northern Hemisphere permafrost zones, 2000–2016, 1 km, used at 5 km | Obu, J. et al. (2019), ESA Permafrost CCI / University of Oslo | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1016/j.earscirev.2019.04.023](https://doi.org/10.1016/j.earscirev.2019.04.023), data on [PANGAEA](https://doi.org/10.1594/PANGAEA.888600) |
 | Gridded Population of the World v4.11, population density 2000–2020, via NASA GIBS | CIESIN (2018), NASA SEDAC | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.7927/H49C6VHW](https://doi.org/10.7927/H49C6VHW) |
@@ -2846,6 +2927,7 @@ the globe:
 | `--basins` | *River basins: HydroBASINS (Lehner & Grill 2013), HydroSHEDS / WWF* |
 | `--cyclones` | *Cyclone tracks: IBTrACS v04r01 (Knapp et al. 2010), NOAA NCEI* |
 | `--time-zones` | *Time zones: Natural Earth* |
+| `--alliance` | *EU and NATO: Natural Earth* |
 | `--permafrost` | *Permafrost: Obu et al. (2019), ESA Permafrost CCI / University of Oslo, CC BY 4.0* |
 | `--population` | *Population density: GPWv4.11 YEAR (CIESIN 2018), NASA SEDAC, via NASA GIBS, CC BY 4.0* |
 | `--livestock` | *Livestock: Gridded Livestock of the World v4, 2015 (FAO), CC0* |
@@ -2938,7 +3020,8 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [shipping.py](shipping.py): ship traffic from the World Bank and IMF's AIS density grids, read once into cached tiles
 - [ports.py](ports.py): the IMF PortWatch ports as dots sized by the ships calling, the busiest named
 - [air_routes.py](air_routes.py): the OpenFlights airline network as great-circle arcs
-- [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key
+- [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key; Crimea kept in Ukraine
+- [alliances.py](alliances.py): today's European Union (a line) and NATO (a shade) (Natural Earth countries) and their key
 - [relief.py](relief.py): Romania's relief units (Posea & Badea, geo-spatial.org): names restored from the legend, fills by region, names and key
 - [osm_local.py](osm_local.py): the `osm_local` base map: Romania's and Moldova's places, rivers and lakes from Geofabrik's OpenStreetMap extracts (read in parts), GISCO's land and borders, drawn and named for print
 - [ne_local.py](ne_local.py): the `natural_earth` base map: Natural Earth's land, water, borders, countries, seas and cities, named in English or in Romanian (Wikidata, CLDR), for maps of Europe and the world
