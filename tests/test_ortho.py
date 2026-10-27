@@ -800,6 +800,13 @@ class TestCLIParser:
         assert args.borders == "-500" and args.borders_source == "cliopatria" and args.borders_alpha == 0.4
         with pytest.raises(SystemExit):
             self._parse(["--city", "nyc", "--borders", "1500", "--borders-source", "wikipedia"])
+        assert self._parse(["--city", "nyc", "--borders", "2019", "--no-borders-names"]).no_borders_names
+
+    def test_alliance_flags(self):
+        assert self._parse(["--city", "nyc"]).alliance is None
+        assert self._parse(["--city", "nyc", "--alliance", "eu", "--alliance", "nato"]).alliance == ["eu", "nato"]
+        with pytest.raises(SystemExit):
+            self._parse(["--city", "nyc", "--alliance", "warsaw"])
 
     def test_atlas_layer_flags(self):
         args = self._parse(["--city", "nyc"])
@@ -1056,7 +1063,7 @@ class TestRunCLIValidation:
             soil_property=None, soil_depth=None,
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
             biomes=False, biome_class=None, ecoregions=False, realms=None, realm_regions=False, biome_alpha=0.6,
-            borders=None, borders_source="auto", borders_alpha=0.55,
+            borders=None, borders_source="auto", borders_alpha=0.55, no_borders_names=False, alliance=None,
             ocean_depth=False, ice_age=False, plates=False, earthquakes=None, volcanoes=False, currents=False,
             rivers=False, basins=False, basins_alpha=0.5, cyclones=None, time_zones=False, permafrost=False,
             permafrost_alpha=0.7, population=None, population_alpha=0.7, livestock=None, livestock_alpha=0.7,
@@ -1489,6 +1496,15 @@ class TestRunCLIValidation:
         kwargs = render.call_args.kwargs
         assert kwargs["borders"] == "1914-08-01" and kwargs["borders_source"] == "cshapes"
         assert kwargs["borders_alpha"] == 0.4
+        assert kwargs["borders_names"] is True and kwargs["alliances"] == []
+
+    def test_outlines_and_alliances_passed_to_renderer(self):
+        args = self._make_args(city="paris", borders="2019", borders_alpha=0.0, no_borders_names=True,
+                               alliance=["eu", "nato"])
+        with mock.patch.object(ortho, "generate_orthographic_map") as render,                 mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert kwargs["borders_names"] is False and kwargs["alliances"] == ["nato", "eu"]
 
     @pytest.mark.parametrize("overrides, message", [
         ({"borders": "soon"}, "Not a year"),

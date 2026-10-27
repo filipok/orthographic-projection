@@ -22,6 +22,10 @@ lat = 45.95
 lon = 24.95
 provider = "nasa"
 no-circles = true
+borders = "2019-12-31"      # today's states (CShapes ends in 2019; no border in view has moved since)
+borders-alpha = 0           # outlined, not filled
+no-borders-names = true
+alliance = ["eu", "nato"]
 
 # ---------------------------------------------------------------------------------------------
 # Partea I: România

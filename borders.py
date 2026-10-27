@@ -20,6 +20,10 @@ downloads leave those out.
 
 Both are downloaded once (~46 MB and ~4 MB) and cached in a compact form.
 
+Crimea: CShapes moves it to Russia on 18 March 2014; the maps keep it in
+Ukraine, as the UN General Assembly (resolution 68/262), Romania and the EU
+do (:data:`DE_JURE`).
+
 Names in Romanian (``language="ro"``, CShapes only): Unicode CLDR 47, the
 territory names of its Romanian locale (Unicode License v3), matched to
 CShapes' English names through CLDR's English ones (:data:`CSHAPES_CODES` where
@@ -128,6 +132,9 @@ NEIGHBOUR_DEGREES = 0.1
 # A state is named on the map when it covers at least this share of it
 LABEL_MIN_SHARE = 0.002
 BORDERS_KEY_MAX = 10
+# CShapes draws Crimea in Russia from its annexation on 18 March 2014, which the UN General Assembly (resolution
+# 68/262), Romania and the EU do not recognise: from that day Russia and Ukraine keep the outlines of the day before
+DE_JURE = {"365": "2014-03-18", "369": "2014-03-18"}     # Gleditsch & Ward code: the day CShapes' change starts
 
 
 class BordersError(RuntimeError):
@@ -354,7 +361,7 @@ def load_polities(when: When, source: str, cache_dir: str | None = None) -> list
                     for i in active]
     else:
         active = np.nonzero((table["starts"] <= when.date) & (when.date <= table["ends"]))[0]
-        outlines = _unpack(table)
+        outlines = _de_jure(table, _unpack(table))
         # A dependency takes its ruler's colour and name: the ruler as it was then, or as last known
         ruler_names: dict[str, str] = {}
         for i in np.argsort(table["starts"]):
@@ -369,6 +376,21 @@ def load_polities(when: When, source: str, cache_dir: str | None = None) -> list
             polities.append(Polity(str(table["names"][i]), group, ruler_names.get(group, str(table["names"][i])),
                                    dependent, outlines[i]))
     return sorted(polities, key=lambda p: float(shapely.area(p.outline)), reverse=True)
+
+
+def _de_jure(table: dict[str, np.ndarray], outlines: list[shapely.Geometry]) -> list[shapely.Geometry]:
+    """*outlines* (CShapes' rows) with the changes of :data:`DE_JURE` undone."""
+    outlines = list(outlines)
+    for code, day in DE_JURE.items():
+        mine = [i for i in range(len(outlines)) if table["codes"][i] == code]
+        before = [i for i in mine if str(table["ends"][i]) < day]
+        if not before:
+            continue
+        last = max(before, key=lambda i: str(table["ends"][i]))
+        for i in mine:
+            if str(table["starts"][i]) >= day:
+                outlines[i] = outlines[last]
+    return outlines
 
 
 # ---------------------------------------------------------------------------

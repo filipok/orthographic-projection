@@ -257,6 +257,17 @@ class TestDrawing:
         assert "CShapes 2.0" in borders.attribution("cshapes")
 
 
+def test_crimea_stays_in_ukraine():
+    crimea, ukraine, russia = box(33, 44, 36, 46), box(30, 46, 40, 52), box(36, 44, 60, 60)
+    table = {"codes": np.array(["369", "369", "365", "365", "220"]),
+             "starts": np.array(["1991-12-26", "2014-03-18", "1991-12-21", "2014-03-18", "1886-01-01"]),
+             "ends": np.array(["2014-03-17", "2019-12-31", "2014-03-17", "2019-12-31", "2019-12-31"])}
+    outlines = [ukraine.union(crimea), ukraine, russia, russia.union(crimea), box(0, 40, 10, 50)]
+    fixed = borders._de_jure(table, outlines)
+    assert fixed[1].equals(ukraine.union(crimea)) and fixed[3].equals(russia)
+    assert fixed[0] is outlines[0] and fixed[4] is outlines[4]
+
+
 def test_label_sizes_grow_with_the_share():
     assert borders._label_size(0.0) == 8 and borders._label_size(1.0) == 16
     assert borders._label_size(0.01) < borders._label_size(0.05)

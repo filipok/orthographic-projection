@@ -164,6 +164,8 @@ class MapRequest(BaseModel):
     borders: str | None = None
     borders_source: str | None = None
     borders_alpha: float | None = None
+    no_borders_names: bool | None = None
+    alliance: list[str] | None = None
     ocean_depth: bool | None = None
     ice_age: bool | None = None
     currents: bool | None = None

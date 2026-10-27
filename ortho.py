@@ -136,6 +136,10 @@ from biomes import (
     add_ecoregion_legend, add_ecoregion_overlay, add_realm_legend, load_ecoregions, resolve_biome_classes,
     visible_ecoregions, visible_values,
 )
+from alliances import (
+    ATTRIBUTION as ALLIANCES_ATTRIBUTION, NAMES as ALLIANCE_NAMES, AllianceError, add_alliances_legend,
+    draw_alliances, load_alliances, resolve_alliances,
+)
 from borders import (
     SOURCES as BORDER_SOURCES, BordersError, add_borders_legend, attribution as borders_attribution,
     CLDR_ATTRIBUTION, LANGUAGES, in_language,
@@ -842,6 +846,8 @@ def generate_orthographic_map(
     borders: str | int | None = None,
     borders_source: str = "auto",
     borders_alpha: float = 0.55,
+    borders_names: bool = True,
+    alliances: Sequence[str] | None = None,
     ocean_depth: bool = False,
     ice_age: bool = False,
     plates: bool = False,
@@ -1084,7 +1090,14 @@ def generate_orthographic_map(
         (1886-2019, states and their colonies, to the day) or ``"auto"``
         (CShapes in its years, Cliopatria otherwise).
     borders_alpha : float
-        Opacity of the borders' fill (0–1).
+        Opacity of the borders' fill (0–1). At 0 the states are outlined
+        only, and the key, which would show their colours, is left out.
+    borders_names : bool
+        Name the states of *borders* (default); ``False`` outlines them only.
+    alliances : list of str, optional
+        Draw today's European Union (``"eu"``, a thin gold line round its
+        land) and NATO (``"nato"``, its land shaded pale blue), with a key
+        naming them in *language* (see :mod:`alliances`).
     ocean_depth : bool
         Colour the sea floor by depth and shade it (terrain tiles, see
         :mod:`elevation`), with a key. *elevation_alpha* sets its opacity.
@@ -1650,11 +1663,22 @@ def generate_orthographic_map(
                 logger.warning("The states keep their English names: %s", e)
                 language = "en"
             border_colours = colour_groups(polities) if polities else {}
-            border_counts = [draw_borders(ax, polities, border_colours, alpha=borders_alpha) for ax in axes]
+            border_counts = [draw_borders(ax, polities, border_colours, alpha=borders_alpha, labels=borders_names)
+                             for ax in axes]
         except (BordersError, OSError) as e:
             # Missing data should not throw away the rest of the map
             logger.warning("Skipping the borders: %s", e)
             polities = None
+    alliance_list = None
+    if alliances:
+        logger.info("Drawing %s …", " and ".join(name.upper() for name in alliances))
+        try:
+            alliance_list = load_alliances(alliances)
+            for ax in axes:
+                draw_alliances(ax, alliance_list)
+        except AllianceError as e:
+            logger.warning("Skipping the EU and NATO lines: %s", e)
+            alliance_list = None
 
     # Step 5b4: River basins (like the borders), time zones, livestock and permafrost
     basin_list = None
@@ -1999,9 +2023,11 @@ def generate_orthographic_map(
         keys.append(add_soil_legend(near, x=key_x, classes=soil_codes or None))
     if property_drawn and prop is not None and prop_depth is not None:
         keys.append(add_soil_property_legend(near, prop, prop_depth, x=key_x))
-    if polities and border_when is not None and border_source is not None:
+    if polities and border_when is not None and border_source is not None and borders_alpha > 0:
         keys.append(add_borders_legend(near, polities, border_counts, border_colours, border_when, border_source,
                                        x=key_x))
+    if alliance_list:
+        keys.append(add_alliances_legend(near, alliance_list, language, x=key_x))
     if basin_list:
         keys.append(add_basins_legend(near, basin_list, basin_counts, basin_colour_map, x=key_x))
     if permafrost_drawn:
@@ -2073,9 +2099,11 @@ def generate_orthographic_map(
     if property_drawn:
         credits.append(SOIL_PROPERTY_ATTRIBUTION)
     if polities is not None and border_source is not None:
-        named_in_cldr = (language == "ro" and border_source == "cshapes"
+        named_in_cldr = (language == "ro" and border_source == "cshapes" and borders_names
                          and not any("CLDR" in c for c in credits))      # unless the base map's credit has it
         credits.append(borders_attribution(border_source) + (f"; {CLDR_ATTRIBUTION}" if named_in_cldr else ""))
+    if alliance_list:
+        credits.append(ALLIANCES_ATTRIBUTION)
     if basin_list:
         credits.append(BASINS_ATTRIBUTION)
     if rivers_drawn:
@@ -3188,7 +3216,21 @@ def build_cli_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.55,
         metavar="ALPHA",
-        help="Opacity of the borders' fill (0-1, default: 0.55).",
+        help="Opacity of the borders' fill (0-1, default: 0.55); 0 outlines the states only, without a key.",
+    )
+    history.add_argument(
+        "--no-borders-names",
+        action="store_true",
+        help="Leave the states of --borders unnamed.",
+    )
+    unions = parser.add_argument_group("The European Union and NATO (Natural Earth)")
+    unions.add_argument(
+        "--alliance",
+        action="append",
+        default=None,
+        choices=list(ALLIANCE_NAMES),
+        help="Draw today's European Union (eu: a thin gold line round its land) or NATO (nato: its members' land "
+             "within the North Atlantic Treaty's area, shaded pale blue), with a key; repeat for both.",
     )
 
     landforms = parser.add_argument_group("Relief units of Romania (Posea & Badea 1984, geo-spatial.org)")
@@ -3803,6 +3845,9 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
     resolve_crops(args.crop or [])
     if args.borders:
         choose_borders_source(parse_when(args.borders), args.borders_source)
+    elif args.no_borders_names:
+        logger.warning("--no-borders-names is ignored because no --borders was given.")
+    alliances = resolve_alliances(args.alliance or [])
     if args.population is not None:
         resolve_population_year(args.population)
     if args.livestock:
@@ -3979,6 +4024,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         borders=args.borders,
         borders_source=args.borders_source,
         borders_alpha=args.borders_alpha,
+        borders_names=not args.no_borders_names,
+        alliances=alliances,
         ocean_depth=args.ocean_depth,
         ice_age=args.ice_age,
         plates=args.plates,
