@@ -690,6 +690,10 @@ class TestCLIParser:
         assert self._parse(["--city", "lisbon"]).beside is None
         assert self._parse(["--city", "lisbon", "--beside", "Tokyo"]).beside == "Tokyo"
 
+    def test_no_key_flag(self):
+        assert self._parse(["--city", "nyc"]).no_key is False
+        assert self._parse(["--city", "nyc", "--no-key"]).no_key is True
+
     def test_no_circles_flag(self):
         assert self._parse(["--city", "nyc"]).no_circles is False
         assert self._parse(["--city", "nyc", "--no-circles"]).no_circles is True
@@ -1046,7 +1050,7 @@ class TestRunCLIValidation:
             output=None, output_dir=None, cache_dir=None,
             koppen=False, koppen_alpha=None, route=None, route_legend=False,
             both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
-            koppen_class=None, up=0.0, up_toward=None, circles_from=None, no_circles=False, beside=None, temperature_over_sea=False, sea_temperature=None,
+            koppen_class=None, up=0.0, up_toward=None, circles_from=None, no_circles=False, no_key=False, beside=None, temperature_over_sea=False, sea_temperature=None,
             trewartha=False, trewartha_class=None,
             elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
@@ -1390,6 +1394,12 @@ class TestRunCLIValidation:
             assert ortho.prepare_render(self._make_args(city="paris")).kwargs["distance_circles"] is True
             plan = ortho.prepare_render(self._make_args(city="paris", no_circles=True))
         assert plan.kwargs["distance_circles"] is False
+
+    def test_no_key_reaches_the_renderer(self):
+        with mock.patch.object(ortho, "configure_tile_cache"):
+            assert ortho.prepare_render(self._make_args(city="paris")).kwargs["show_keys"] is True
+            plan = ortho.prepare_render(self._make_args(city="paris", no_key=True))
+        assert plan.kwargs["show_keys"] is False
 
     def test_circles_from_the_centre_by_default(self):
         with mock.patch.object(ortho, "configure_tile_cache"):
@@ -2781,12 +2791,11 @@ class TestGenerateOrthographicMapIntegration:
             )
         draw.assert_not_called()
 
-    @pytest.mark.parametrize("koppen, expected_y", [(False, -0.01), (True, -0.07)])
-    def test_route_legend_drawn_when_requested(self, tmp_path, koppen, expected_y):
+    @pytest.mark.parametrize("koppen", [False, True])
+    def test_route_legend_drawn_when_requested(self, tmp_path, koppen):
         route = ortho.Route(name="r", lines=(((0.0, 0.0), (10.0, 10.0)),))
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
                 mock.patch.object(ortho, "add_koppen_overlay"), \
-                mock.patch.object(ortho, "add_koppen_legend"), \
                 mock.patch.object(ortho, "add_route_legend") as legend, \
                 mock.patch.object(ortho, "_stack_keys") as stack:
             ortho.generate_orthographic_map(
@@ -2794,8 +2803,12 @@ class TestGenerateOrthographicMapIntegration:
                 output_dir=str(tmp_path), routes=[route], route_legend=True, koppen=koppen,
             )
         legend.assert_called_once()
-        assert stack.call_args.args[1] == [legend.return_value]
-        assert stack.call_args.kwargs["top"] == expected_y
+        keys = stack.call_args.args[1]
+        # The Köppen key first, its top under the globe like the others', then the route key under it
+        assert keys[-1] is legend.return_value and len(keys) == 1 + koppen
+        if koppen:
+            assert keys[0].get_title().get_text() == "Köppen-Geiger Climate Classification"
+        assert stack.call_args.kwargs["top"] == -0.01
 
     def test_both_hemispheres_draws_two_globes(self, tmp_path):
         """The antipode globe sits right of the city's, keys centre under the pair."""
@@ -3054,6 +3067,63 @@ class TestGenerateOrthographicMapIntegration:
         finally:
             plt.close(fig)
 
+    def test_a_key_wider_than_the_map_is_narrowed_to_it(self):
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        from matplotlib.legend import Legend
+
+        fig, ax = plt.subplots(subplot_kw={"projection": ortho.ccrs.Orthographic(0, 0)})
+        try:
+            labels = [f"a rather long name for entry number {i}" for i in range(9)]
+            key = Legend(ax, [mpatches.Patch()] * 9, labels, loc="upper center", ncol=3,
+                         title="A title that is longer than the map is wide, by a good many words")
+            ax.add_artist(key)
+            width = ortho._map_width([ax])
+            assert key.get_window_extent().width > width
+            ortho._fit_key(key, width)
+            assert key.get_window_extent().width <= width
+            assert [t.get_text().replace("\n", " ") for t in key.texts] == labels    # every entry, in order
+            assert "\n" in key.get_title().get_text()
+        finally:
+            plt.close(fig)
+
+    def test_a_key_that_fits_is_left_as_it_is(self):
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        from matplotlib.legend import Legend
+
+        fig, ax = plt.subplots(subplot_kw={"projection": ortho.ccrs.Orthographic(0, 0)})
+        try:
+            key = Legend(ax, [mpatches.Patch()] * 4, ["a", "b", "c", "d"], loc="upper center", ncol=2)
+            ax.add_artist(key)
+            box = key._legend_handle_box
+            ortho._fit_key(key, ortho._map_width([ax]))
+            assert key._legend_handle_box is box and len(box.get_children()) == 2
+        finally:
+            plt.close(fig)
+
+    @pytest.mark.parametrize("show", [True, False])
+    def test_keys_can_be_left_out(self, tmp_path, show):
+        import matplotlib.patches as mpatches
+        from matplotlib.legend import Legend
+        drawn = []
+
+        def key(ax, *args, **kwargs):
+            legend = Legend(ax, [mpatches.Patch()], ["0 m"], loc="upper center")
+            ax.add_artist(legend)
+            drawn.append(legend)
+            return legend
+
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None),                 mock.patch.object(ortho, "add_elevation_legend", side_effect=key),                 mock.patch.object(ortho, "_stack_keys") as stack,                 mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(
+                lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20, output_dir=str(tmp_path),
+                elevation=True, show_keys=show,
+            )
+        (legend,) = drawn
+        assert (legend.axes is not None) is show            # taken off the map when left out
+        assert stack.call_args.args[1] == ([legend] if show else [])
+        attribution.assert_called_once()                    # the credits stay either way
+
     def test_no_ice_by_default(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
                 mock.patch.object(ortho, "load_ice_layers") as load:
@@ -3102,19 +3172,16 @@ class TestAttribution:
         finally:
             plt.close(fig)
 
-    @pytest.mark.parametrize("rectangle", [True, False])
-    def test_names_under_a_rectangles_credits_left_out(self, rectangle):
+    def test_a_rectangles_credits_go_under_it(self):
         fig = ortho.Figure(figsize=(8, 8))
-        ax = ortho._add_globe_axes(fig, 46, 10, 0, 1, radius_km=800, rectangle=1.5 if rectangle else None)
+        ax = ortho._add_globe_axes(fig, 46, 10, 0, 1, radius_km=800, rectangle=1.5)
         (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
-        # Placed as the layers place names: annotations above a point, which have no extent until drawn
         corner = ax.annotate("Munții Buzăului", (x1 - 0.05 * (x1 - x0), y0 + 0.02 * (y1 - y0)), xycoords="data",
                              xytext=(0, 2), textcoords="offset points", ha="right", annotation_clip=True)
-        middle = ax.annotate("Depresiunea Brașovului", ((x0 + x1) / 2, (y0 + y1) / 2), xycoords="data",
-                             xytext=(0, 2), textcoords="offset points", annotation_clip=True)
-        ortho._add_attribution(ax, ["Map tiles © OpenStreetMap contributors", "Relief units: geo-spatial.org"])
-        assert corner.get_visible() is not rectangle             # a disc's credits sit outside the map
-        assert middle.get_visible() and ax.texts[-1].get_visible()
+        credit = ortho._add_attribution(ax, ["Map tiles © OpenStreetMap contributors", "Relief units: geo-spatial.org"])
+        ax.apply_aspect()
+        assert credit.get_window_extent().y1 <= ax.get_window_extent().y0     # wholly under the map
+        assert corner.get_visible()                                           # so the corner keeps its names
 
 
 # ===================================================================
@@ -3402,6 +3469,14 @@ class TestRadiusAndWindRendering:
         assert overlay.call_args.kwargs["zoom"] == 8
         assert key.call_args.args[1:] == (variable, period)
         assert credits == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.CLIMATE_ATTRIBUTION]
+
+    def test_climate_mean_key_sits_right_under_the_map(self, tmp_path):
+        # Its credit is not a Köppen key's: the key leaves no room for one above it
+        with mock.patch.object(ortho, "add_climate_overlay"), \
+                mock.patch.object(ortho, "add_climate_legend"), \
+                mock.patch.object(ortho, "_stack_keys") as stack:
+            self._render(tmp_path, temperature="july")
+        assert stack.call_args.kwargs["top"] == -0.01
 
     def test_climate_mean_opacity_can_be_set(self, tmp_path):
         with mock.patch.object(ortho, "add_climate_overlay") as overlay, \

@@ -18,6 +18,8 @@ from typing import Any, NamedTuple
 import numpy as np
 
 from matplotlib.figure import Figure
+from matplotlib.legend import Legend
+from matplotlib.offsetbox import HPacker, VPacker
 from matplotlib.text import Annotation, Text
 import cartopy.crs as ccrs
 import cartopy.io.img_tiles as cimgt
@@ -831,6 +833,7 @@ def generate_orthographic_map(
     humidity: str | None = None,
     circles_from: tuple[float, float] | None = None,
     distance_circles: bool = True,
+    show_keys: bool = True,
     beside: tuple[float, float] | None = None,
     beside_name: str | None = None,
     beside_up: float | None = None,
@@ -989,6 +992,9 @@ def generate_orthographic_map(
     distance_circles : bool
         When False, leave out the distance circles (and *circles_from*'s
         ring), as a thematic map in an atlas may want.
+    show_keys : bool
+        When False, leave out the keys under the map, as a detail under a
+        larger map with the same key may want; the credits stay.
     elevation : bool
         When True, colour the land by height and shade its relief (Mapzen
         terrain tiles, see :mod:`elevation`), above the map tiles and below
@@ -1961,8 +1967,8 @@ def generate_orthographic_map(
         for ax in axes:
             draw_routes(ax, routes)
 
-    # Step 7d: Keys below the globe(s): the elevation, soil, crop and route
-    # keys, under the climate key when that is drawn too
+    # Step 7d: The keys: the elevation, soil, crop and route keys and the rest,
+    # placed under the map, after the climate key, in Step 7f
     keys = []
     if climate_mean_drawn and climate_mean is not None:
         joined_surface = sea_with_land and not temperature_over_sea
@@ -2039,7 +2045,6 @@ def generate_orthographic_map(
         keys.append(add_tectonics_legend(near, plates_drawn, quakes, volcanoes_drawn, x=key_x))
     if routes and route_legend:
         keys.append(add_route_legend(near, routes, x=key_x))
-    _stack_keys(near, [k for k in keys if k is not None], top=-0.07 if climate_credits else -0.01, x=key_x)
 
     # Step 7e: Data credits required by the tile and dataset licences
     credits = tile_attribution_lines(tiles, tile_provider, zoom)
@@ -2116,7 +2121,27 @@ def generate_orthographic_map(
     if cyclones_drawn:
         credits.append(CYCLONES_ATTRIBUTION)
     credits += tectonics_credits(plates_drawn, quakes is not None, volcanoes_drawn)
-    _add_attribution(axes[-1], credits)
+    credit = _add_attribution(axes[-1], credits)
+
+    # Step 7f: The keys under the map, each as wide as the map at most so the image is no wider than it, and
+    # under a rectangle's credits
+    width = _map_width(axes)
+    below = 0.0
+    if isinstance(credit, Text) and is_rectangle(axes[-1]):
+        below = credit.get_window_extent().height / near.get_window_extent().height + _KEY_GAP
+    keys = [k for k in keys if k is not None]
+    climate_key = near.get_legend()         # the Köppen or Trewartha key: first, its top under the map like the rest
+    if isinstance(climate_key, Legend):
+        climate_key.set_loc("upper center")
+        keys.insert(0, climate_key)
+    if not show_keys:                       # drawn, so each layer works as usual, then taken off
+        for key in keys:
+            key.remove()
+        keys = []
+    for key in keys:
+        if isinstance(key, Legend):
+            _fit_key(key, width)
+    _stack_keys(near, keys, top=-0.01 - below, x=key_x)
 
     # Step 8: Export
     if tiles is None:
@@ -2231,6 +2256,95 @@ def _stack_keys(ax: GeoAxes, keys: Sequence[Any], top: float, x: float = 0.5) ->
         y -= key.get_window_extent().height / axes_height + _KEY_GAP
 
 
+def _map_width(axes: Sequence[GeoAxes]) -> float:
+    """How wide the globes or rectangles on *axes* are together, in pixels, side by side."""
+    boxes = []
+    for ax in axes:
+        ax.apply_aspect()                   # drawing would shrink the box to the map's shape
+        boxes.append(ax.get_window_extent())
+    return max(b.x1 for b in boxes) - min(b.x0 for b in boxes)
+
+
+def _wrap_label(text: Text, label: str, width: float) -> str:
+    """*label* broken at spaces into lines no wider than *width* pixels, measured as *text* draws them."""
+    def measure(s: str) -> float:
+        text.set_text(s)
+        return text.get_window_extent().width
+
+    lines = []
+    for paragraph in label.split("\n"):
+        line = ""
+        for word in paragraph.split(" "):
+            trial = f"{line} {word}" if line else word
+            if line and measure(trial) > width:
+                lines.append(line)
+                line = word
+            else:
+                line = trial
+        lines.append(line)
+    text.set_text(label)
+    return "\n".join(lines)
+
+
+def _pack_key(key: Legend, entries: Sequence[Any], ncol: int) -> None:
+    """Lay out *key*'s *entries* (each a swatch and its label) again in *ncol* columns, filling one column
+    before the next as a legend does. Matplotlib fixes a legend's columns when it is made; this rebuilds the
+    box that holds them."""
+    inner: Any = key                        # the legend's own boxes, which matplotlib keeps private
+    size = inner._fontsize
+    per, extra = divmod(len(entries), ncol)
+    columns, start = [], 0
+    for i in range(ncol):
+        end = start + per + (i < extra)
+        if end > start:
+            columns.append(VPacker(pad=0, sep=key.labelspacing * size, align="baseline",
+                                   children=list(entries[start:end])))
+        start = end
+    box = HPacker(pad=0, sep=key.columnspacing * size, align="baseline", children=columns)
+    inner._legend_box.get_children()[1] = box
+    inner._legend_handle_box = box
+    inner._legend_box.set_figure(key.get_figure(root=False))
+    inner._legend_box.axes = key.axes
+
+
+def _fit_key(key: Legend, width: float) -> None:
+    """Narrow *key* to *width* pixels, the map's, if it is wider, so that it does not make the image wider
+    than the map: its title wrapped, then as few rows as fit, in fewer columns or with long labels on
+    two lines or more."""
+    if key.get_window_extent().width <= width * 0.99:
+        return
+    own: Any = key                          # the legend's font size and boxes, which matplotlib keeps private
+    px = own.get_figure(root=True)._get_renderer().points_to_pixels(own._fontsize)
+    inner = width * 0.99 - 2 * key.borderpad * px
+    title = key.get_title()
+    if title.get_text() and title.get_window_extent().width > inner:
+        title.set_text(_wrap_label(title, title.get_text(), inner))
+        title.set_multialignment("center")
+    entries = [entry for column in own._legend_handle_box.get_children() for entry in column.get_children()]
+    texts, labels = key.texts, [t.get_text() for t in key.texts]
+    swatch = (key.handlelength + key.handletextpad) * px
+    best: tuple[float, int, int, list[str]] | None = None
+    for ncol in range(len(own._legend_handle_box.get_children()), 0, -1):
+        share = (inner - (ncol - 1) * key.columnspacing * px) / ncol - swatch
+        for wrap in (False, True):
+            shown = [_wrap_label(t, label, share) if wrap else label for t, label in zip(texts, labels)]
+            for t, s in zip(texts, shown):
+                t.set_text(s)
+            _pack_key(key, entries, ncol)
+            box = key.get_window_extent()
+            if box.width <= width * 0.99:
+                lines = sum(s.count("\n") for s in shown)
+                choice = (box.height, lines, -ncol, shown)
+                if best is None or choice[:3] < best[:3]:
+                    best = choice
+    if best is None:                        # a word wider than the map: one column, as narrow as it goes
+        logger.warning("The key %r is wider than the map.", title.get_text())
+        best = (0, 0, -1, [_wrap_label(t, label, inner - swatch) for t, label in zip(texts, labels)])
+    for t, s in zip(texts, best[3]):
+        t.set_text(s)
+    _pack_key(key, entries, -best[2])
+
+
 def _report_tile_failures(tiles: BufferedTileSource) -> None:
     """Log how many tiles failed to download during the render, if any."""
     failed, total = len(tiles.failed_tiles), tiles.total_tiles
@@ -2249,40 +2363,17 @@ def _report_tile_failures(tiles: BufferedTileSource) -> None:
         )
 
 
-def _add_attribution(ax: GeoAxes, credits: Sequence[str]) -> None:
-    """Draw *credits*, one per line, in the bottom-right corner of *ax*.
-
-    On a globe that corner lies outside the disc, so the text never covers map
-    content; a rectangle has map there, so the credits get a pale backing.
-    ``clip_on=False`` stops GeoAxes clipping it to the globe.
-    """
+def _add_attribution(ax: GeoAxes, credits: Sequence[str]) -> Text:
+    """Draw *credits*, one per line, at the bottom right of *ax*: in the corner outside a globe's disc, or under a
+    rectangle, which has map in its corners. ``clip_on=False`` stops GeoAxes clipping it to the globe."""
     rectangle = is_rectangle(ax)
-    credit = ax.text(
-        0.995 if rectangle else 1.0, 0.005 if rectangle else 0.0, "\n".join(credits),
+    return ax.text(
+        1.0, -0.004 if rectangle else 0.0, "\n".join(credits),
         transform=ax.transAxes,
-        ha="right", va="bottom", multialignment="right",
-        fontsize=8, color="#555555" if rectangle else "#888888", style="italic",
-        bbox=dict(boxstyle="round,pad=0.4", facecolor="white", edgecolor="none", alpha=0.75) if rectangle else None,
+        ha="right", va="top" if rectangle else "bottom", multialignment="right",
+        fontsize=8, color="#888888", style="italic",
         clip_on=False, zorder=10,
     )
-    if rectangle:
-        _clear_names_under(ax, credit)
-
-
-def _clear_names_under(ax: GeoAxes, credit: Any) -> None:
-    """Leave out the names the *credit* lines' backing would cover, half hidden, in a rectangle's corner, as names
-    that would run off the map are; the credits come last, once every layer has placed its names."""
-    renderer = ax.figure._get_renderer()  # pyright: ignore[reportAttributeAccessIssue]  # as matplotlib measures text
-    pad = 0.4 * credit.get_fontsize() * ax.figure.dpi / 72
-    box = credit.get_window_extent(renderer).padded(pad)
-    for text in ax.texts:
-        if text is credit or not text.get_visible() or not text.get_text():
-            continue
-        if isinstance(text, Annotation):
-            # Undrawn, an annotation has no place yet (its extent is an empty box): place it, then measure its text
-            text.update_positions(renderer)
-        if Text.get_window_extent(text, renderer).overlaps(box):
-            text.set_visible(False)
 
 
 def _geodesic_circle(lon: float, lat: float, radius_m: float, n_points: int = 180) -> Polygon:
@@ -2855,6 +2946,11 @@ def build_cli_parser() -> argparse.ArgumentParser:
         "--no-circles",
         action="store_true",
         help="Leave out the distance circles.",
+    )
+    layout.add_argument(
+        "--no-key",
+        action="store_true",
+        help="Leave out the keys under the map (the credits stay), e.g. for a detail under a map with the same key.",
     )
 
     climate = parser.add_argument_group(
@@ -3955,6 +4051,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         up=up,
         circles_from=circles_from,
         distance_circles=not args.no_circles,
+        show_keys=not args.no_key,
         beside=beside_centre,
         beside_name=beside.name if beside is not None else None,
         beside_up=beside_up,
