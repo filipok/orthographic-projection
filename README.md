@@ -1005,7 +1005,8 @@ elevation = true
 
 - **Editing.** Change the text, reorder the `[[pages]]` tables, delete or add
   pages. A map page takes a `[pages.map]` table, a `recipe = "../recipes/x.toml"`
-  (relative to the atlas), or both, the table's options on top of the recipe's.
+  (relative to the atlas), or both, the table's options on top of the recipe's
+  (`ice = false` turns off the recipe's `ice`; `up-toward` replaces its `up`).
   `orientation` is `auto` (landscape when the map is wide, as two globes or a
   `rectangle = "3:2"` are), `portrait` or `landscape`. A radius map with
   `rectangle` fills the page instead of leaving its corners empty (see

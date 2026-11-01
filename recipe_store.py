@@ -256,19 +256,21 @@ def recipe_text(description_text: str, entries: Iterable[tuple[str, Any]]) -> st
 
 
 def options_from_request(
-    request: dict[str, Any], base_dir: str, routes_dir: str, fields: Collection[str],
+    request: dict[str, Any], base_dir: str, routes_dir: str, fields: Collection[str], keep_off: bool = False,
 ) -> list[tuple[str, Any]]:
     """The form's *request* as recipe entries ``(key, value)``, in the order of *fields*.
 
     Keys are the options' long names; blanks and the options a recipe keeps
     as it was are left out, and route files are written relative to *base_dir*.
+    Flags turned off are left out too, unless *keep_off* (a map on top of a
+    recipe, whose flags they turn off).
     Raises :class:`RecipeError` for an unknown route file, or routes that are not a list of names.
     """
     long_names = {action.dest: name for name, action in reversed(_actions().items())}  # the first spelling
     entries: list[tuple[str, Any]] = []
     for dest in fields:
         value = request.get(dest)
-        if dest in KEPT_OPTIONS or value is None or value is False or value == "" or value == []:
+        if dest in KEPT_OPTIONS or value is None or (value is False and not keep_off) or value == "" or value == []:
             continue
         if dest == "route":
             if not isinstance(value, list) or not all(isinstance(route, str) for route in value):

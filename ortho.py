@@ -11,7 +11,7 @@ import os
 import sys
 import time
 import tomllib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -3496,6 +3496,20 @@ def _recipe_tokens(
     return option_tokens(parser, recipe, f"recipe {path}", os.path.dirname(os.path.abspath(path)), cli_argv)
 
 
+def overridden_dests(parser: argparse.ArgumentParser, given: Collection[str]) -> set[str]:
+    """The dests a recipe gives up when the options *given* (by dest) pick one side of a choice.
+
+    Location counts as one choice (city, or lat with lon), as does each of
+    *parser*'s mutually exclusive groups.
+    """
+    overridden = {"city", "lat", "lon"} if set(given) & {"city", "lat", "lon"} else set()
+    for group in parser._mutually_exclusive_groups:
+        dests = {a.dest for a in group._group_actions}
+        if dests & set(given):
+            overridden |= dests
+    return overridden
+
+
 def option_tokens(
     parser: argparse.ArgumentParser, recipe: dict[str, Any], where: str, base: str, cli_argv: Sequence[str] = (),
 ) -> list[str]:
@@ -3507,14 +3521,7 @@ def option_tokens(
     describes.
     """
     actions = _option_actions(parser)
-    given = _given_dests(parser, cli_argv)
-    # Location counts as one choice: city, or lat with lon
-    overridden = {"city", "lat", "lon"} if given & {"city", "lat", "lon"} else set()
-    for group in parser._mutually_exclusive_groups:
-        dests = {a.dest for a in group._group_actions}
-        if dests & given:
-            overridden |= dests
-
+    overridden = overridden_dests(parser, _given_dests(parser, cli_argv))
     tokens: list[str] = []
     for key, value in recipe.items():
         name = key.replace("_", "-")

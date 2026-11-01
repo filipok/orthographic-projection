@@ -236,6 +236,15 @@ class TestPlanning:
         assert (args.city, args.lat, args.lon, args.radius, args.koppen) == (None, 10, 20, 500, True)
         assert args.output == str(tmp_path / "m.png")
 
+    def test_a_page_turns_off_its_recipes_flag(self, tmp_path):
+        (tmp_path / "recipes").mkdir()
+        (tmp_path / "recipes" / "r.toml").write_text('city = "Paris"\nice = true\nvolcanoes = true\nkoppen = true\n',
+                                                     encoding="utf-8")
+        book = _load(tmp_path, 'title = "A"\n[[pages]]\ntitle = "M"\nrecipe = "recipes/r.toml"\n'
+                               '[pages.map]\nice = false\nkoppen = false\ntemperature = "July"')
+        args = atlas.page_args(book, book.pages[0], "here", str(tmp_path / "m.png"))
+        assert (args.ice, args.koppen, args.volcanoes, args.temperature) == (False, False, True, "July")
+
     def test_routes_are_relative_to_the_atlas(self, tmp_path):
         (tmp_path / "routes").mkdir()
         (tmp_path / "routes" / "line.geojson").write_text(json.dumps(LINE), encoding="utf-8")
@@ -634,6 +643,38 @@ class TestFiles:
         save(name="hand", data=data)
         save(name="copy", data=data)
         assert atlas.load_atlas(str(atlases / "copy.toml")).pages[0].map["route"] == ["../outside/private.geojson"]
+
+    def test_a_flag_turned_off_on_top_of_a_recipe_is_saved(self, dirs, tmp_path):
+        atlases, routes = dirs
+        (tmp_path / "recipes").mkdir()
+        (tmp_path / "recipes" / "r.toml").write_text('city = "Paris"\nice = true\nvolcanoes = true\n',
+                                                     encoding="utf-8")
+        fields = [*FIELDS, "ice"]
+        data = {"title": "A", "pages": [
+            {"type": "map", "title": "Off", "recipe": "../recipes/r.toml", "map": {"ice": False}},
+            {"type": "map", "title": "Own", "map": {"city": "Paris", "ice": False}}]}
+        atlas.write_atlas(str(atlases), str(routes), "a", data, fields, cache_dir=str(tmp_path / "c"),
+                          recipes_dir=str(tmp_path / "recipes"))
+        book = atlas.load_atlas(str(atlases / "a.toml"))
+        assert [page.map for page in book.pages] == [{"ice": False}, {"city": "Paris"}]   # no recipe, nothing to turn off
+        args = atlas.page_args(book, book.pages[0], "here", str(tmp_path / "m.png"))
+        assert (args.ice, args.volcanoes) == (False, True)
+        assert atlas.map_request(str(atlases), str(routes), "a", "1", fields)["ice"] is False
+        assert atlas.read_atlas_json(str(atlases), str(routes), "a", fields)["atlas"]["pages"][0]["map"] == {
+            "ice": False}
+
+    def test_the_form_has_a_pages_choice_over_its_recipes(self, dirs, tmp_path):
+        atlases, routes = dirs
+        (tmp_path / "recipes").mkdir()
+        (tmp_path / "recipes" / "r.toml").write_text('city = "Paris"\nup = 45\ntemperature = "July"\n',
+                                                     encoding="utf-8")
+        (atlases / "a.toml").write_text('title = "A"\n[[pages]]\ntitle = "M"\nrecipe = "../recipes/r.toml"\n'
+                                        '[pages.map]\nup-toward = "London"\nkoppen = true\n', encoding="utf-8")
+        book = atlas.load_atlas(str(atlases / "a.toml"))
+        args = atlas.page_args(book, book.pages[0], "here", str(tmp_path / "m.png"))
+        assert (args.up, args.up_toward, args.koppen, args.temperature) == (0.0, "London", True, None)
+        assert atlas.map_request(str(atlases), str(routes), "a", "1", [*FIELDS, "up", "up_toward"]) == {
+            "city": "Paris", "up_toward": "London", "koppen": True}
 
     def test_a_recipes_own_routes_stay_when_a_page_map_replaces_it(self, dirs, tmp_path):
         atlases, routes = dirs

@@ -347,7 +347,11 @@ def page_args(atlas: Atlas, page: Page, where: str, output: str, cache_dir: str 
     tokens = ortho.option_tokens(parser, page.map, "map", atlas.base_dir)
     if page.recipe:
         recipe = os.path.join(atlas.base_dir, page.recipe)
-        tokens = ortho._recipe_tokens(parser, recipe, tokens) + tokens
+        # A flag the page turns off stays off, whatever its recipe says
+        off = ortho._given_dests(parser, [f"--{key.replace('_', '-')}" for key, value in page.map.items()
+                                          if value is False])
+        tokens = [token for token in ortho._recipe_tokens(parser, recipe, tokens)
+                  if not ortho._given_dests(parser, [token]) & off] + tokens
     if atlas.text_scale != 1:
         tokens = [f"--text-scale={atlas.text_scale:g}"] + tokens       # first: a recipe's or page's own wins
     tokens += [f"--dpi={atlas.dpi}", f"--output={output}"]
@@ -1140,9 +1144,9 @@ def map_request(atlases_dir: str, routes_dir: str, name: str, page_key: str, fie
         except (OSError, tomllib.TOMLDecodeError, recipe_store.RecipeError) as e:
             raise AtlasError(f"cannot read the recipe {page.recipe}: {e}") from None
     own, _ = recipe_store.request_from_options(page.map, path.parent, routes_dir, fields, path.name)
-    if own.keys() & {"city", "lat", "lon"}:
-        for key in ("city", "lat", "lon"):
-            request.pop(key, None)
+    # The page's side of a choice replaces the recipe's, as page_args draws it
+    for key in ortho.overridden_dests(ortho.build_cli_parser(), {k for k, v in own.items() if v is not False}):
+        request.pop(key, None)
     return {k: v for k, v in {**request, **own}.items() if k not in RUN_OPTIONS}
 
 
@@ -1184,7 +1188,7 @@ def _toml_text(text: str) -> str:
 
 
 def _map_lines(table: str, request: dict[str, Any], kept: Sequence[Sequence[Any]], base_dir: str, routes_dir: str,
-               fields: Collection[str]) -> list[str]:
+               fields: Collection[str], keep_off: bool = False) -> list[str]:
     if not isinstance(request, dict):
         raise AtlasError(f"[{table}] is a table of options, not {request!r}.")
     if not isinstance(kept, list) or not all(isinstance(entry, list | tuple) and len(entry) == 2
@@ -1192,7 +1196,7 @@ def _map_lines(table: str, request: dict[str, Any], kept: Sequence[Sequence[Any]
         raise AtlasError(f"[{table}] keeps a list of [option, value] pairs, not {kept!r}.")
     try:
         entries = recipe_store.options_from_request(
-            {k: v for k, v in request.items() if k not in RUN_OPTIONS}, base_dir, routes_dir, fields)
+            {k: v for k, v in request.items() if k not in RUN_OPTIONS}, base_dir, routes_dir, fields, keep_off)
     except recipe_store.RecipeError as e:
         raise AtlasError(str(e)) from None
     for key, value in kept:
@@ -1216,7 +1220,7 @@ def _map_table(table: str, part: dict[str, Any], base_dir: str, routes_dir: str,
         lines.append(f"recipe = {json.dumps(part['recipe'], ensure_ascii=False)}")
     if part.get("map") or part.get("kept") or not part.get("recipe"):
         lines += _map_lines(f"{table}.map", part.get("map") or {}, part.get("kept") or [], base_dir, routes_dir,
-                            fields)
+                            fields, keep_off=bool(part.get("recipe")))    # false turns off the recipe's flag
     return lines
 
 
@@ -1262,7 +1266,8 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
         lines.append("")
         if cover.get("recipe"):
             lines += ["[cover]", f"recipe = {json.dumps(cover['recipe'], ensure_ascii=False)}"]
-        lines += _map_lines("cover.map", cover.get("map") or {}, cover.get("kept") or [], base_dir, routes_dir, fields)
+        lines += _map_lines("cover.map", cover.get("map") or {}, cover.get("kept") or [], base_dir, routes_dir, fields,
+                            keep_off=bool(cover.get("recipe")))
     for page in data.get("pages", []):
         if not isinstance(page, dict):
             raise AtlasError("Each page is a table.")
