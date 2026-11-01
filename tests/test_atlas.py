@@ -595,6 +595,78 @@ class TestFiles:
         assert page.recipe is None
         assert page.map == {"city": "Lisbon", "radius": 500, "volcanoes": True}   # kept from the recipe; no dpi
 
+    def test_a_save_names_only_the_folders_files_or_those_an_atlas_names(self, dirs, tmp_path):
+        atlases, routes = dirs
+        recipes, outside = tmp_path / "recipes", tmp_path / "outside"
+        recipes.mkdir()
+        outside.mkdir()
+        (recipes / "r.toml").write_text('city = "Paris"\n', encoding="utf-8")
+        (outside / "r.toml").write_text('city = "Paris"\n', encoding="utf-8")
+        (outside / "private.geojson").write_text(json.dumps(LINE), encoding="utf-8")
+        def save(name, data):
+            atlas.write_atlas(str(atlases), str(routes), name, data, FIELDS, overwrite=True,
+                              cache_dir=str(tmp_path / "c"), recipes_dir=str(recipes))
+
+        def page(**part):
+            return {"title": "A", "pages": [{"type": "map", "title": "M", "map": {"city": "Paris"}, **part}]}
+
+        private = (outside / "private.geojson").as_posix()
+        for data, match in [
+            (page(kept=[["route", [private]]]), "route file .* is not in the routes folder"),
+            (page(kept=[["route", ["../outside/private.geojson"]]]), "not in the routes folder"),
+            (page(kept=[["iucn-data", outside.as_posix()]]), "iucn-data .* is not one the atlases name"),
+            (page(recipe="../outside/r.toml"), "recipe .* is not in the recipes folder"),
+            (page(recipe=(outside / "r.toml").as_posix()), "not in the recipes folder"),
+            ({"title": "A", "cover": {"map": {"city": "Paris"}, "kept": [["route", [private]]]}, "pages": []},
+             "not in the routes folder"),
+            (page(second={"title": "S", "map": {"city": "Paris"}, "kept": [["route", [private]]]}),
+             "not in the routes folder"),
+        ]:
+            with pytest.raises(atlas.AtlasError, match=match):
+                save(name="new", data=data)
+        assert not (atlases / "new.toml").exists()
+        save(name="new", data=page(recipe="../recipes/r.toml", map={"route": ["line.geojson"]}))
+        # A route a hand-written atlas names elsewhere stays, in it and in a copy of it
+        (atlases / "hand.toml").write_text('title = "H"\n[[pages]]\ntitle = "M"\n[pages.map]\ncity = "Paris"\n'
+                                           'route = ["../outside/private.geojson"]\n', encoding="utf-8")
+        data = atlas.read_atlas_json(str(atlases), str(routes), "hand", FIELDS)["atlas"]
+        assert data["pages"][0]["kept"] == [("route", ["../outside/private.geojson"])]
+        save(name="hand", data=data)
+        save(name="copy", data=data)
+        assert atlas.load_atlas(str(atlases / "copy.toml")).pages[0].map["route"] == ["../outside/private.geojson"]
+
+    def test_a_recipes_own_routes_stay_when_a_page_map_replaces_it(self, dirs, tmp_path):
+        atlases, routes = dirs
+        (tmp_path / "recipes").mkdir()
+        (tmp_path / "trips").mkdir()
+        (tmp_path / "trips" / "far.geojson").write_text(json.dumps(LINE), encoding="utf-8")
+        (tmp_path / "recipes" / "r.toml").write_text('city = "Paris"\nroute = ["../trips/far.geojson"]\n',
+                                                     encoding="utf-8")
+        (atlases / "a.toml").write_text('title = "A"\n[[pages]]\ntitle = "M"\nrecipe = "../recipes/r.toml"\n',
+                                        encoding="utf-8")
+        atlas.set_page_map(str(atlases), str(routes), "a", "1", {"city": "Lisbon"}, FIELDS,
+                           cache_dir=str(tmp_path / "c"))
+        assert atlas.load_atlas(str(atlases / "a.toml")).pages[0].map == {
+            "city": "Lisbon", "route": ["../trips/far.geojson"]}
+
+    @pytest.mark.parametrize("data, match", [
+        ({"title": "A", "cover": "x"}, "The cover is a table"),
+        ({"title": "A", "dpi": [1], "pages": []}, "dpi and text scale are numbers"),
+        ({"title": "A", "text_scale": {}, "pages": []}, "dpi and text scale are numbers"),
+        ({"title": "A", "pages": [{"type": "text", "title": "T", "questions": 5}]}, "questions are a list"),
+        ({"title": "A", "pages": [{"title": "M", "map": [1]}]}, r"\[pages.map\] is a table"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "kept": {"a": 1}}]}, "list of"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "kept": [[1, 2, 3]]}]}, "list of"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "second": "x"}]}, "second map is a table"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris", "route": 5}}]}, "route is a list"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris", "route": [5]}}]}, "route is a list"),
+    ])
+    def test_a_malformed_atlas_is_refused(self, dirs, tmp_path, data, match):
+        atlases, routes = dirs
+        with pytest.raises(atlas.AtlasError, match=match):
+            atlas.write_atlas(str(atlases), str(routes), "bad", data, FIELDS, cache_dir=str(tmp_path / "c"))
+        assert not (atlases / "bad.toml").exists()
+
     def test_pages_without_maps_are_refused(self, dirs):
         atlases, routes = dirs
         (atlases / "a.toml").write_text('title = "A"\n[[pages]]\ntitle = "T"\ntext = "x"\n', encoding="utf-8")

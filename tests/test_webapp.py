@@ -1,5 +1,6 @@
 """Tests for the web app: requests are checked like a command line and rendered on a worker."""
 
+import json
 import logging
 import os
 import threading
@@ -409,6 +410,9 @@ class TestRoutes:
             assert client.post("/api/routes", json={"filename": "my_line.geojson", "content": LINE}).status_code == 409
             bad = client.post("/api/routes", json={"filename": "bad.geojson", "content": "{"})
             assert bad.status_code == 400 and "bad.geojson: invalid JSON" in bad.json()["detail"]
+            listed = {**json.loads(LINE), "properties": [1]}
+            bad = client.post("/api/routes", json={"filename": "listed.geojson", "content": json.dumps(listed)})
+            assert bad.status_code == 400 and "properties must be an object" in bad.json()["detail"]
         assert sorted(p.name for p in routes.iterdir()) == ["line.geojson", "my_line.geojson"]
 
     def test_a_map_with_routes(self, client, renders):

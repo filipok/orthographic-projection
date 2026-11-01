@@ -671,7 +671,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def atlas_save(name: str, body: AtlasSave) -> dict[str, str]:
         writable()
         path = atlas_errors(lambda: atlases.write_atlas(settings.atlases_dir, settings.routes_dir, name, body.atlas,
-                                                        FORM_FIELDS, body.overwrite, settings.cache_dir))
+                                                        FORM_FIELDS, body.overwrite, settings.cache_dir,
+                                                        settings.recipes_dir))
         return {"name": name, "file": _shown_path(str(path))}
 
     @app.delete("/api/atlases/{name}", status_code=204)

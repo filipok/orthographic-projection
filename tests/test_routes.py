@@ -119,6 +119,7 @@ class TestLoadRoutes:
             (_feature([[0, 0], [1, 1]], props={"fill-opacity": 1.5}), "fill-opacity"),
             (_feature([[0, 0], [1, 1]], props={"legend": 3}), "legend"),
             (_feature([[0, 0], [1, 1]], props={"legend": "  "}), "legend"),
+            (_feature([[0, 0], [1, 1]], props=[1]), "properties must be an object"),
             ({"type": "FeatureCollection", "features": []}, "no routes"),
             ([1, 2, 3], "top level"),
         ],

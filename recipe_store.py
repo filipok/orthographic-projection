@@ -262,7 +262,7 @@ def options_from_request(
 
     Keys are the options' long names; blanks and the options a recipe keeps
     as it was are left out, and route files are written relative to *base_dir*.
-    Raises :class:`RecipeError` for an unknown route file.
+    Raises :class:`RecipeError` for an unknown route file, or routes that are not a list of names.
     """
     long_names = {action.dest: name for name, action in reversed(_actions().items())}  # the first spelling
     entries: list[tuple[str, Any]] = []
@@ -271,6 +271,8 @@ def options_from_request(
         if dest in KEPT_OPTIONS or value is None or value is False or value == "" or value == []:
             continue
         if dest == "route":
+            if not isinstance(value, list) or not all(isinstance(route, str) for route in value):
+                raise RecipeError(f"route is a list of route file names, not {value!r}.")
             value = [os.path.relpath(route_path(routes_dir, route), base_dir).replace(os.sep, "/")
                      for route in value]
         entries.append((long_names[dest], value))

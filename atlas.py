@@ -1185,6 +1185,11 @@ def _toml_text(text: str) -> str:
 
 def _map_lines(table: str, request: dict[str, Any], kept: Sequence[Sequence[Any]], base_dir: str, routes_dir: str,
                fields: Collection[str]) -> list[str]:
+    if not isinstance(request, dict):
+        raise AtlasError(f"[{table}] is a table of options, not {request!r}.")
+    if not isinstance(kept, list) or not all(isinstance(entry, list | tuple) and len(entry) == 2
+                                             and isinstance(entry[0], str) for entry in kept):
+        raise AtlasError(f"[{table}] keeps a list of [option, value] pairs, not {kept!r}.")
     try:
         entries = recipe_store.options_from_request(
             {k: v for k, v in request.items() if k not in RUN_OPTIONS}, base_dir, routes_dir, fields)
@@ -1241,13 +1246,18 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
         value = data.get(key)
         if value not in (None, ""):
             lines.append(f"{key} = {json.dumps(str(value), ensure_ascii=False)}")
-    if data.get("dpi") is not None:
-        lines.append(f"dpi = {int(data['dpi'])}")
-    if data.get("text_scale") not in (None, "", 1, 1.0):
-        lines.append(f"text_scale = {float(data['text_scale']):g}")
+    try:
+        if data.get("dpi") is not None:
+            lines.append(f"dpi = {int(data['dpi'])}")
+        if data.get("text_scale") not in (None, "", 1, 1.0):
+            lines.append(f"text_scale = {float(data['text_scale']):g}")
+    except (TypeError, ValueError):
+        raise AtlasError("The dpi and text scale are numbers.") from None
     if data.get("notes") not in (None, "", "below"):
         lines.append(f"notes = {json.dumps(str(data['notes']))}")
     cover = data.get("cover")
+    if cover and not isinstance(cover, dict):
+        raise AtlasError("The cover is a table.")
     if cover:
         lines.append("")
         if cover.get("recipe"):
@@ -1263,6 +1273,8 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
         lines.append(f"title = {json.dumps(str(page.get('title', '')), ensure_ascii=False)}")
         if page.get("text"):
             lines.append(f"text = {_toml_text(str(page['text']))}")
+        if not isinstance(page.get("questions") or [], list):
+            raise AtlasError("A page's questions are a list.")
         questions = [str(q) for q in page.get("questions") or [] if str(q).strip()]
         if questions:
             lines.append("questions = [")
@@ -1272,6 +1284,8 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
             lines.append(f"orientation = {json.dumps(page['orientation'])}")
         if kind == "map":
             second = page.get("second")
+            if second and not isinstance(second, dict):
+                raise AtlasError("A page's second map is a table.")
             if second and page.get("heading"):
                 lines.append(f"heading = {json.dumps(str(page['heading']), ensure_ascii=False)}")
             if second and page.get("layout", "pair") != "pair":
@@ -1283,11 +1297,64 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
     return "\n".join(lines) + "\n"
 
 
+PATH_OPTIONS = ("route", "iucn-data")
+
+
+def _named_paths(data: Any) -> set[tuple[str, str]]:
+    """The files and folders an atlas's TOML *data* names, as ``("recipe" or an option, path as written)``."""
+    found: set[tuple[str, str]] = set()
+    if not isinstance(data, dict):
+        return found
+    pages = [page for page in data.get("pages", []) if isinstance(page, dict)] \
+        if isinstance(data.get("pages"), list) else []
+    for part in [data.get("cover"), *pages, *(page.get("second") for page in pages)]:
+        if not isinstance(part, dict):
+            continue
+        if isinstance(part.get("recipe"), str):
+            found.add(("recipe", part["recipe"]))
+        options = part.get("map")
+        for key, value in options.items() if isinstance(options, dict) else ():
+            option = key.replace("_", "-")
+            if option in PATH_OPTIONS:
+                found |= {(option, str(entry)) for entry in (value if isinstance(value, list) else [value])}
+    return found
+
+
+def _check_paths(parsed: dict[str, Any], atlases_dir: str, routes_dir: str, recipes_dir: str | None,
+                 allowed: Collection[tuple[str, str]]) -> None:
+    """Refuse a recipe, route file or folder the web form cannot offer, unless an atlas already names it.
+
+    Recipes come from *recipes_dir* and routes from *routes_dir*; what a hand-written atlas names elsewhere
+    stays usable (as the form keeps it), but a request cannot add a new path outside those folders.
+    """
+    known = set(allowed)
+    for other in Path(atlases_dir).glob("*.toml"):
+        try:
+            known |= _named_paths(tomllib.loads(other.read_text(encoding="utf-8")))
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+            continue
+    folders = {"recipe": recipes_dir, "route": routes_dir}
+    for option, value in sorted(_named_paths(parsed) - known):
+        folder = folders.get(option)
+        if folder and (Path(atlases_dir) / value).resolve().is_relative_to(Path(folder).resolve()):
+            continue
+        if option == "recipe":
+            raise AtlasError(f"The recipe {value!r} is not in the recipes folder.")
+        if option == "route":
+            raise AtlasError(f"The route file {value!r} is not in the routes folder.")
+        raise AtlasError(f"{option} {value!r} is not one the atlases name already.")
+
+
 def write_atlas(
     atlases_dir: str, routes_dir: str, name: str, data: dict[str, Any], fields: Collection[str],
-    overwrite: bool = False, cache_dir: str | None = None,
+    overwrite: bool = False, cache_dir: str | None = None, recipes_dir: str | None = None,
+    allowed: Collection[tuple[str, str]] = (),
 ) -> Path:
-    """Save the atlas *data* (as the web form has it) as *name*, once it reads back and every map checks out."""
+    """Save the atlas *data* (as the web form has it) as *name*, once it reads back and every map checks out.
+
+    Its recipes must be in *recipes_dir* and its routes in *routes_dir*, or be named already by an atlas
+    or in *allowed*.
+    """
     path = atlas_path(atlases_dir, name)
     if path.exists() and not overwrite:
         raise FileExistsError(f"There is already an atlas {name!r}.")
@@ -1297,6 +1364,7 @@ def write_atlas(
         parsed = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:  # a bug here rather than in the request, but say so plainly
         raise AtlasError(f"The atlas could not be written as TOML: {e}") from None
+    _check_paths(parsed, atlases_dir, routes_dir, recipes_dir, allowed)
     atlas = parse_atlas(parsed, str(path))
     plan_maps(atlas, os.path.join(atlases_dir, ".check"), cache_dir)
     os.makedirs(atlases_dir, exist_ok=True)
@@ -1331,7 +1399,9 @@ def set_page_map(
     target["kept"] = kept + [entry for entry in target.get("kept", []) if entry[0] not in {k for k, _ in kept}]
     target["map"] = request
     target["recipe"] = None
-    return write_atlas(atlases_dir, routes_dir, name, current, fields, overwrite=True, cache_dir=cache_dir)
+    allowed = _named_paths({"pages": [{"map": dict(kept)}]})      # the recipe's own, now written in the atlas
+    return write_atlas(atlases_dir, routes_dir, name, current, fields, overwrite=True, cache_dir=cache_dir,
+                       allowed=allowed)
 
 
 def delete_atlas(atlases_dir: str, name: str) -> None:
