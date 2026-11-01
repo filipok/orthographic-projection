@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import sysconfig
 import threading
 
 import pytest
@@ -55,6 +56,44 @@ def _render(client, **request):
     assert response.status_code == 202, response.text
     job = client.app.state.maps.wait(response.json()["id"], timeout=10)
     return job, client.get(f"/api/maps/{job.id}").json()
+
+
+class TestInstalled:
+    """Installed, the web app's folders are where pip puts the data, not beside webapp.py."""
+
+    @pytest.fixture
+    def installed(self, tmp_path, monkeypatch):
+        prefix = tmp_path / "prefix"
+        shared = prefix / "share" / webapp.DATA_NAME
+        for name, file in [("web", "index.html"), ("recipes", "trip.toml"), ("routes", "line.geojson"),
+                           ("atlases", "school.toml")]:
+            (shared / name).mkdir(parents=True)
+            (shared / name / file).write_text(name, encoding="utf-8")
+        monkeypatch.setattr(webapp, "HERE", tmp_path / "site-packages")
+        monkeypatch.setattr(webapp, "USER_DATA_DIR", tmp_path / "home" / ".local" / "share" / webapp.DATA_NAME)
+        monkeypatch.setattr(sysconfig, "get_path", lambda _name, _scheme=None: str(prefix))
+        return shared, webapp.USER_DATA_DIR
+
+    def test_the_page_comes_from_the_install(self, installed):
+        shared, _ = installed
+        assert webapp.bundled_dir("web") == shared / "web"
+
+    def test_what_it_saves_goes_to_a_copy_of_its_own(self, installed):
+        shared, user = installed
+        assert webapp.editable_dir("recipes") == str(user / "recipes")
+        assert (user / "recipes" / "trip.toml").read_text(encoding="utf-8") == "recipes"
+        (user / "recipes" / "trip.toml").write_text("mine", encoding="utf-8")
+        (user / "recipes" / "new.toml").write_text("new", encoding="utf-8")
+        assert webapp.editable_dir("recipes") == str(user / "recipes")             # made once, then kept
+        assert (user / "recipes" / "trip.toml").read_text(encoding="utf-8") == "mine"
+        assert sorted(p.name for p in (shared / "recipes").iterdir()) == ["trip.toml"]
+        settings = webapp.Settings(output_dir="maps")
+        assert (settings.routes_dir, settings.atlases_dir) == (str(user / "routes"), str(user / "atlases"))
+        assert sorted(p.name for p in user.iterdir()) == ["atlases", "recipes", "routes"]
+
+    def test_a_checkout_uses_its_own_folders(self):
+        assert webapp.editable_dir("recipes") == str(webapp.HERE / "recipes")
+        assert webapp.bundled_dir("web") == webapp.HERE / "web" == webapp.WEB_DIR
 
 
 class TestPage:

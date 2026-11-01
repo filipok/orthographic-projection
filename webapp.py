@@ -18,9 +18,10 @@ Settings come from the environment, so the same code runs locally or hosted:
 - ``ORTHO_WEB_KEEP``: how many finished maps to keep (default 50).
 - ``ORTHO_WEB_RECIPES_DIR``, ``ORTHO_WEB_ROUTES_DIR``: the recipes and route
   files the form loads and saves (default: the ``recipes`` and ``routes``
-  folders beside this file).
+  folders beside this file; once installed, copies of those that come with
+  it in ``~/.local/share/orthographic-projection``).
 - ``ORTHO_WEB_ATLASES_DIR``: the atlases the atlas page edits and prints
-  (default: the ``atlases`` folder beside this file).
+  (default: the ``atlases`` folder beside this file, or its copy there).
 - ``ORTHO_WEB_READ_ONLY``: ``1`` to offer recipes, routes and atlases without
   saving, deleting or uploading any (for a server others can reach).
 
@@ -36,6 +37,7 @@ import os
 import re
 import shlex
 import shutil
+import sysconfig
 import tempfile
 import threading
 import time
@@ -63,7 +65,45 @@ from vegetation import FIRST_LAND_COVER_YEAR, LATEST_LAND_COVER_YEAR
 logger = logging.getLogger(__name__)
 
 HERE = Path(__file__).resolve().parent
-WEB_DIR = HERE / "web"
+DATA_NAME = "orthographic-projection"           # pyproject.toml installs the folders in <prefix>/share/<this>
+USER_DATA_DIR = Path.home() / ".local" / "share" / DATA_NAME
+
+
+def bundled_dir(name: str) -> Path:
+    """A folder that comes with the program: beside this file in a checkout, else where pip put the project's data."""
+    schemes = dict.fromkeys([sysconfig.get_default_scheme(), sysconfig.get_preferred_scheme("user")])
+    for base in [HERE, *(Path(sysconfig.get_path("data", scheme)) / "share" / DATA_NAME for scheme in schemes)]:
+        if (base / name).is_dir():
+            return base / name
+    return HERE / name                          # nowhere: what is missing says so
+
+
+def editable_dir(name: str) -> str:
+    """The *name* folder (``recipes``, ``routes`` or ``atlases``) the web app saves into, unless told another.
+
+    In a checkout, the folder beside this file. Installed, a copy in the user's data folder, made from the
+    installed one the first time it is needed, so that edits outlive upgrades and the install stays as it was.
+    """
+    if (HERE / name).is_dir():
+        return str(HERE / name)
+    target = USER_DATA_DIR / name
+    if not target.exists():
+        source, part = bundled_dir(name), target.with_name(f".{name}.part")
+        shutil.rmtree(part, ignore_errors=True)
+        if source.is_dir():
+            shutil.copytree(source, part)
+        else:
+            part.mkdir(parents=True)
+        try:
+            os.replace(part, target)
+        except OSError:                         # another server made it first
+            shutil.rmtree(part, ignore_errors=True)
+            if not target.is_dir():
+                raise
+    return str(target)
+
+
+WEB_DIR = bundled_dir("web")
 DEFAULT_WEB_DPI = 150
 
 PERIODS = [
@@ -86,9 +126,9 @@ class Settings:
     max_dpi: int = 300
     max_queue: int = 10
     keep: int = 50
-    recipes_dir: str = str(HERE / "recipes")
-    routes_dir: str = str(HERE / "routes")
-    atlases_dir: str = str(HERE / "atlases")
+    recipes_dir: str = field(default_factory=lambda: editable_dir("recipes"))
+    routes_dir: str = field(default_factory=lambda: editable_dir("routes"))
+    atlases_dir: str = field(default_factory=lambda: editable_dir("atlases"))
     read_only: bool = False
 
     @classmethod
@@ -100,9 +140,9 @@ class Settings:
             max_dpi=int(env.get("ORTHO_WEB_MAX_DPI", 300)),
             max_queue=int(env.get("ORTHO_WEB_MAX_QUEUE", 10)),
             keep=int(env.get("ORTHO_WEB_KEEP", 50)),
-            recipes_dir=env.get("ORTHO_WEB_RECIPES_DIR") or str(HERE / "recipes"),
-            routes_dir=env.get("ORTHO_WEB_ROUTES_DIR") or str(HERE / "routes"),
-            atlases_dir=env.get("ORTHO_WEB_ATLASES_DIR") or str(HERE / "atlases"),
+            recipes_dir=env.get("ORTHO_WEB_RECIPES_DIR") or editable_dir("recipes"),
+            routes_dir=env.get("ORTHO_WEB_ROUTES_DIR") or editable_dir("routes"),
+            atlases_dir=env.get("ORTHO_WEB_ATLASES_DIR") or editable_dir("atlases"),
             read_only=env.get("ORTHO_WEB_READ_ONLY", "").strip().lower() in ("1", "true", "yes", "on"),
         )
 

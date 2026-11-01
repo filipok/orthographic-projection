@@ -466,6 +466,12 @@ uvicorn and the `ortho-web` command:
 pip install -e ".[web,dev]"
 ```
 
+A regular install (`pip install ".[web]"`, without `-e`) brings the web app's
+page and the bundled recipes, routes and atlases too, in
+`<prefix>/share/orthographic-projection`. The first time the web app runs, it
+copies the recipes, routes and atlases to `~/.local/share/orthographic-projection`
+and saves into that copy, so your changes outlive upgrades.
+
 ## Usage
 
 ### Interactive Mode
@@ -933,9 +939,9 @@ last settings in the browser.
 | `ORTHO_WEB_MAX_DPI` | Largest dpi a request may ask for | `300` |
 | `ORTHO_WEB_MAX_QUEUE` | Maps that may wait or render at once | `10` |
 | `ORTHO_WEB_KEEP` | Finished maps kept | `50` |
-| `ORTHO_WEB_RECIPES_DIR` | The recipes the form loads and saves | `recipes/` beside `webapp.py` |
-| `ORTHO_WEB_ROUTES_DIR` | The route files the form offers and uploads into | `routes/` beside `webapp.py` |
-| `ORTHO_WEB_ATLASES_DIR` | The atlases the atlas page edits and prints | `atlases/` beside `webapp.py` |
+| `ORTHO_WEB_RECIPES_DIR` | The recipes the form loads and saves | `recipes/` beside `webapp.py`; installed, `~/.local/share/orthographic-projection/recipes` |
+| `ORTHO_WEB_ROUTES_DIR` | The route files the form offers and uploads into | `routes/` beside `webapp.py`; installed, `~/.local/share/orthographic-projection/routes` |
+| `ORTHO_WEB_ATLASES_DIR` | The atlases the atlas page edits and prints | `atlases/` beside `webapp.py`; installed, `~/.local/share/orthographic-projection/atlases` |
 | `ORTHO_WEB_READ_ONLY` | `1` to offer recipes, routes and atlases without saving, deleting or uploading any; set it on a server others can reach | off |
 
 ### Atlases (PDF)
