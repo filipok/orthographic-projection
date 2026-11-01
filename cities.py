@@ -50,6 +50,7 @@ from matplotlib.lines import Line2D
 from matplotlib.textpath import TextToPath
 
 import frame
+import incomplete
 from biomes import _download, _key, on_globe
 from iucn import parse_geopackage_geometry, project
 
@@ -313,7 +314,7 @@ def _restored_names(centres: dict[str, np.ndarray], cache_dir: str) -> list[str]
     try:
         places = _geonames(cache_dir)
     except Exception as exc:                  # network, zip and file errors alike
-        logger.warning("Could not restore the city names GHSL garbled (%s); leaving them unnamed.", exc)
+        incomplete.note(logger, "Could not restore the city names GHSL garbled (%s); leaving them unnamed.", exc)
         return [n if "?" not in n else "" for n in names]
     fixed = repair_names(names, centres["countries"].tolist(), centres["lon"], centres["lat"], places)
     np.savez_compressed(path + ".part.npz", names=np.array(fixed))

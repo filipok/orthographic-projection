@@ -392,6 +392,8 @@ class MapQueue:
                                          progress=progress)
             job.warnings += [f"Could not draw the map of page {key}: {redact(error)}"
                              for key, error in result.failures.items()]
+            job.warnings += [f"The map of page {key} is incomplete ({redact('; '.join(text.splitlines()))}); "
+                             "the next build draws it again." for key, text in result.incomplete.items()]
             return result.output
 
         command = f"python atlas.py {shlex.quote(_shown_path(str(path)))}" + (" --proof" if proof else "")

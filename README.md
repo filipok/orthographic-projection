@@ -1065,6 +1065,9 @@ elevation = true
   hash leaves out options at their defaults, so a new option of this program
   keeps the maps drawn before it; a change to how a layer draws does not show
   in the hash, and `--force` draws them all again; `--maps-dir` and `-o` choose other places.
+  A map drawn without something it asks for (a layer whose data could not be
+  downloaded, or tiles that failed) is printed as it is, marked with a
+  `.incomplete` file beside it, and drawn again by every build until it is whole.
   The first build of the bundled atlas downloads every layer's data and takes a
   long while.
 - **A map that cannot be drawn** (no network, say) gets a placeholder naming the

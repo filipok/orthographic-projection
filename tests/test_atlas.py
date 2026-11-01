@@ -13,6 +13,7 @@ import pytest
 from PIL import Image
 
 import atlas
+import incomplete
 import ortho
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -354,6 +355,48 @@ class TestBuilding:
         assert set(result.failures) == {"cover", "2", "3"}
         assert result.failures["2"] == "tiles unreachable" and result.pages == 6
         assert not [f for f in os.listdir(tmp_path / "maps") if f.endswith(".png")]
+
+    def test_a_map_with_something_left_out_is_drawn_again(self, tmp_path, monkeypatch):
+        ports_down = True
+        calls = []
+
+        def render(**kwargs):           # as the renderer does when a layer's data cannot be loaded
+            calls.append(kwargs)
+            if ports_down:
+                incomplete.note(ortho.logger, "Skipping the ports: %s", "offline")
+            Image.new("RGBA", (200, 230), (90, 150, 200, 255)).save(kwargs["output_filename"])
+            return kwargs["output_filename"]
+
+        monkeypatch.setattr(ortho, "generate_orthographic_map", render)
+        book = _load(tmp_path)
+        maps = tmp_path / "maps"
+
+        def build():
+            return atlas.build_atlas(book, str(tmp_path / "a.pdf"), str(maps), cache_dir=str(tmp_path / "c"))
+
+        first = build()
+        assert first.failures == {} and first.drawn == 3
+        assert first.incomplete == dict.fromkeys(("cover", "2", "3"), "Skipping the ports: offline")
+        plans = atlas.plan_maps(book, str(maps), str(tmp_path / "c"))
+        assert all(plan.drawn and not plan.cached for plan in plans)    # printed as drawn, but not kept as whole
+        proof = atlas.build_atlas(book, str(tmp_path / "p.pdf"), str(maps), proof=True, cache_dir=str(tmp_path / "c"))
+        assert len(calls) == 3 and proof.incomplete == first.incomplete
+        assert build().reused == 0 and len(calls) == 6                     # still down: drawn again
+        ports_down = False
+        recovered = build()
+        assert len(calls) == 9 and recovered.drawn == 3 and recovered.incomplete == {}
+        assert sorted(f.suffix for f in maps.iterdir()) == [".png"] * 3
+        assert build().reused == 3 and len(calls) == 9                     # whole now: used as it is
+
+    def test_marks_go_with_their_maps(self, tmp_path):
+        maps = tmp_path / "maps"
+        maps.mkdir()
+        for name in ("kept-0123456789ab.png", "kept-0123456789ab.png.incomplete", "gone-0123456789ab.png",
+                     "gone-0123456789ab.png.incomplete", "notes.txt.incomplete"):
+            (maps / name).write_text("x", encoding="utf-8")
+        assert atlas.prune_maps(str(maps), [str(maps / "kept-0123456789ab.png")]) == 2
+        assert sorted(p.name for p in maps.iterdir()) == [
+            "kept-0123456789ab.png", "kept-0123456789ab.png.incomplete", "notes.txt.incomplete"]
 
     def test_wide_maps_turn_the_page(self, tmp_path, renders):
         book = _load(tmp_path)

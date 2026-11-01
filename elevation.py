@@ -43,6 +43,8 @@ import matplotlib.patches as mpatches
 from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.legend import Legend
 
+import incomplete
+
 logger = logging.getLogger(__name__)
 
 TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
@@ -339,7 +341,7 @@ def with_ice_surface(height: np.ndarray, extent: tuple[float, float, float, floa
             for tx in np.unique(px // 256) for ty in np.unique(py // 256)
         }
     except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
-        logger.warning("Ice sheets are shown at bedrock height (%s)", exc)
+        incomplete.note(logger, "Ice sheets are shown at bedrock height (%s)", exc)
         return height
     surface = np.empty((len(py), cols), np.float32)
     for i, y in enumerate(py):

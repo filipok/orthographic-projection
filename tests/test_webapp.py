@@ -11,6 +11,7 @@ pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
 import atlas  # noqa: E402
+import incomplete  # noqa: E402
 import ortho  # noqa: E402
 import webapp  # noqa: E402
 
@@ -524,6 +525,27 @@ class TestAtlases:
             client.app.state.maps.wait(again["id"], timeout=30)
             assert client.get(f"/api/maps/{again['id']}").json()["filename"] == "atlas_test_proof.pdf"
             assert len(calls) == 1
+
+    def test_a_build_says_which_maps_left_something_out(self, atlas_store, monkeypatch):
+        make, _, calls = atlas_store
+        from PIL import Image
+
+        def render(**kwargs):
+            calls.append(kwargs)
+            incomplete.note(ortho.logger, "Skipping the ports: %s", "offline")
+            Image.new("RGBA", (60, 70), (90, 150, 200, 255)).save(kwargs["output_filename"])
+            return kwargs["output_filename"]
+
+        monkeypatch.setattr(ortho, "generate_orthographic_map", render)
+        with make() as client:
+            for drawn in (1, 2):                                # drawn again by the next build
+                job = client.post("/api/atlases/test/pdf", json={}).json()
+                client.app.state.maps.wait(job["id"], timeout=30)
+                status = client.get(f"/api/maps/{job['id']}").json()
+                assert status["status"] == "done" and len(calls) == drawn
+                assert status["warnings"] == [
+                    "Skipping the ports: offline",                  # as it is logged, then what it means
+                    "The map of page 2 is incomplete (Skipping the ports: offline); the next build draws it again."]
 
     def test_builds_are_refused_before_they_start(self, atlas_store):
         make, atlases_dir, _ = atlas_store

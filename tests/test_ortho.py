@@ -14,6 +14,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Make sure ortho is importable from repo root
 # ---------------------------------------------------------------------------
+import incomplete
 import ortho
 from ice import IceLayers
 from vegetation import GibsTiles
@@ -119,6 +120,13 @@ class TestBufferedTileSource:
         transparent = (img[..., 3] == 0).mean()
         assert 0.2 < transparent < 0.3                        # one tile of four is see-through
         assert ((img[..., 3] == 0) | (img[..., 3] == 255)).all()
+
+    def test_failed_tiles_are_noted(self):
+        buffered, _img = self._render_domain(fail=lambda tile: tile[:2] == (0, 0))
+        with incomplete.noting() as left_out:
+            ortho._report_tile_failures(buffered)
+        assert len(left_out) == 1 and left_out[0].startswith("1 of 4 map tiles could not be downloaded")
+        ortho._report_tile_failures(buffered)                    # noted by no one: only logged
 
     def test_all_tiles_failing_does_not_raise(self):
         # Cartopy's own merge raises ValueError here, crashing savefig
@@ -2228,10 +2236,12 @@ class TestGenerateOrthographicMapIntegration:
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
                 mock.patch.object(ortho, "load_ports", side_effect=ortho.PortsDataError("offline")), \
                 mock.patch.object(ortho, "draw_ports") as draw, \
-                mock.patch.object(ortho, "_add_attribution") as attribution:
+                mock.patch.object(ortho, "_add_attribution") as attribution, \
+                incomplete.noting() as left_out:
             result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
                                                      output_dir=str(tmp_path), ports="all")
         assert os.path.exists(result) and "Skipping the ports: offline" in caplog.text
+        assert left_out == ["Skipping the ports: offline"]      # so an atlas draws the map again
         draw.assert_not_called()
         assert ortho.PORTS_ATTRIBUTION not in attribution.call_args.args[1]
 

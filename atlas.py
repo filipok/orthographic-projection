@@ -42,7 +42,8 @@ own and fits the second, a detail, into the room left under it::
 
 Run ``python atlas.py atlases/romania_school.toml`` to draw every map (each
 checked like a command line first) and write the PDF. The maps are kept in a
-folder beside it and drawn again only when their options change, so editing
+folder beside it and drawn again only when their options change (or when one
+was drawn without a layer or tiles that could not be loaded), so editing
 the text and building again takes seconds; ``--proof`` lays the pages out
 with a placeholder for every map, without drawing any.
 """
@@ -77,6 +78,7 @@ from matplotlib.patches import Circle, FancyBboxPatch, Rectangle
 from PIL import Image
 
 import frame
+import incomplete
 import ortho
 import recipe_store
 
@@ -308,6 +310,9 @@ def load_atlas(path: str) -> Atlas:
 # ---------------------------------------------------------------------------
 
 
+INCOMPLETE = ".incomplete"      # beside a map that left something out: what, one per line
+
+
 class MapPlan(NamedTuple):
     """One map of an atlas, checked: where it goes and how to draw it."""
     key: str                    # "cover" or the page's number
@@ -316,8 +321,23 @@ class MapPlan(NamedTuple):
     plan: ortho.RenderPlan
 
     @property
-    def cached(self) -> bool:
+    def drawn(self) -> bool:
+        """Drawn, whole or with something it was asked for left out."""
         return os.path.isfile(self.path)
+
+    @property
+    def left_out(self) -> str | None:
+        """What the drawn map left out (a layer or tiles that could not be loaded), or ``None``."""
+        try:
+            with open(self.path + INCOMPLETE, encoding="utf-8") as fh:
+                return fh.read().strip() or "something it was asked for"
+        except FileNotFoundError:
+            return None
+
+    @property
+    def cached(self) -> bool:
+        """Drawn whole, so used again as it is; a map with something left out is drawn again."""
+        return self.drawn and not os.path.exists(self.path + INCOMPLETE)
 
 
 def _slug(text: str) -> str:
@@ -401,7 +421,11 @@ def plan_maps(atlas: Atlas, maps_dir: str, cache_dir: str | None = None) -> list
 def render_maps(
     plans: Sequence[MapPlan], force: bool = False, progress: Callable[[int, int, str], None] | None = None,
 ) -> dict[str, str]:
-    """Draw the maps in *plans* that are not drawn yet; their error messages by key, for those that fail."""
+    """Draw the maps in *plans* that are not drawn whole yet; their error messages by key, for those that fail.
+
+    A map drawn with something left out (a layer or tiles that could not be
+    loaded) is kept, marked with what it left out, until a build draws it whole.
+    """
     failures: dict[str, str] = {}
     for done, item in enumerate(plans):
         if progress:
@@ -411,9 +435,17 @@ def render_maps(
         os.makedirs(os.path.dirname(item.path), exist_ok=True)
         part = item.plan.kwargs["output_filename"]
         logger.info("Drawing %s (%d of %d) …", item.page.title, done + 1, len(plans))
+        marker = item.path + INCOMPLETE
         try:
-            ortho.generate_orthographic_map(**item.plan.kwargs)
+            with incomplete.noting() as left_out:
+                ortho.generate_orthographic_map(**item.plan.kwargs)
+            # Marked before it is moved, and unmarked after: a map is never taken for whole when it is not
+            if left_out:
+                with open(marker, "w", encoding="utf-8") as fh:
+                    fh.write("\n".join(left_out) + "\n")
             os.replace(part, item.path)
+            if not left_out and os.path.exists(marker):
+                os.remove(marker)
         except Exception as e:  # one map failing leaves a placeholder; the rest still print
             logger.error("Could not draw %s: %s", item.page.title, e)
             failures[item.key] = str(e) or type(e).__name__
@@ -425,12 +457,12 @@ def render_maps(
 
 
 def prune_maps(maps_dir: str, keep: Collection[str]) -> int:
-    """Delete the maps in *maps_dir* an atlas no longer uses (only files named as it names them)."""
+    """Delete the maps in *maps_dir* an atlas no longer uses (only files named as it names them), and their marks."""
     keep_names = {os.path.basename(path) for path in keep}
     removed = 0
     if os.path.isdir(maps_dir):
         for name in os.listdir(maps_dir):
-            if _MAP_FILE.match(name) and name not in keep_names:
+            if _MAP_FILE.match(name.removesuffix(INCOMPLETE)) and name.removesuffix(INCOMPLETE) not in keep_names:
                 os.remove(os.path.join(maps_dir, name))
                 removed += 1
     return removed
@@ -1033,6 +1065,7 @@ class BuildResult(NamedTuple):
     drawn: int                  # maps drawn this time
     reused: int                 # maps already drawn, used as they were
     failures: dict[str, str]    # error messages by map key
+    incomplete: dict[str, str]  # what the maps drawn with something left out leave out, by key
 
 
 def default_paths(atlas_path: str) -> tuple[str, str]:
@@ -1052,10 +1085,12 @@ def build_atlas(
     if not proof:
         failures = render_maps(plans, force=force, progress=progress)
         prune_maps(maps_dir, [item.path for item in plans])
-    images = {item.key: item.path for item in plans if item.cached and item.key not in failures}
+    # A map with something left out is printed as it is, and drawn again by the next build
+    images = {item.key: item.path for item in plans if item.drawn and item.key not in failures}
+    left_out = {item.key: text for item in plans if item.key in images and (text := item.left_out)}
     pages = write_pdf(atlas, output, images, failures)
     drawn = 0 if proof else len(plans) - reused - len(failures)
-    return BuildResult(output, pages, drawn, reused, failures)
+    return BuildResult(output, pages, drawn, reused, failures, left_out)
 
 
 # ---------------------------------------------------------------------------
@@ -1457,7 +1492,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             plans = {item.key: item for item in plan_maps(atlas, maps_dir, args.cache_dir)}
             for i, page in enumerate(atlas.pages, 1):
                 item = plans.get(str(i))
-                state = "" if item is None else (" (drawn)" if item.cached else " (to draw)")
+                state = "" if item is None else (" (drawn)" if item.cached else
+                                                 " (to draw again: something was left out)" if item.drawn else
+                                                 " (to draw)")
                 print(f"{i:3d}  {page.kind:<7}  {page.title}{state}")
             drawn = sum(item.cached for item in plans.values())
             print(f"{len(atlas.pages)} pages, {len(plans)} maps, {drawn} of them drawn already. The atlas checks out.")
@@ -1472,8 +1509,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except AtlasError as e:
         logger.error("%s", e)
         return 1
-    logger.info("Wrote %s: %d pages; %d maps drawn, %d reused%s.", result.output, result.pages, result.drawn,
-                result.reused, f", {len(result.failures)} failed" if result.failures else "")
+    for key, text in result.incomplete.items():
+        logger.warning("The map of %s is incomplete (%s); the next build draws it again.",
+                       "the cover" if key == "cover" else f"page {key}", "; ".join(text.splitlines()))
+    logger.info("Wrote %s: %d pages; %d maps drawn, %d reused%s%s.", result.output, result.pages, result.drawn,
+                result.reused, f", {len(result.incomplete)} with something left out" if result.incomplete else "",
+                f", {len(result.failures)} failed" if result.failures else "")
     return 1 if result.failures else 0
 
 
