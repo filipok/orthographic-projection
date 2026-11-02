@@ -1809,13 +1809,17 @@ python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider osm_local --ro-adm
   Transnistria's places, named only in Russian in Geofabrik's files, take
   OSM's Romanian names (`name:ro`: `Tiraspol`, `Rîbnița`, `Dubăsari`, `Bender`,
   which Romanian also calls Tighina), asked once of the Overpass API; 158 of
-  its 163 have one. A river's parts of one name that join up are one
-  river; of a name in two languages (`Dunărea - Дунав`, `Dunav/Dunărea`) the
-  Romanian part is kept, a Danube branch is named for the branch (`Brațul
-  Sulina`), and `Râul Mureș` is `Mureș` where OSM names the rest of it so
-  (`Râul Doamnei` keeps its word). Names only in another script (Transnistria's
-  towns, the Serbian and Bulgarian rivers) are left out, as are unnamed canals,
-  the plains' irrigation and drainage channels.
+  its 163 have one. If the API does not answer when the data is read, they
+  keep their Russian names for now (a map naming one says so, and an atlas
+  draws it again), and a run at least an hour later asks again; once it
+  answers, the cache takes the Romanian names. A river's parts of one name
+  that join up are one river; of a name in two languages (`Dunărea - Дунав`,
+  `Dunav/Dunărea`) the Romanian part is kept, a Danube branch is named for the
+  branch (`Brațul Sulina`), and `Râul Mureș` is `Mureș` where OSM names the
+  rest of it so (`Râul Doamnei` keeps its word). Names only in another script
+  (Transnistria's towns without a Romanian name, the Serbian and Bulgarian
+  rivers) are left out, as are unnamed canals, the plains' irrigation and
+  drainage channels.
 - **Data.** Geofabrik's free shapefiles are 0.2-1.8 GB per country, mostly
   buildings, roads and land use; only the places, waterways and water areas
   are read from them, with HTTP range requests (~280 MB in all, most of it
