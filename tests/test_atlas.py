@@ -654,7 +654,7 @@ class TestFiles:
         outside.mkdir()
         (recipes / "r.toml").write_text('city = "Paris"\n', encoding="utf-8")
         (outside / "r.toml").write_text('city = "Paris"\n', encoding="utf-8")
-        (outside / "private.geojson").write_text(json.dumps(LINE), encoding="utf-8")
+        (outside / "elsewhere.geojson").write_text(json.dumps(LINE), encoding="utf-8")
         def save(name, data):
             atlas.write_atlas(str(atlases), str(routes), name, data, FIELDS, overwrite=True,
                               cache_dir=str(tmp_path / "c"), recipes_dir=str(recipes))
@@ -662,16 +662,16 @@ class TestFiles:
         def page(**part):
             return {"title": "A", "pages": [{"type": "map", "title": "M", "map": {"city": "Paris"}, **part}]}
 
-        private = (outside / "private.geojson").as_posix()
+        elsewhere = (outside / "elsewhere.geojson").as_posix()
         for data, match in [
-            (page(kept=[["route", [private]]]), "route file .* is not in the routes folder"),
-            (page(kept=[["route", ["../outside/private.geojson"]]]), "not in the routes folder"),
+            (page(kept=[["route", [elsewhere]]]), "route file .* is not in the routes folder"),
+            (page(kept=[["route", ["../outside/elsewhere.geojson"]]]), "not in the routes folder"),
             (page(kept=[["iucn-data", outside.as_posix()]]), "iucn-data .* is not one the atlases name"),
             (page(recipe="../outside/r.toml"), "recipe .* is not in the recipes folder"),
             (page(recipe=(outside / "r.toml").as_posix()), "not in the recipes folder"),
-            ({"title": "A", "cover": {"map": {"city": "Paris"}, "kept": [["route", [private]]]}, "pages": []},
+            ({"title": "A", "cover": {"map": {"city": "Paris"}, "kept": [["route", [elsewhere]]]}, "pages": []},
              "not in the routes folder"),
-            (page(second={"title": "S", "map": {"city": "Paris"}, "kept": [["route", [private]]]}),
+            (page(second={"title": "S", "map": {"city": "Paris"}, "kept": [["route", [elsewhere]]]}),
              "not in the routes folder"),
         ]:
             with pytest.raises(atlas.AtlasError, match=match):
@@ -680,12 +680,12 @@ class TestFiles:
         save(name="new", data=page(recipe="../recipes/r.toml", map={"route": ["line.geojson"]}))
         # A route a hand-written atlas names elsewhere stays, in it and in a copy of it
         (atlases / "hand.toml").write_text('title = "H"\n[[pages]]\ntitle = "M"\n[pages.map]\ncity = "Paris"\n'
-                                           'route = ["../outside/private.geojson"]\n', encoding="utf-8")
+                                           'route = ["../outside/elsewhere.geojson"]\n', encoding="utf-8")
         data = atlas.read_atlas_json(str(atlases), str(routes), "hand", FIELDS)["atlas"]
-        assert data["pages"][0]["kept"] == [("route", ["../outside/private.geojson"])]
+        assert data["pages"][0]["kept"] == [("route", ["../outside/elsewhere.geojson"])]
         save(name="hand", data=data)
         save(name="copy", data=data)
-        assert atlas.load_atlas(str(atlases / "copy.toml")).pages[0].map["route"] == ["../outside/private.geojson"]
+        assert atlas.load_atlas(str(atlases / "copy.toml")).pages[0].map["route"] == ["../outside/elsewhere.geojson"]
 
     def test_a_flag_turned_off_on_top_of_a_recipe_is_saved(self, dirs, tmp_path):
         atlases, routes = dirs
