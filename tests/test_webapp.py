@@ -91,6 +91,40 @@ class TestInstalled:
         assert (settings.routes_dir, settings.atlases_dir) == (str(user / "routes"), str(user / "atlases"))
         assert sorted(p.name for p in user.iterdir()) == ["atlases", "recipes", "routes"]
 
+    def test_nothing_installed_gives_an_empty_folder(self, installed):
+        shared, user = installed
+        for file in (shared / "routes").iterdir():
+            file.unlink()
+        (shared / "routes").rmdir()
+        assert webapp.editable_dir("routes") == str(user / "routes") and not any((user / "routes").iterdir())
+        assert [p.name for p in user.iterdir()] == ["routes"]                       # no temporary folder left
+
+    def test_another_server_made_the_copy_first(self, installed, monkeypatch):
+        _, user = installed
+
+        def made_first(_source, target):
+            os.mkdir(target)                                                        # the other server's copy
+            raise PermissionError(target)
+        monkeypatch.setattr(webapp.os, "replace", made_first)
+        assert webapp.editable_dir("recipes") == str(user / "recipes") and not any((user / "recipes").iterdir())
+        assert [p.name for p in user.iterdir()] == ["recipes"]
+
+    def test_a_read_only_server_copies_nothing(self, installed, monkeypatch):
+        shared, user = installed
+        monkeypatch.setenv("ORTHO_WEB_READ_ONLY", "1")
+        for name in ("RECIPES", "ROUTES", "ATLASES"):
+            monkeypatch.delenv(f"ORTHO_WEB_{name}_DIR", raising=False)
+        settings = webapp.Settings.from_env()
+        assert (settings.recipes_dir, settings.atlases_dir) == (str(shared / "recipes"), str(shared / "atlases"))
+        assert not user.exists()
+
+    def test_a_folder_on_another_drive_is_shown_whole(self, monkeypatch):
+        def other_drive(_path, _start):
+            raise ValueError("path is on mount 'C:', start on mount 'D:'")
+        monkeypatch.setattr(webapp.os.path, "relpath", other_drive)
+        path = webapp.USER_DATA_DIR / "atlases" / "a.toml"
+        assert webapp._shown_path(str(path)) == path.as_posix()
+
     def test_a_checkout_uses_its_own_folders(self):
         assert webapp.editable_dir("recipes") == str(webapp.HERE / "recipes")
         assert webapp.bundled_dir("web") == webapp.HERE / "web" == webapp.WEB_DIR
@@ -489,9 +523,9 @@ def atlas_store(tmp_path, monkeypatch):
 
     monkeypatch.setattr(ortho, "generate_orthographic_map", render)
 
-    def make(read_only=False, max_dpi=300):
+    def make(read_only=False, max_dpi=300, **folders):
         settings = webapp.Settings(output_dir=str(tmp_path / "maps"), cache_dir=str(tmp_path / "tiles"),
-                                   atlases_dir=str(atlases_dir), read_only=read_only, max_dpi=max_dpi)
+                                   atlases_dir=str(atlases_dir), read_only=read_only, max_dpi=max_dpi, **folders)
         return TestClient(webapp.create_app(settings))
     return make, atlases_dir, calls
 
@@ -533,6 +567,20 @@ class TestAtlases:
             bad = client.put("/api/atlases/copy", json={"atlas": data, "overwrite": True})
             assert bad.status_code == 400 and "Unknown Köppen-Geiger class 'Zzz'" in bad.json()["detail"]
         assert atlas.load_atlas(str(atlases_dir / "copy.toml")).pages[1].title == "Lisboa"
+
+    def test_a_new_atlas_takes_its_recipes_from_the_recipes_folder(self, atlas_store):
+        make, atlases_dir, _ = atlas_store
+        recipes = atlases_dir.parent / "recipes"
+        recipes.mkdir()
+        (recipes / "r.toml").write_text('city = "Paris"\n', encoding="utf-8")
+        page = {"type": "map", "title": "M", "recipe": "../recipes/r.toml", "map": {}}
+        with make(recipes_dir=str(recipes)) as client:
+            assert client.put("/api/atlases/new", json={"atlas": {"title": "A", "pages": [page]}}).status_code == 200
+            for bad, detail in [({**page, "recipe": "../outside/r.toml"}, "not in the recipes folder"),
+                                ({**page, "map": {"city": "Paris"}, "kept": [["route", 5]]}, "list of file names")]:
+                response = client.put("/api/atlases/bad", json={"atlas": {"title": "A", "pages": [bad]}})
+                assert response.status_code == 400 and detail in response.json()["detail"]
+        assert (atlases_dir / "new.toml").is_file() and not (atlases_dir / "bad.toml").exists()
 
     def test_a_pages_map_in_the_form(self, atlas_store):
         make, atlases_dir, _ = atlas_store

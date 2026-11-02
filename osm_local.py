@@ -85,6 +85,7 @@ area["ISO3166-1"="MD"][admin_level=2]->.md;
 node(area.md)["place"~"^(city|town|village)$"]["name:ro"];
 out tags;"""
 RETRY_NAMES = 3600        # seconds: how often a cache with Russian names in it asks the Overpass API again
+RETRY_TIMEOUT = 30        # seconds per server when it does: the map waits for it
 
 ATTRIBUTION = ("Map data © OpenStreetMap contributors (ODbL), Geofabrik extracts of {date}; "
                "land and borders © EuroGeographics (GISCO)")
@@ -529,7 +530,7 @@ def _name_in_romanian(path: str) -> None:
         if time.time() - os.path.getmtime(path) < RETRY_NAMES:
             return
         table = {key: data[key] for key in data.files}
-    romanian = romanian_place_names()
+    romanian = romanian_place_names(timeout=RETRY_TIMEOUT)
     if romanian is None:
         os.utime(path)                      # asked again in RETRY_NAMES
         return
@@ -558,7 +559,10 @@ def ensure_osm_data(cache_dir: str | None = None) -> str:
     path = os.path.join(cache_dir, f"osm_local_v{DATA_VERSION}.npz")
     if os.path.isfile(path):
         logger.info("Using cached OpenStreetMap data: %s", path)
-        _name_in_romanian(path)
+        try:
+            _name_in_romanian(path)
+        except Exception as e:              # the cache works as it is, its Russian names kept until a later run
+            logger.warning("Could not give Transnistria's places their Romanian names: %s", e)
         return path
     os.makedirs(cache_dir, exist_ok=True)
     logger.info("Reading the places, rivers and lakes of %s, and the rivers and lakes of their neighbours, "
@@ -956,8 +960,8 @@ def name_base(ax: GeoAxes, base: Base, countries: bool = True, places: bool = Tr
     lakes_named = sum(_name_lake(ax, space, w) for w in lakes)
     named_places += [p.name for p in small if _name_place(ax, space, p)]
     if russian := [name for name in named_places if name in base.russian]:
-        incomplete.note(logger, "Named in Russian until the Overpass API gives their Romanian names (a run at "
-                        "least an hour after it last did not answer asks again): %s.", ", ".join(russian))
+        incomplete.note(logger, "Named in Russian until the Overpass API gives their Romanian names (a later run "
+                        "asks again): %s.", ", ".join(russian))
     logger.info("Base map names: %d countries and seas, %d places, %d rivers, %d lakes.", len(named_areas),
                 len(named_places), len(named_rivers), lakes_named)
     return Named(len(named_places), len(named_rivers), lakes_named, len(named_areas))

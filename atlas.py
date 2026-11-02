@@ -1085,8 +1085,10 @@ def build_atlas(
     if not proof:
         failures = render_maps(plans, force=force, progress=progress)
         prune_maps(maps_dir, [item.path for item in plans])
-    # A map with something left out is printed as it is, and drawn again by the next build
-    images = {item.key: item.path for item in plans if item.drawn and item.key not in failures}
+    # A map with something left out is printed as it is (also when drawing it again failed), and drawn again by the
+    # next build
+    images = {item.key: item.path for item in plans
+              if item.drawn and (item.key not in failures or item.left_out is not None)}
     left_out = {item.key: text for item in plans if item.key in images and (text := item.left_out)}
     pages = write_pdf(atlas, output, images, failures)
     drawn = 0 if proof else len(plans) - reused - len(failures)
@@ -1236,6 +1238,8 @@ def _map_lines(table: str, request: dict[str, Any], kept: Sequence[Sequence[Any]
         raise AtlasError(str(e)) from None
     for key, value in kept:
         if key == "route":
+            if not isinstance(value, list) or not all(isinstance(route, str) for route in value):
+                raise AtlasError(f"[{table}] keeps its routes as a list of file names, not {value!r}.")
             routes = next((v for k, v in entries if k == "route"), [])
             entries = [(k, v) for k, v in entries if k != "route"] + [("route", routes + list(value))]
         elif not any(k == key for k, _ in entries):

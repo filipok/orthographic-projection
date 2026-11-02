@@ -19,7 +19,8 @@ Settings come from the environment, so the same code runs locally or hosted:
 - ``ORTHO_WEB_RECIPES_DIR``, ``ORTHO_WEB_ROUTES_DIR``: the recipes and route
   files the form loads and saves (default: the ``recipes`` and ``routes``
   folders beside this file; once installed, copies of those that come with
-  it in ``~/.local/share/orthographic-projection``).
+  it in ``~/.local/share/orthographic-projection``, or with
+  ``ORTHO_WEB_READ_ONLY`` those themselves).
 - ``ORTHO_WEB_ATLASES_DIR``: the atlases the atlas page edits and prints
   (default: the ``atlases`` folder beside this file, or its copy there).
 - ``ORTHO_WEB_READ_ONLY``: ``1`` to offer recipes, routes and atlases without
@@ -88,18 +89,21 @@ def editable_dir(name: str) -> str:
         return str(HERE / name)
     target = USER_DATA_DIR / name
     if not target.exists():
-        source, part = bundled_dir(name), target.with_name(f".{name}.part")
-        shutil.rmtree(part, ignore_errors=True)
-        if source.is_dir():
-            shutil.copytree(source, part)
-        else:
-            part.mkdir(parents=True)
+        USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        part = Path(tempfile.mkdtemp(prefix=f".{name}.", dir=USER_DATA_DIR))  # its own, if two servers start at once
         try:
-            os.replace(part, target)
-        except OSError:                         # another server made it first
+            source, copy = bundled_dir(name), part / name
+            if source.is_dir():
+                shutil.copytree(source, copy)
+            else:
+                copy.mkdir()
+            try:
+                os.replace(copy, target)
+            except OSError:                     # another server made it first
+                if not target.is_dir():
+                    raise
+        finally:
             shutil.rmtree(part, ignore_errors=True)
-            if not target.is_dir():
-                raise
     return str(target)
 
 
@@ -134,16 +138,18 @@ class Settings:
     @classmethod
     def from_env(cls) -> Settings:
         env = os.environ
+        read_only = env.get("ORTHO_WEB_READ_ONLY", "").strip().lower() in ("1", "true", "yes", "on")
+        folder = (lambda name: str(bundled_dir(name))) if read_only else editable_dir  # read-only: nothing to copy
         return cls(
             output_dir=env.get("ORTHO_WEB_OUTPUT_DIR") or os.path.join(tempfile.gettempdir(), "ortho_web"),
             cache_dir=env.get("ORTHO_WEB_CACHE_DIR") or None,
             max_dpi=int(env.get("ORTHO_WEB_MAX_DPI", 300)),
             max_queue=int(env.get("ORTHO_WEB_MAX_QUEUE", 10)),
             keep=int(env.get("ORTHO_WEB_KEEP", 50)),
-            recipes_dir=env.get("ORTHO_WEB_RECIPES_DIR") or editable_dir("recipes"),
-            routes_dir=env.get("ORTHO_WEB_ROUTES_DIR") or editable_dir("routes"),
-            atlases_dir=env.get("ORTHO_WEB_ATLASES_DIR") or editable_dir("atlases"),
-            read_only=env.get("ORTHO_WEB_READ_ONLY", "").strip().lower() in ("1", "true", "yes", "on"),
+            recipes_dir=env.get("ORTHO_WEB_RECIPES_DIR") or folder("recipes"),
+            routes_dir=env.get("ORTHO_WEB_ROUTES_DIR") or folder("routes"),
+            atlases_dir=env.get("ORTHO_WEB_ATLASES_DIR") or folder("atlases"),
+            read_only=read_only,
         )
 
 
@@ -259,7 +265,10 @@ _FLAGS = {"koppen_alpha": "--climate-alpha"}
 
 def _shown_path(path: str) -> str:
     """*path* relative to this folder when it is inside it (as the command is run from here), else as is."""
-    relative = os.path.relpath(path, HERE)
+    try:
+        relative = os.path.relpath(path, HERE)
+    except ValueError:                          # on another drive (Windows): an installed copy's user folders
+        return Path(path).as_posix()
     return Path(path).as_posix() if relative.startswith("..") else Path(relative).as_posix()
 
 
@@ -430,9 +439,12 @@ class MapQueue:
 
             result = atlases.build_atlas(book, output, maps_dir, proof=proof, cache_dir=settings.cache_dir,
                                          progress=progress)
-            job.warnings += [f"Could not draw the map of page {key}: {redact(error)}"
+            def shown(key: str) -> str:
+                return "the cover" if key == "cover" else f"page {key}"
+
+            job.warnings += [f"Could not draw the map of {shown(key)}: {redact(error)}"
                              for key, error in result.failures.items()]
-            job.warnings += [f"The map of page {key} is incomplete ({redact('; '.join(text.splitlines()))}); "
+            job.warnings += [f"The map of {shown(key)} is incomplete ({redact('; '.join(text.splitlines()))}); "
                              "the next build draws it again." for key, text in result.incomplete.items()]
             return result.output
 

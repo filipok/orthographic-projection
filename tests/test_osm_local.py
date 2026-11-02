@@ -1,5 +1,6 @@
 """Tests for osm_local.py (no network; small Geofabrik-like and GISCO-like archives made here)."""
 
+import http.client
 import io
 import json
 import os
@@ -394,8 +395,8 @@ class TestCache:
         answers: list[dict[str, str] | None] = [None]
         asked = []
 
-        def overpass():
-            asked.append(1)
+        def overpass(timeout=180):
+            asked.append(timeout)
             return answers[-1]
         monkeypatch.setattr(ol, "romanian_place_names", overpass)
         base = ol.load_base(str(tmp_path))
@@ -414,16 +415,27 @@ class TestCache:
             base.places[[p.name for p in base.places].index("Тирасполь")]._replace(name="Tiraspol")
         _an_hour_ago(path)
         ol.load_base(str(tmp_path))
-        assert len(asked) == 3                                                              # done with
+        assert asked == [180, ol.RETRY_TIMEOUT, ol.RETRY_TIMEOUT]                           # done with; asked briefly
         assert sorted(os.listdir(tmp_path)) == [path.name]
 
     def test_a_place_without_a_romanian_name_is_left_out_then(self, online, tmp_path, monkeypatch):
         answers = iter([None, {}])
-        monkeypatch.setattr(ol, "romanian_place_names", lambda: next(answers))
+        monkeypatch.setattr(ol, "romanian_place_names", lambda timeout=180: next(answers))
         before = [p.name for p in ol.load_base(str(tmp_path)).places]
         path = tmp_path / f"osm_local_v{ol.DATA_VERSION}.npz"
         _an_hour_ago(path)
         assert [p.name for p in ol.load_base(str(tmp_path)).places] == [n for n in before if n != "Тирасполь"]
+
+    def test_a_retry_that_breaks_keeps_the_russian_names(self, online, tmp_path, monkeypatch, caplog):
+        monkeypatch.setattr(ol, "romanian_place_names", lambda timeout=180: None)
+        ol.load_base(str(tmp_path))
+        _an_hour_ago(tmp_path / f"osm_local_v{ol.DATA_VERSION}.npz")
+
+        def broken(timeout=180):
+            raise http.client.IncompleteRead(b"")
+        monkeypatch.setattr(ol, "romanian_place_names", broken)
+        assert ol.load_base(str(tmp_path)).russian == {"Тирасполь"}             # the map still draws
+        assert "Could not give Transnistria's places their Romanian names" in caplog.text
 
     def test_unreachable(self, tmp_path, monkeypatch):
         def offline(url, *args, **kwargs):

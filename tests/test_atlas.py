@@ -388,6 +388,25 @@ class TestBuilding:
         assert sorted(f.suffix for f in maps.iterdir()) == [".png"] * 3
         assert build().reused == 3 and len(calls) == 9                     # whole now: used as it is
 
+    def test_a_map_with_something_left_out_stays_printed_when_drawing_it_again_fails(self, tmp_path, monkeypatch):
+        def render(**kwargs):
+            incomplete.note(ortho.logger, "Skipping the ports: %s", "offline")
+            Image.new("RGBA", (200, 230), (90, 150, 200, 255)).save(kwargs["output_filename"])
+            return kwargs["output_filename"]
+
+        def fail(**kwargs):
+            raise OSError("offline")
+
+        book, maps = _load(tmp_path), tmp_path / "maps"
+        monkeypatch.setattr(ortho, "generate_orthographic_map", render)
+        atlas.build_atlas(book, str(tmp_path / "a.pdf"), str(maps), cache_dir=str(tmp_path / "c"))
+        printed = {}
+        monkeypatch.setattr(ortho, "generate_orthographic_map", fail)
+        monkeypatch.setattr(atlas, "write_pdf", lambda _book, _output, images, _failures: printed.update(images) or 1)
+        again = atlas.build_atlas(book, str(tmp_path / "a.pdf"), str(maps), cache_dir=str(tmp_path / "c"))
+        assert set(again.failures) == set(printed) == {"cover", "2", "3"}       # the last drawing, not a placeholder
+        assert again.incomplete == dict.fromkeys(("cover", "2", "3"), "Skipping the ports: offline")
+
     def test_marks_go_with_their_maps(self, tmp_path):
         maps = tmp_path / "maps"
         maps.mkdir()
@@ -759,6 +778,8 @@ class TestFiles:
         ({"title": "A", "pages": [{"title": "M", "map": [1]}]}, r"\[pages.map\] is a table"),
         ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "kept": {"a": 1}}]}, "list of"),
         ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "kept": [[1, 2, 3]]}]}, "list of"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "kept": [["route", 5]]}]}, "file names"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "kept": [["route", None]]}]}, "file names"),
         ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "second": "x"}]}, "second map is a table"),
         ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris", "route": 5}}]}, "route is a list"),
         ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris", "route": [5]}}]}, "route is a list"),
