@@ -535,6 +535,24 @@ class TestCommandLine:
         out = capsys.readouterr().out
         assert "  2  map      Relief (to draw)" in out and "4 pages, 3 maps, 0 of them drawn already" in out
 
+    def test_check_tells_a_map_with_something_left_out_from_one_drawn_whole(self, tmp_path, capsys):
+        # Value: protects=--check labels a marked map "to draw again" and does not count it drawn;
+        # fails_when=the .incomplete mark is ignored by --check; why_new=only the unmarked state was checked;
+        # seam=none; no_claim=what the build redraws
+        path = _write(tmp_path)
+        maps = tmp_path / "m"
+        maps.mkdir()
+        plans = atlas.plan_maps(atlas.load_atlas(str(path)), str(maps), str(tmp_path / "c"))
+        whole, marked = (item for item in plans if item.key in ("2", "3"))
+        for item in (whole, marked):
+            Image.new("RGBA", (20, 20)).save(item.path)
+        with open(marked.path + atlas.INCOMPLETE, "w", encoding="utf-8") as fh:
+            fh.write("Skipping the ports: offline")
+        assert atlas.main([str(path), "--check", "--maps-dir", str(maps), "--cache-dir", str(tmp_path / "c")]) == 0
+        out = capsys.readouterr().out
+        assert f"  {whole.key}  map      " in out and "(to draw again: something was left out)" in out
+        assert out.count("(drawn)") == 1 and "1 of them drawn already" in out
+
     def test_check_prints_diacritics_to_a_narrow_code_page(self, tmp_path, monkeypatch):
         path = _write(tmp_path, SMALL.replace('title = "Relief"', 'title = "Harta fizică a României"', 1))
         out = io.BytesIO()
