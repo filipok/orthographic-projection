@@ -21,6 +21,8 @@ import osm_local as ol
 from cities import label_space
 from rotation import globe_projection
 
+ROMANIAN_PLACE_NAMES = ol.romanian_place_names          # the real one, for tests whose fixture stands in for it
+
 
 @pytest.mark.parametrize("text, expected", [
     ("Mureș", True), ("Cluj-Napoca", True), ("Ceadîr-Lunga", True), ("Тирасполь", False), ("Dunav/Дунав", False),
@@ -219,7 +221,7 @@ class TestOverpass:
         def urlopen(request, timeout=0):
             asked.append(request.full_url)
             if request.full_url == ol.OVERPASS_URLS[0]:
-                raise ol.urllib.error.URLError("busy")                        # the next server answers
+                raise http.client.IncompleteRead(b"")                         # cut short: the next server answers
             return io.BytesIO(body)
         monkeypatch.setattr(ol.urllib.request, "urlopen", urlopen)
         assert ol.romanian_place_names() == {"7": "Tiraspol"}
@@ -436,6 +438,20 @@ class TestCache:
         monkeypatch.setattr(ol, "romanian_place_names", broken)
         assert ol.load_base(str(tmp_path)).russian == {"Тирасполь"}             # the map still draws
         assert "Could not give Transnistria's places their Romanian names" in caplog.text
+
+    def test_a_retry_cut_short_waits_its_hour(self, online, tmp_path, monkeypatch):
+        monkeypatch.setattr(ol, "romanian_place_names", lambda timeout=180: None)
+        ol.load_base(str(tmp_path))
+        _an_hour_ago(tmp_path / f"osm_local_v{ol.DATA_VERSION}.npz")
+        asked = []
+
+        def cut_short(request, timeout=0):
+            asked.append(request.full_url)
+            raise http.client.IncompleteRead(b"")
+        monkeypatch.setattr(ol, "romanian_place_names", ROMANIAN_PLACE_NAMES)
+        monkeypatch.setattr(ol.urllib.request, "urlopen", cut_short)
+        assert ol.load_base(str(tmp_path)).russian == {"Тирасполь"}
+        assert ol.load_base(str(tmp_path)).russian and asked == list(ol.OVERPASS_URLS)   # each server once, then the hour
 
     def test_unreachable(self, tmp_path, monkeypatch):
         def offline(url, *args, **kwargs):

@@ -35,6 +35,7 @@ Both are downloaded once and cached in a compact form (~10 MB).
 from __future__ import annotations
 
 import csv
+import http.client
 import io
 import logging
 import os
@@ -394,7 +395,7 @@ def romanian_place_names(urls: Sequence[str] = OVERPASS_URLS, timeout: float = 1
             with urllib.request.urlopen(request, timeout=timeout) as resp:
                 elements = json.load(resp)["elements"]
             return {str(e["id"]): str(e["tags"]["name:ro"]) for e in elements if e.get("tags", {}).get("name:ro")}
-        except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, KeyError) as exc:
+        except (OSError, http.client.HTTPException, ValueError, KeyError) as exc:  # a reply cut short too
             logger.info("Overpass at %s did not answer: %s", url, exc)
     logger.warning("No Romanian names for Transnistria's places (the Overpass API did not answer): "
                    "they keep their Russian names until a later run gets them.")
