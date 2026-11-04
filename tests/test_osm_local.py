@@ -1,5 +1,6 @@
 """Tests for osm_local.py (no network; small Geofabrik-like and GISCO-like archives made here)."""
 
+import http.client
 import io
 import json
 import os
@@ -15,9 +16,12 @@ from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.collections import LineCollection
 from matplotlib.figure import Figure
 
+import incomplete
 import osm_local as ol
 from cities import label_space
 from rotation import globe_projection
+
+ROMANIAN_PLACE_NAMES = ol.romanian_place_names          # the real one, for tests whose fixture stands in for it
 
 
 @pytest.mark.parametrize("text, expected", [
@@ -217,7 +221,7 @@ class TestOverpass:
         def urlopen(request, timeout=0):
             asked.append(request.full_url)
             if request.full_url == ol.OVERPASS_URLS[0]:
-                raise ol.urllib.error.URLError("busy")                        # the next server answers
+                raise http.client.IncompleteRead(b"")                         # cut short: the next server answers
             return io.BytesIO(body)
         monkeypatch.setattr(ol.urllib.request, "urlopen", urlopen)
         assert ol.romanian_place_names() == {"7": "Tiraspol"}
@@ -227,7 +231,14 @@ class TestOverpass:
         def offline(request, timeout=0):
             raise ol.urllib.error.URLError("offline")
         monkeypatch.setattr(ol.urllib.request, "urlopen", offline)
-        assert ol.romanian_place_names() == {} and "left unnamed" in caplog.text
+        assert ol.romanian_place_names() is None and "keep their Russian names" in caplog.text
+
+
+def test_transnistria_in_russian_for_now():
+    table = ol.read_osm([(MOLDOVA, True)], in_russian=True)
+    assert table["place_names"].tolist() == ["Chișinău", "Тирасполь"]
+    assert table["russian_at"].tolist() == [1] and table["russian_ids"].tolist() == ["7"]
+    assert not len(ol.read_osm([(MOLDOVA, True)], romanian={"7": "Tiraspol"})["russian_at"])
 
 
 @pytest.fixture(scope="module")
@@ -332,6 +343,12 @@ class TestRemoteFile:
                 remote.read(10)
 
 
+def _an_hour_ago(path):
+    """Make the cache at *path* look written :data:`RETRY_NAMES` earlier."""
+    then = os.path.getmtime(path) - ol.RETRY_NAMES
+    os.utime(path, (then, then))
+
+
 class TestCache:
     @pytest.fixture
     def online(self, monkeypatch):
@@ -375,6 +392,66 @@ class TestCache:
         assert [r.name for r in again.rivers] == [r.name for r in base.rivers]
         assert len(online) == len(ol.REGIONS) + len(ol.NEIGHBOURS) + 3                     # cached
         assert sorted(os.listdir(tmp_path)) == [f"osm_local_v{ol.DATA_VERSION}.npz"]       # downloads removed
+
+    def test_russian_names_until_the_overpass_api_answers(self, online, tmp_path, monkeypatch):
+        answers: list[dict[str, str] | None] = [None]
+        asked = []
+
+        def overpass(timeout=180):
+            asked.append(timeout)
+            return answers[-1]
+        monkeypatch.setattr(ol, "romanian_place_names", overpass)
+        base = ol.load_base(str(tmp_path))
+        assert "Тирасполь" in [p.name for p in base.places] and base.russian == {"Тирасполь"}
+        path = tmp_path / f"osm_local_v{ol.DATA_VERSION}.npz"
+        assert ol.load_base(str(tmp_path)).russian == {"Тирасполь"} and len(asked) == 1     # not asked again yet
+        _an_hour_ago(path)
+        assert ol.load_base(str(tmp_path)).russian == {"Тирасполь"} and len(asked) == 2     # still no answer
+        assert ol.load_base(str(tmp_path)).russian and len(asked) == 2                      # nor asked again
+        answers.append({"7": "Tiraspol, municipiu"})
+        _an_hour_ago(path)
+        again = ol.load_base(str(tmp_path))
+        assert len(asked) == 3 and again.russian == frozenset()
+        assert [p.name for p in again.places] == [p.name.replace("Тирасполь", "Tiraspol") for p in base.places]
+        assert again.places[[p.name for p in again.places].index("Tiraspol")] == \
+            base.places[[p.name for p in base.places].index("Тирасполь")]._replace(name="Tiraspol")
+        _an_hour_ago(path)
+        ol.load_base(str(tmp_path))
+        assert asked == [180, ol.RETRY_TIMEOUT, ol.RETRY_TIMEOUT]                           # done with; asked briefly
+        assert sorted(os.listdir(tmp_path)) == [path.name]
+
+    def test_a_place_without_a_romanian_name_is_left_out_then(self, online, tmp_path, monkeypatch):
+        answers = iter([None, {}])
+        monkeypatch.setattr(ol, "romanian_place_names", lambda timeout=180: next(answers))
+        before = [p.name for p in ol.load_base(str(tmp_path)).places]
+        path = tmp_path / f"osm_local_v{ol.DATA_VERSION}.npz"
+        _an_hour_ago(path)
+        assert [p.name for p in ol.load_base(str(tmp_path)).places] == [n for n in before if n != "Тирасполь"]
+
+    def test_a_retry_that_breaks_keeps_the_russian_names(self, online, tmp_path, monkeypatch, caplog):
+        monkeypatch.setattr(ol, "romanian_place_names", lambda timeout=180: None)
+        ol.load_base(str(tmp_path))
+        _an_hour_ago(tmp_path / f"osm_local_v{ol.DATA_VERSION}.npz")
+
+        def broken(timeout=180):
+            raise http.client.IncompleteRead(b"")
+        monkeypatch.setattr(ol, "romanian_place_names", broken)
+        assert ol.load_base(str(tmp_path)).russian == {"Тирасполь"}             # the map still draws
+        assert "Could not give Transnistria's places their Romanian names" in caplog.text
+
+    def test_a_retry_cut_short_waits_its_hour(self, online, tmp_path, monkeypatch):
+        monkeypatch.setattr(ol, "romanian_place_names", lambda timeout=180: None)
+        ol.load_base(str(tmp_path))
+        _an_hour_ago(tmp_path / f"osm_local_v{ol.DATA_VERSION}.npz")
+        asked = []
+
+        def cut_short(request, timeout=0):
+            asked.append(request.full_url)
+            raise http.client.IncompleteRead(b"")
+        monkeypatch.setattr(ol, "romanian_place_names", ROMANIAN_PLACE_NAMES)
+        monkeypatch.setattr(ol.urllib.request, "urlopen", cut_short)
+        assert ol.load_base(str(tmp_path)).russian == {"Тирасполь"}
+        assert ol.load_base(str(tmp_path)).russian and asked == list(ol.OVERPASS_URLS)   # each server once, then the hour
 
     def test_unreachable(self, tmp_path, monkeypatch):
         def offline(url, *args, **kwargs):
@@ -460,6 +537,16 @@ class TestDrawing:
         ax = _map(150, lat=46.2, lon=23.8)
         ol.name_base(ax, _base())
         assert "Ciugud" in {t.get_text() for t in ax.texts}
+
+    def test_names_in_russian_for_now_are_noted(self):
+        tiraspol = ol.Place("Тирасполь", "city", 128979, 29.6, 46.84)
+        with incomplete.noting() as noted:
+            ol.name_base(_map(900, lon=27.0), _base(places=[*_base().places, tiraspol], russian={"Тирасполь"}))
+        assert len(noted) == 1 and noted[0].endswith(": Тирасполь.")
+        with incomplete.noting() as noted:
+            ol.name_base(_map(900, lon=27.0), _base(places=[*_base().places, tiraspol]))   # named so in OSM's data
+            ol.name_base(_map(150, lat=46.2, lon=23.8), _base(russian={"Тирасполь"}))      # out of sight
+        assert noted == []
 
     def test_a_name_already_written_is_not_repeated(self):
         ax = _map(900)

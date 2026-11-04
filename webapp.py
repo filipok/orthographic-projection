@@ -18,9 +18,11 @@ Settings come from the environment, so the same code runs locally or hosted:
 - ``ORTHO_WEB_KEEP``: how many finished maps to keep (default 50).
 - ``ORTHO_WEB_RECIPES_DIR``, ``ORTHO_WEB_ROUTES_DIR``: the recipes and route
   files the form loads and saves (default: the ``recipes`` and ``routes``
-  folders beside this file).
+  folders beside this file; once installed, copies of those that come with
+  it in ``~/.local/share/orthographic-projection``, or with
+  ``ORTHO_WEB_READ_ONLY`` those themselves).
 - ``ORTHO_WEB_ATLASES_DIR``: the atlases the atlas page edits and prints
-  (default: the ``atlases`` folder beside this file).
+  (default: the ``atlases`` folder beside this file, or its copy there).
 - ``ORTHO_WEB_READ_ONLY``: ``1`` to offer recipes, routes and atlases without
   saving, deleting or uploading any (for a server others can reach).
 
@@ -36,6 +38,7 @@ import os
 import re
 import shlex
 import shutil
+import sysconfig
 import tempfile
 import threading
 import time
@@ -63,7 +66,48 @@ from vegetation import FIRST_LAND_COVER_YEAR, LATEST_LAND_COVER_YEAR
 logger = logging.getLogger(__name__)
 
 HERE = Path(__file__).resolve().parent
-WEB_DIR = HERE / "web"
+DATA_NAME = "orthographic-projection"           # pyproject.toml installs the folders in <prefix>/share/<this>
+USER_DATA_DIR = Path.home() / ".local" / "share" / DATA_NAME
+
+
+def bundled_dir(name: str) -> Path:
+    """A folder that comes with the program: beside this file in a checkout, else where pip put the project's data."""
+    schemes = dict.fromkeys([sysconfig.get_default_scheme(), sysconfig.get_preferred_scheme("user")])
+    for base in [HERE, *(Path(sysconfig.get_path("data", scheme)) / "share" / DATA_NAME for scheme in schemes)]:
+        if (base / name).is_dir():
+            return base / name
+    return HERE / name                          # nowhere: what is missing says so
+
+
+def editable_dir(name: str) -> str:
+    """The *name* folder (``recipes``, ``routes`` or ``atlases``) the web app saves into, unless told another.
+
+    In a checkout, the folder beside this file. Installed, a copy in the user's data folder, made from the
+    installed one the first time it is needed, so that edits outlive upgrades and the install stays as it was.
+    """
+    if (HERE / name).is_dir():
+        return str(HERE / name)
+    target = USER_DATA_DIR / name
+    if not target.exists():
+        USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        part = Path(tempfile.mkdtemp(prefix=f".{name}.", dir=USER_DATA_DIR))  # its own, if two servers start at once
+        try:
+            source, copy = bundled_dir(name), part / name
+            if source.is_dir():
+                shutil.copytree(source, copy)
+            else:
+                copy.mkdir()
+            try:
+                os.replace(copy, target)
+            except OSError:                     # another server made it first
+                if not target.is_dir():
+                    raise
+        finally:
+            shutil.rmtree(part, ignore_errors=True)
+    return str(target)
+
+
+WEB_DIR = bundled_dir("web")
 DEFAULT_WEB_DPI = 150
 
 PERIODS = [
@@ -86,24 +130,26 @@ class Settings:
     max_dpi: int = 300
     max_queue: int = 10
     keep: int = 50
-    recipes_dir: str = str(HERE / "recipes")
-    routes_dir: str = str(HERE / "routes")
-    atlases_dir: str = str(HERE / "atlases")
+    recipes_dir: str = field(default_factory=lambda: editable_dir("recipes"))
+    routes_dir: str = field(default_factory=lambda: editable_dir("routes"))
+    atlases_dir: str = field(default_factory=lambda: editable_dir("atlases"))
     read_only: bool = False
 
     @classmethod
     def from_env(cls) -> Settings:
         env = os.environ
+        read_only = env.get("ORTHO_WEB_READ_ONLY", "").strip().lower() in ("1", "true", "yes", "on")
+        folder = (lambda name: str(bundled_dir(name))) if read_only else editable_dir  # read-only: nothing to copy
         return cls(
             output_dir=env.get("ORTHO_WEB_OUTPUT_DIR") or os.path.join(tempfile.gettempdir(), "ortho_web"),
             cache_dir=env.get("ORTHO_WEB_CACHE_DIR") or None,
             max_dpi=int(env.get("ORTHO_WEB_MAX_DPI", 300)),
             max_queue=int(env.get("ORTHO_WEB_MAX_QUEUE", 10)),
             keep=int(env.get("ORTHO_WEB_KEEP", 50)),
-            recipes_dir=env.get("ORTHO_WEB_RECIPES_DIR") or str(HERE / "recipes"),
-            routes_dir=env.get("ORTHO_WEB_ROUTES_DIR") or str(HERE / "routes"),
-            atlases_dir=env.get("ORTHO_WEB_ATLASES_DIR") or str(HERE / "atlases"),
-            read_only=env.get("ORTHO_WEB_READ_ONLY", "").strip().lower() in ("1", "true", "yes", "on"),
+            recipes_dir=env.get("ORTHO_WEB_RECIPES_DIR") or folder("recipes"),
+            routes_dir=env.get("ORTHO_WEB_ROUTES_DIR") or folder("routes"),
+            atlases_dir=env.get("ORTHO_WEB_ATLASES_DIR") or folder("atlases"),
+            read_only=read_only,
         )
 
 
@@ -219,7 +265,10 @@ _FLAGS = {"koppen_alpha": "--climate-alpha"}
 
 def _shown_path(path: str) -> str:
     """*path* relative to this folder when it is inside it (as the command is run from here), else as is."""
-    relative = os.path.relpath(path, HERE)
+    try:
+        relative = os.path.relpath(path, HERE)
+    except ValueError:                          # on another drive (Windows): an installed copy's user folders
+        return Path(path).as_posix()
     return Path(path).as_posix() if relative.startswith("..") else Path(relative).as_posix()
 
 
@@ -390,8 +439,13 @@ class MapQueue:
 
             result = atlases.build_atlas(book, output, maps_dir, proof=proof, cache_dir=settings.cache_dir,
                                          progress=progress)
-            job.warnings += [f"Could not draw the map of page {key}: {redact(error)}"
+            def shown(key: str) -> str:
+                return "the cover" if key == "cover" else f"page {key}"
+
+            job.warnings += [f"Could not draw the map of {shown(key)}: {redact(error)}"
                              for key, error in result.failures.items()]
+            job.warnings += [f"The map of {shown(key)} is incomplete ({redact('; '.join(text.splitlines()))}); "
+                             "the next build draws it again." for key, text in result.incomplete.items()]
             return result.output
 
         command = f"python atlas.py {shlex.quote(_shown_path(str(path)))}" + (" --proof" if proof else "")
@@ -671,7 +725,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def atlas_save(name: str, body: AtlasSave) -> dict[str, str]:
         writable()
         path = atlas_errors(lambda: atlases.write_atlas(settings.atlases_dir, settings.routes_dir, name, body.atlas,
-                                                        FORM_FIELDS, body.overwrite, settings.cache_dir))
+                                                        FORM_FIELDS, body.overwrite, settings.cache_dir,
+                                                        settings.recipes_dir))
         return {"name": name, "file": _shown_path(str(path))}
 
     @app.delete("/api/atlases/{name}", status_code=204)

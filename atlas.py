@@ -42,7 +42,8 @@ own and fits the second, a detail, into the room left under it::
 
 Run ``python atlas.py atlases/romania_school.toml`` to draw every map (each
 checked like a command line first) and write the PDF. The maps are kept in a
-folder beside it and drawn again only when their options change, so editing
+folder beside it and drawn again only when their options change (or when one
+was drawn without a layer or tiles that could not be loaded), so editing
 the text and building again takes seconds; ``--proof`` lays the pages out
 with a placeholder for every map, without drawing any.
 """
@@ -77,6 +78,7 @@ from matplotlib.patches import Circle, FancyBboxPatch, Rectangle
 from PIL import Image
 
 import frame
+import incomplete
 import ortho
 import recipe_store
 
@@ -308,6 +310,9 @@ def load_atlas(path: str) -> Atlas:
 # ---------------------------------------------------------------------------
 
 
+INCOMPLETE = ".incomplete"      # beside a map that left something out: what, one per line
+
+
 class MapPlan(NamedTuple):
     """One map of an atlas, checked: where it goes and how to draw it."""
     key: str                    # "cover" or the page's number
@@ -316,8 +321,23 @@ class MapPlan(NamedTuple):
     plan: ortho.RenderPlan
 
     @property
-    def cached(self) -> bool:
+    def drawn(self) -> bool:
+        """Drawn, whole or with something it was asked for left out."""
         return os.path.isfile(self.path)
+
+    @property
+    def left_out(self) -> str | None:
+        """What the drawn map left out (a layer or tiles that could not be loaded), or ``None``."""
+        try:
+            with open(self.path + INCOMPLETE, encoding="utf-8") as fh:
+                return fh.read().strip() or "something it was asked for"
+        except FileNotFoundError:
+            return None
+
+    @property
+    def cached(self) -> bool:
+        """Drawn whole, so used again as it is; a map with something left out is drawn again."""
+        return self.drawn and not os.path.exists(self.path + INCOMPLETE)
 
 
 def _slug(text: str) -> str:
@@ -347,7 +367,11 @@ def page_args(atlas: Atlas, page: Page, where: str, output: str, cache_dir: str 
     tokens = ortho.option_tokens(parser, page.map, "map", atlas.base_dir)
     if page.recipe:
         recipe = os.path.join(atlas.base_dir, page.recipe)
-        tokens = ortho._recipe_tokens(parser, recipe, tokens) + tokens
+        # A flag the page turns off stays off, whatever its recipe says
+        off = ortho._given_dests(parser, [f"--{key.replace('_', '-')}" for key, value in page.map.items()
+                                          if value is False])
+        tokens = [token for token in ortho._recipe_tokens(parser, recipe, tokens)
+                  if not ortho._given_dests(parser, [token]) & off] + tokens
     if atlas.text_scale != 1:
         tokens = [f"--text-scale={atlas.text_scale:g}"] + tokens       # first: a recipe's or page's own wins
     tokens += [f"--dpi={atlas.dpi}", f"--output={output}"]
@@ -397,7 +421,11 @@ def plan_maps(atlas: Atlas, maps_dir: str, cache_dir: str | None = None) -> list
 def render_maps(
     plans: Sequence[MapPlan], force: bool = False, progress: Callable[[int, int, str], None] | None = None,
 ) -> dict[str, str]:
-    """Draw the maps in *plans* that are not drawn yet; their error messages by key, for those that fail."""
+    """Draw the maps in *plans* that are not drawn whole yet; their error messages by key, for those that fail.
+
+    A map drawn with something left out (a layer or tiles that could not be
+    loaded) is kept, marked with what it left out, until a build draws it whole.
+    """
     failures: dict[str, str] = {}
     for done, item in enumerate(plans):
         if progress:
@@ -407,9 +435,17 @@ def render_maps(
         os.makedirs(os.path.dirname(item.path), exist_ok=True)
         part = item.plan.kwargs["output_filename"]
         logger.info("Drawing %s (%d of %d) …", item.page.title, done + 1, len(plans))
+        marker = item.path + INCOMPLETE
         try:
-            ortho.generate_orthographic_map(**item.plan.kwargs)
+            with incomplete.noting() as left_out:
+                ortho.generate_orthographic_map(**item.plan.kwargs)
+            # Marked before it is moved, and unmarked after: a map is never taken for whole when it is not
+            if left_out:
+                with open(marker, "w", encoding="utf-8") as fh:
+                    fh.write("\n".join(left_out) + "\n")
             os.replace(part, item.path)
+            if not left_out and os.path.exists(marker):
+                os.remove(marker)
         except Exception as e:  # one map failing leaves a placeholder; the rest still print
             logger.error("Could not draw %s: %s", item.page.title, e)
             failures[item.key] = str(e) or type(e).__name__
@@ -421,12 +457,12 @@ def render_maps(
 
 
 def prune_maps(maps_dir: str, keep: Collection[str]) -> int:
-    """Delete the maps in *maps_dir* an atlas no longer uses (only files named as it names them)."""
+    """Delete the maps in *maps_dir* an atlas no longer uses (only files named as it names them), and their marks."""
     keep_names = {os.path.basename(path) for path in keep}
     removed = 0
     if os.path.isdir(maps_dir):
         for name in os.listdir(maps_dir):
-            if _MAP_FILE.match(name) and name not in keep_names:
+            if _MAP_FILE.match(name.removesuffix(INCOMPLETE)) and name.removesuffix(INCOMPLETE) not in keep_names:
                 os.remove(os.path.join(maps_dir, name))
                 removed += 1
     return removed
@@ -1029,6 +1065,7 @@ class BuildResult(NamedTuple):
     drawn: int                  # maps drawn this time
     reused: int                 # maps already drawn, used as they were
     failures: dict[str, str]    # error messages by map key
+    incomplete: dict[str, str]  # what the maps drawn with something left out leave out, by key
 
 
 def default_paths(atlas_path: str) -> tuple[str, str]:
@@ -1048,10 +1085,14 @@ def build_atlas(
     if not proof:
         failures = render_maps(plans, force=force, progress=progress)
         prune_maps(maps_dir, [item.path for item in plans])
-    images = {item.key: item.path for item in plans if item.cached and item.key not in failures}
+    # A map with something left out is printed as it is (also when drawing it again failed), and drawn again by the
+    # next build
+    images = {item.key: item.path for item in plans
+              if item.drawn and (item.key not in failures or item.left_out is not None)}
+    left_out = {item.key: text for item in plans if item.key in images and (text := item.left_out)}
     pages = write_pdf(atlas, output, images, failures)
     drawn = 0 if proof else len(plans) - reused - len(failures)
-    return BuildResult(output, pages, drawn, reused, failures)
+    return BuildResult(output, pages, drawn, reused, failures, left_out)
 
 
 # ---------------------------------------------------------------------------
@@ -1140,9 +1181,9 @@ def map_request(atlases_dir: str, routes_dir: str, name: str, page_key: str, fie
         except (OSError, tomllib.TOMLDecodeError, recipe_store.RecipeError) as e:
             raise AtlasError(f"cannot read the recipe {page.recipe}: {e}") from None
     own, _ = recipe_store.request_from_options(page.map, path.parent, routes_dir, fields, path.name)
-    if own.keys() & {"city", "lat", "lon"}:
-        for key in ("city", "lat", "lon"):
-            request.pop(key, None)
+    # The page's side of a choice replaces the recipe's, as page_args draws it
+    for key in ortho.overridden_dests(ortho.build_cli_parser(), {k for k, v in own.items() if v is not False}):
+        request.pop(key, None)
     return {k: v for k, v in {**request, **own}.items() if k not in RUN_OPTIONS}
 
 
@@ -1184,14 +1225,21 @@ def _toml_text(text: str) -> str:
 
 
 def _map_lines(table: str, request: dict[str, Any], kept: Sequence[Sequence[Any]], base_dir: str, routes_dir: str,
-               fields: Collection[str]) -> list[str]:
+               fields: Collection[str], keep_off: bool = False) -> list[str]:
+    if not isinstance(request, dict):
+        raise AtlasError(f"[{table}] is a table of options, not {request!r}.")
+    if not isinstance(kept, list) or not all(isinstance(entry, list | tuple) and len(entry) == 2
+                                             and isinstance(entry[0], str) for entry in kept):
+        raise AtlasError(f"[{table}] keeps a list of [option, value] pairs, not {kept!r}.")
     try:
         entries = recipe_store.options_from_request(
-            {k: v for k, v in request.items() if k not in RUN_OPTIONS}, base_dir, routes_dir, fields)
+            {k: v for k, v in request.items() if k not in RUN_OPTIONS}, base_dir, routes_dir, fields, keep_off)
     except recipe_store.RecipeError as e:
         raise AtlasError(str(e)) from None
     for key, value in kept:
         if key == "route":
+            if not isinstance(value, list) or not all(isinstance(route, str) for route in value):
+                raise AtlasError(f"[{table}] keeps its routes as a list of file names, not {value!r}.")
             routes = next((v for k, v in entries if k == "route"), [])
             entries = [(k, v) for k, v in entries if k != "route"] + [("route", routes + list(value))]
         elif not any(k == key for k, _ in entries):
@@ -1211,7 +1259,7 @@ def _map_table(table: str, part: dict[str, Any], base_dir: str, routes_dir: str,
         lines.append(f"recipe = {json.dumps(part['recipe'], ensure_ascii=False)}")
     if part.get("map") or part.get("kept") or not part.get("recipe"):
         lines += _map_lines(f"{table}.map", part.get("map") or {}, part.get("kept") or [], base_dir, routes_dir,
-                            fields)
+                            fields, keep_off=bool(part.get("recipe")))    # false turns off the recipe's flag
     return lines
 
 
@@ -1241,18 +1289,24 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
         value = data.get(key)
         if value not in (None, ""):
             lines.append(f"{key} = {json.dumps(str(value), ensure_ascii=False)}")
-    if data.get("dpi") is not None:
-        lines.append(f"dpi = {int(data['dpi'])}")
-    if data.get("text_scale") not in (None, "", 1, 1.0):
-        lines.append(f"text_scale = {float(data['text_scale']):g}")
+    try:
+        if data.get("dpi") is not None:
+            lines.append(f"dpi = {int(data['dpi'])}")
+        if data.get("text_scale") not in (None, "", 1, 1.0):
+            lines.append(f"text_scale = {float(data['text_scale']):g}")
+    except (TypeError, ValueError):
+        raise AtlasError("The dpi and text scale are numbers.") from None
     if data.get("notes") not in (None, "", "below"):
         lines.append(f"notes = {json.dumps(str(data['notes']))}")
     cover = data.get("cover")
+    if cover and not isinstance(cover, dict):
+        raise AtlasError("The cover is a table.")
     if cover:
         lines.append("")
         if cover.get("recipe"):
             lines += ["[cover]", f"recipe = {json.dumps(cover['recipe'], ensure_ascii=False)}"]
-        lines += _map_lines("cover.map", cover.get("map") or {}, cover.get("kept") or [], base_dir, routes_dir, fields)
+        lines += _map_lines("cover.map", cover.get("map") or {}, cover.get("kept") or [], base_dir, routes_dir, fields,
+                            keep_off=bool(cover.get("recipe")))
     for page in data.get("pages", []):
         if not isinstance(page, dict):
             raise AtlasError("Each page is a table.")
@@ -1263,6 +1317,8 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
         lines.append(f"title = {json.dumps(str(page.get('title', '')), ensure_ascii=False)}")
         if page.get("text"):
             lines.append(f"text = {_toml_text(str(page['text']))}")
+        if not isinstance(page.get("questions") or [], list):
+            raise AtlasError("A page's questions are a list.")
         questions = [str(q) for q in page.get("questions") or [] if str(q).strip()]
         if questions:
             lines.append("questions = [")
@@ -1272,6 +1328,8 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
             lines.append(f"orientation = {json.dumps(page['orientation'])}")
         if kind == "map":
             second = page.get("second")
+            if second and not isinstance(second, dict):
+                raise AtlasError("A page's second map is a table.")
             if second and page.get("heading"):
                 lines.append(f"heading = {json.dumps(str(page['heading']), ensure_ascii=False)}")
             if second and page.get("layout", "pair") != "pair":
@@ -1283,11 +1341,64 @@ def atlas_text(data: dict[str, Any], base_dir: str, routes_dir: str, fields: Col
     return "\n".join(lines) + "\n"
 
 
+PATH_OPTIONS = ("route", "iucn-data")
+
+
+def _named_paths(data: Any) -> set[tuple[str, str]]:
+    """The files and folders an atlas's TOML *data* names, as ``("recipe" or an option, path as written)``."""
+    found: set[tuple[str, str]] = set()
+    if not isinstance(data, dict):
+        return found
+    pages = [page for page in data.get("pages", []) if isinstance(page, dict)] \
+        if isinstance(data.get("pages"), list) else []
+    for part in [data.get("cover"), *pages, *(page.get("second") for page in pages)]:
+        if not isinstance(part, dict):
+            continue
+        if isinstance(part.get("recipe"), str):
+            found.add(("recipe", part["recipe"]))
+        options = part.get("map")
+        for key, value in options.items() if isinstance(options, dict) else ():
+            option = key.replace("_", "-")
+            if option in PATH_OPTIONS:
+                found |= {(option, str(entry)) for entry in (value if isinstance(value, list) else [value])}
+    return found
+
+
+def _check_paths(parsed: dict[str, Any], atlases_dir: str, routes_dir: str, recipes_dir: str | None,
+                 allowed: Collection[tuple[str, str]]) -> None:
+    """Refuse a recipe, route file or folder the web form cannot offer, unless an atlas already names it.
+
+    Recipes come from *recipes_dir* and routes from *routes_dir*; what a hand-written atlas names elsewhere
+    stays usable (as the form keeps it), but a request cannot add a new path outside those folders.
+    """
+    known = set(allowed)
+    for other in Path(atlases_dir).glob("*.toml"):
+        try:
+            known |= _named_paths(tomllib.loads(other.read_text(encoding="utf-8")))
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+            continue
+    folders = {"recipe": recipes_dir, "route": routes_dir}
+    for option, value in sorted(_named_paths(parsed) - known):
+        folder = folders.get(option)
+        if folder and (Path(atlases_dir) / value).resolve().is_relative_to(Path(folder).resolve()):
+            continue
+        if option == "recipe":
+            raise AtlasError(f"The recipe {value!r} is not in the recipes folder.")
+        if option == "route":
+            raise AtlasError(f"The route file {value!r} is not in the routes folder.")
+        raise AtlasError(f"{option} {value!r} is not one the atlases name already.")
+
+
 def write_atlas(
     atlases_dir: str, routes_dir: str, name: str, data: dict[str, Any], fields: Collection[str],
-    overwrite: bool = False, cache_dir: str | None = None,
+    overwrite: bool = False, cache_dir: str | None = None, recipes_dir: str | None = None,
+    allowed: Collection[tuple[str, str]] = (),
 ) -> Path:
-    """Save the atlas *data* (as the web form has it) as *name*, once it reads back and every map checks out."""
+    """Save the atlas *data* (as the web form has it) as *name*, once it reads back and every map checks out.
+
+    Its recipes must be in *recipes_dir* and its routes in *routes_dir*, or be named already by an atlas
+    or in *allowed*.
+    """
     path = atlas_path(atlases_dir, name)
     if path.exists() and not overwrite:
         raise FileExistsError(f"There is already an atlas {name!r}.")
@@ -1297,6 +1408,7 @@ def write_atlas(
         parsed = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:  # a bug here rather than in the request, but say so plainly
         raise AtlasError(f"The atlas could not be written as TOML: {e}") from None
+    _check_paths(parsed, atlases_dir, routes_dir, recipes_dir, allowed)
     atlas = parse_atlas(parsed, str(path))
     plan_maps(atlas, os.path.join(atlases_dir, ".check"), cache_dir)
     os.makedirs(atlases_dir, exist_ok=True)
@@ -1331,7 +1443,9 @@ def set_page_map(
     target["kept"] = kept + [entry for entry in target.get("kept", []) if entry[0] not in {k for k, _ in kept}]
     target["map"] = request
     target["recipe"] = None
-    return write_atlas(atlases_dir, routes_dir, name, current, fields, overwrite=True, cache_dir=cache_dir)
+    allowed = _named_paths({"pages": [{"map": dict(kept)}]})      # the recipe's own, now written in the atlas
+    return write_atlas(atlases_dir, routes_dir, name, current, fields, overwrite=True, cache_dir=cache_dir,
+                       allowed=allowed)
 
 
 def delete_atlas(atlases_dir: str, name: str) -> None:
@@ -1382,7 +1496,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             plans = {item.key: item for item in plan_maps(atlas, maps_dir, args.cache_dir)}
             for i, page in enumerate(atlas.pages, 1):
                 item = plans.get(str(i))
-                state = "" if item is None else (" (drawn)" if item.cached else " (to draw)")
+                state = "" if item is None else (" (drawn)" if item.cached else
+                                                 " (to draw again: something was left out)" if item.drawn else
+                                                 " (to draw)")
                 print(f"{i:3d}  {page.kind:<7}  {page.title}{state}")
             drawn = sum(item.cached for item in plans.values())
             print(f"{len(atlas.pages)} pages, {len(plans)} maps, {drawn} of them drawn already. The atlas checks out.")
@@ -1397,8 +1513,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except AtlasError as e:
         logger.error("%s", e)
         return 1
-    logger.info("Wrote %s: %d pages; %d maps drawn, %d reused%s.", result.output, result.pages, result.drawn,
-                result.reused, f", {len(result.failures)} failed" if result.failures else "")
+    for key, text in result.incomplete.items():
+        logger.warning("The map of %s is incomplete (%s); the next build draws it again.",
+                       "the cover" if key == "cover" else f"page {key}", "; ".join(text.splitlines()))
+    logger.info("Wrote %s: %d pages; %d maps drawn, %d reused%s%s.", result.output, result.pages, result.drawn,
+                result.reused, f", {len(result.incomplete)} with something left out" if result.incomplete else "",
+                f", {len(result.failures)} failed" if result.failures else "")
     return 1 if result.failures else 0
 
 

@@ -18,8 +18,10 @@ waterways and the water areas are read from it (~50 MB for Romania), with
 HTTP range requests. A river is the ways of one name that join up; a name
 in two languages (``Dunărea - Дунав``, ``Dunav/Dunărea``) keeps its
 Romanian part, and ``Râul Mureș`` is ``Mureș`` where OSM names other parts
-of it so. Names in another script only (the Serbian and Bulgarian rivers,
-Transnistria's towns) are left out.
+of it so. Names in another script only (the Serbian and Bulgarian rivers)
+are left out; Transnistria's towns, named only in Russian there, take OSM's
+Romanian names from the Overpass API, and keep their Russian ones until a
+later run gets those if it does not answer.
 
 Land and borders: Eurostat GISCO, Countries 2024, 1:1 million,
 © EuroGeographics for the administrative boundaries —
@@ -33,6 +35,7 @@ Both are downloaded once and cached in a compact form (~10 MB).
 from __future__ import annotations
 
 import csv
+import http.client
 import io
 import logging
 import os
@@ -58,6 +61,7 @@ from cartopy.mpl.geoaxes import GeoAxes
 from matplotlib.collections import LineCollection
 
 import frame
+import incomplete
 from biomes import _download, visible_points
 from borders import _pack, _unpack
 from cities import LabelSpace, label_space, side_offset
@@ -81,6 +85,8 @@ OVERPASS_QUERY = """[out:json][timeout:120];
 area["ISO3166-1"="MD"][admin_level=2]->.md;
 node(area.md)["place"~"^(city|town|village)$"]["name:ro"];
 out tags;"""
+RETRY_NAMES = 3600        # seconds: how often a cache with Russian names in it asks the Overpass API again
+RETRY_TIMEOUT = 30        # seconds per server when it does: the map waits for it
 
 ATTRIBUTION = ("Map data © OpenStreetMap contributors (ODbL), Geofabrik extracts of {date}; "
                "land and borders © EuroGeographics (GISCO)")
@@ -166,6 +172,7 @@ class Base(NamedTuple):
     labels: Sequence[Label] = ()    # the countries, largest first, then the seas (see ne_local)
     credit: str = ""                # the data credit, if not OSM's
     reservoirs: Sequence[Water] = ()    # the lakes behind dams, largest first, if told apart (see ne_local)
+    russian: frozenset[str] = frozenset()   # places named in Russian until the Overpass API gives their Romanian names
 
 
 class Named(NamedTuple):
@@ -379,8 +386,8 @@ def official(name: str, spellings: dict[str, str]) -> str:
     return spellings.get(_spelling_key(name), name)
 
 
-def romanian_place_names(urls: Sequence[str] = OVERPASS_URLS, timeout: float = 180) -> dict[str, str]:
-    """OSM's Romanian names (``name:ro``) of Moldova's places, by OSM id; ``{}`` if no server answers."""
+def romanian_place_names(urls: Sequence[str] = OVERPASS_URLS, timeout: float = 180) -> dict[str, str] | None:
+    """OSM's Romanian names (``name:ro``) of Moldova's places, by OSM id; None if no server answers."""
     request_data = urllib.parse.urlencode({"data": OVERPASS_QUERY}).encode()
     for url in urls:
         try:
@@ -388,15 +395,20 @@ def romanian_place_names(urls: Sequence[str] = OVERPASS_URLS, timeout: float = 1
             with urllib.request.urlopen(request, timeout=timeout) as resp:
                 elements = json.load(resp)["elements"]
             return {str(e["id"]): str(e["tags"]["name:ro"]) for e in elements if e.get("tags", {}).get("name:ro")}
-        except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, KeyError) as exc:
+        except (OSError, http.client.HTTPException, ValueError, KeyError) as exc:  # a reply cut short too
             logger.info("Overpass at %s did not answer: %s", url, exc)
     logger.warning("No Romanian names for Transnistria's places (the Overpass API did not answer): "
-                   "they are left unnamed.")
-    return {}
+                   "they keep their Russian names until a later run gets them.")
+    return None
+
+
+def _romanian_name(osm_id: str, romanian: dict[str, str]) -> str:
+    """The Romanian name of place *osm_id*, without a note after a comma (``Novosavițcaia, loc. st. cf``)."""
+    return written(romanian.get(osm_id, "").split(",")[0])
 
 
 def read_osm(archives: Sequence[tuple[zipfile.ZipFile, bool]], spellings: dict[str, str] | None = None,
-             romanian: dict[str, str] | None = None) -> dict[str, np.ndarray]:
+             romanian: dict[str, str] | None = None, in_russian: bool = False) -> dict[str, np.ndarray]:
     """The places, rivers and lakes of Geofabrik's *archives*, each OSM feature once (a border river is in both
     countries').
 
@@ -407,13 +419,15 @@ def read_osm(archives: Sequence[tuple[zipfile.ZipFile, bool]], spellings: dict[s
     Unnamed canals are left out: the plains' irrigation and drainage canals.
     Places are spelled as SIRUTA's *spellings* spell them (see :func:`official`);
     a place named in another script only takes its Romanian name from
-    *romanian* (OSM id -> ``name:ro``), without a note after a comma
-    (``Novosavițcaia, loc. st. cf``), or is left out.
+    *romanian* (OSM id -> ``name:ro``, see :func:`_romanian_name`), or is
+    left out. With *in_russian* (the Overpass API did not answer), it keeps
+    its name for now, and ``russian_at`` and ``russian_ids`` say which places
+    those are, for :func:`_name_in_romanian`.
     """
     spellings, romanian = spellings or {}, romanian or {}
     box = shapely.box(*NEIGHBOUR_BOX)
     seen: set[str] = set()
-    places: list[Place] = []
+    places: list[tuple[Place, str]] = []           # with its OSM id if named in Russian for now
     pieces: list[tuple[str, str, shapely.Geometry]] = []
     lakes: list[Water] = []
     for archive, named in archives:
@@ -421,12 +435,14 @@ def read_osm(archives: Sequence[tuple[zipfile.ZipFile, bool]], spellings: dict[s
             for record, point in _shapes(_reader(archive, "gis_osm_places_free_1"),
                                          ("osm_id", "fclass", "population", "name")):
                 name, kind, osm_id = written(str(record["name"] or "")), str(record["fclass"]), str(record["osm_id"])
-                if not latin(name):
-                    name = written(romanian.get(osm_id, "").split(",")[0])
-                if kind in PLACE_KINDS and latin(name) and osm_id not in seen:
+                russian = not latin(name) and in_russian
+                if not latin(name) and not russian:
+                    name = _romanian_name(osm_id, romanian)
+                if kind in PLACE_KINDS and (latin(name) or russian and name) and osm_id not in seen:
                     seen.add(osm_id)
-                    places.append(Place(official(name, spellings), kind, int(str(record["population"] or 0)),
-                                        float(shapely.get_x(point)), float(shapely.get_y(point))))
+                    places.append((Place(official(name, spellings), kind, int(str(record["population"] or 0)),
+                                         float(shapely.get_x(point)), float(shapely.get_y(point))),
+                                   osm_id if russian else ""))
         for record, line in _shapes(_reader(archive, "gis_osm_waterways_free_1"), ("osm_id", "fclass", "name")):
             kind, osm_id = str(record["fclass"]), str(record["osm_id"])
             if kind not in RIVER_KINDS or osm_id in seen or not (named or shapely.intersects(line, box)):
@@ -452,14 +468,18 @@ def read_osm(archives: Sequence[tuple[zipfile.ZipFile, bool]], spellings: dict[s
     river_names = {r.name for r in rivers}
     lakes = [w._replace(name="") if w.name in river_names else w for w in lakes]
     order = {kind: k for k, kind in enumerate(PLACE_KINDS)}
-    places.sort(key=lambda p: (order[p.kind], -p.population))
+    places.sort(key=lambda p: (order[p[0].kind], -p[0].population))
+    russian_at = [i for i, (_, osm_id) in enumerate(places) if osm_id]
+    places_only = [p for p, _ in places]
     lakes.sort(key=lambda w: -w.km)
     packed_rivers, packed_lakes = _pack([r.geometry for r in rivers]), _pack([w.geometry for w in lakes])
-    return {"place_names": np.array([p.name for p in places], dtype=str),
-            "place_kinds": np.array([p.kind for p in places], dtype=str),
-            "place_population": np.array([p.population for p in places], dtype=np.int64),
-            "place_lon": np.array([p.lon for p in places], dtype=float),
-            "place_lat": np.array([p.lat for p in places], dtype=float),
+    return {"place_names": np.array([p.name for p in places_only], dtype=str),
+            "place_kinds": np.array([p.kind for p in places_only], dtype=str),
+            "place_population": np.array([p.population for p in places_only], dtype=np.int64),
+            "place_lon": np.array([p.lon for p in places_only], dtype=float),
+            "place_lat": np.array([p.lat for p in places_only], dtype=float),
+            "russian_at": np.array(russian_at, dtype=np.int64),
+            "russian_ids": np.array([places[i][1] for i in russian_at], dtype=str),
             "river_names": np.array([r.name for r in rivers], dtype=str),
             "river_km": np.array([r.km for r in rivers], dtype=float),
             "river_wkb": packed_rivers["wkb"], "river_wkb_ends": np.asarray(packed_rivers["wkb_ends"]),
@@ -491,12 +511,59 @@ def _extract_date(url: str) -> str:
     return f"{day} {months[month - 1]} {2000 + year}" if 1 <= month <= 12 else ""
 
 
+def _save(table: dict[str, np.ndarray], path: str) -> None:
+    part = path + ".part.npz"
+    np.savez_compressed(part, **table)  # pyright: ignore[reportArgumentType]
+    os.replace(part, path)
+
+
+def _name_in_romanian(path: str) -> None:
+    """Give the places the cache at *path* names in Russian their Romanian names, if the Overpass API answers;
+    asked at most once every :data:`RETRY_NAMES`.
+
+    A place without one is left out, as when the cache was built; its name
+    is not spelled as SIRUTA spells it, Romania's register having none of
+    Transnistria's places.
+    """
+    with np.load(path) as data:
+        if "russian_at" not in data.files or not len(data["russian_at"]):
+            return
+        if time.time() - os.path.getmtime(path) < RETRY_NAMES:
+            return
+        table = {key: data[key] for key in data.files}
+    romanian = romanian_place_names(timeout=RETRY_TIMEOUT)
+    if romanian is None:
+        os.utime(path)                      # asked again in RETRY_NAMES
+        return
+    russian = dict(zip(table["russian_at"].tolist(), table["russian_ids"].tolist()))
+    keep, names = [], []
+    for i, name in enumerate(table["place_names"].tolist()):
+        if i in russian:
+            name = official(_romanian_name(russian[i], romanian), {})
+            if not latin(name):
+                continue
+        keep.append(i)
+        names.append(name)
+    left_out = len(table["place_names"]) - len(keep)
+    for key in ("place_kinds", "place_population", "place_lon", "place_lat"):
+        table[key] = table[key][keep]
+    table["place_names"] = np.array(names, dtype=str)
+    table["russian_at"], table["russian_ids"] = np.array([], dtype=np.int64), np.array([], dtype=str)
+    _save(table, path)
+    logger.info("%d of Transnistria's %d places now have their Romanian names; the rest are left out.",
+                len(russian) - left_out, len(russian))
+
+
 def ensure_osm_data(cache_dir: str | None = None) -> str:
-    """Path to the cached base map data, downloading and reading it if needed."""
+    """Path to the cached base map data, downloading and reading it if needed (see :func:`_name_in_romanian`)."""
     cache_dir = cache_dir or _default_cache_dir()
     path = os.path.join(cache_dir, f"osm_local_v{DATA_VERSION}.npz")
     if os.path.isfile(path):
         logger.info("Using cached OpenStreetMap data: %s", path)
+        try:
+            _name_in_romanian(path)
+        except Exception as e:              # the cache works as it is, its Russian names kept until a later run
+            logger.warning("Could not give Transnistria's places their Romanian names: %s", e)
         return path
     os.makedirs(cache_dir, exist_ok=True)
     logger.info("Reading the places, rivers and lakes of %s, and the rivers and lakes of their neighbours, "
@@ -511,7 +578,8 @@ def ensure_osm_data(cache_dir: str | None = None) -> str:
         regions = [(region, True) for region in REGIONS] + [(region, False) for region in NEIGHBOURS]
         remote = [RemoteFile(GEOFABRIK_URL.format(region=region)) for region, _ in regions]
         archives = [(zipfile.ZipFile(io.BufferedReader(f, 1 << 20)), named) for f, (_, named) in zip(remote, regions)]
-        table = read_osm(archives, spellings, romanian_place_names())
+        romanian = romanian_place_names()
+        table = read_osm(archives, spellings, romanian, in_russian=romanian is None)
         for url, dest in zip((COUNTRIES_URL, BORDERS_URL), downloads):
             _download(url, dest, timeout=300, label="GISCO countries")
         with zipfile.ZipFile(downloads[0]) as countries, zipfile.ZipFile(downloads[1]) as borders:
@@ -526,9 +594,7 @@ def ensure_osm_data(cache_dir: str | None = None) -> str:
         for download in downloads:
             if os.path.exists(download):
                 os.remove(download)
-    part = path + ".part.npz"
-    np.savez_compressed(part, **table)  # pyright: ignore[reportArgumentType]
-    os.replace(part, path)
+    _save(table, path)
     logger.info("OpenStreetMap data ready: %s", path)
     return path
 
@@ -548,7 +614,9 @@ def load_base(cache_dir: str | None = None) -> Base:
               zip(table["river_names"], table["river_km"], _unpacked(table, "river"))]
     lakes = [Water(str(n), float(k), g) for n, k, g in
              zip(table["lake_names"], table["lake_km2"], _unpacked(table, "lake"))]
-    return Base(_unpacked(table, "land"), _unpacked(table, "border"), places, rivers, lakes, str(table["date"]))
+    russian = frozenset(places[i].name for i in table.get("russian_at", np.array([], dtype=np.int64)).tolist())
+    return Base(_unpacked(table, "land"), _unpacked(table, "border"), places, rivers, lakes, str(table["date"]),
+                russian=russian)
 
 
 def attribution(base: Base) -> str:
@@ -880,7 +948,7 @@ def name_base(ax: GeoAxes, base: Base, countries: bool = True, places: bool = Tr
             if area.kind in kinds and area.name not in named_areas and _name_area(ax, space, area):
                 named_areas.add(area.name)
     name_areas({"country"})
-    places_named = sum(_name_place(ax, space, p) for p in big)
+    named_places = [p.name for p in big if _name_place(ax, space, p)]
     name_areas({"ocean", "sea"})            # after the cities: a sea's name has room elsewhere, a city's has not
     rivers = [r for r in base.rivers if r.name and r.km >= max(min_river_km(across), 4 * across / 30)
               and (view is None or shapely.intersects(r.geometry, view))]
@@ -891,7 +959,10 @@ def name_base(ax: GeoAxes, base: Base, countries: bool = True, places: bool = Tr
     lakes = [w for w in _lakes(base, places) if w.name and w.km >= 4 * min_lake_km2(across)
              and (view is None or shapely.intersects(w.geometry, view))]
     lakes_named = sum(_name_lake(ax, space, w) for w in lakes)
-    places_named += sum(_name_place(ax, space, p) for p in small)
+    named_places += [p.name for p in small if _name_place(ax, space, p)]
+    if russian := [name for name in named_places if name in base.russian]:
+        incomplete.note(logger, "Named in Russian until the Overpass API gives their Romanian names (a later run "
+                        "asks again): %s.", ", ".join(russian))
     logger.info("Base map names: %d countries and seas, %d places, %d rivers, %d lakes.", len(named_areas),
-                places_named, len(named_rivers), lakes_named)
-    return Named(places_named, len(named_rivers), lakes_named, len(named_areas))
+                len(named_places), len(named_rivers), lakes_named)
+    return Named(len(named_places), len(named_rivers), lakes_named, len(named_areas))

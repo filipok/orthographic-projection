@@ -129,6 +129,8 @@ def _parse_feature(feature: Any, default_name: str, where: str) -> Route:
     if not isinstance(feature, dict) or feature.get("type") != "Feature":
         raise ValueError(f"{where}: expected a GeoJSON Feature")
     props = feature.get("properties") or {}
+    if not isinstance(props, dict):
+        raise ValueError(f"{where}: properties must be an object, got {props!r}")
 
     color = props.get("stroke", DEFAULT_ROUTE_COLOR)
     if not mcolors.is_color_like(color):

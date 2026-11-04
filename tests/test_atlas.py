@@ -13,6 +13,7 @@ import pytest
 from PIL import Image
 
 import atlas
+import incomplete
 import ortho
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -236,6 +237,15 @@ class TestPlanning:
         assert (args.city, args.lat, args.lon, args.radius, args.koppen) == (None, 10, 20, 500, True)
         assert args.output == str(tmp_path / "m.png")
 
+    def test_a_page_turns_off_its_recipes_flag(self, tmp_path):
+        (tmp_path / "recipes").mkdir()
+        (tmp_path / "recipes" / "r.toml").write_text('city = "Paris"\nice = true\nvolcanoes = true\nkoppen = true\n',
+                                                     encoding="utf-8")
+        book = _load(tmp_path, 'title = "A"\n[[pages]]\ntitle = "M"\nrecipe = "recipes/r.toml"\n'
+                               '[pages.map]\nice = false\nkoppen = false\ntemperature = "July"')
+        args = atlas.page_args(book, book.pages[0], "here", str(tmp_path / "m.png"))
+        assert (args.ice, args.koppen, args.volcanoes, args.temperature) == (False, False, True, "July")
+
     def test_routes_are_relative_to_the_atlas(self, tmp_path):
         (tmp_path / "routes").mkdir()
         (tmp_path / "routes" / "line.geojson").write_text(json.dumps(LINE), encoding="utf-8")
@@ -345,6 +355,67 @@ class TestBuilding:
         assert set(result.failures) == {"cover", "2", "3"}
         assert result.failures["2"] == "tiles unreachable" and result.pages == 6
         assert not [f for f in os.listdir(tmp_path / "maps") if f.endswith(".png")]
+
+    def test_a_map_with_something_left_out_is_drawn_again(self, tmp_path, monkeypatch):
+        ports_down = True
+        calls = []
+
+        def render(**kwargs):           # as the renderer does when a layer's data cannot be loaded
+            calls.append(kwargs)
+            if ports_down:
+                incomplete.note(ortho.logger, "Skipping the ports: %s", "offline")
+            Image.new("RGBA", (200, 230), (90, 150, 200, 255)).save(kwargs["output_filename"])
+            return kwargs["output_filename"]
+
+        monkeypatch.setattr(ortho, "generate_orthographic_map", render)
+        book = _load(tmp_path)
+        maps = tmp_path / "maps"
+
+        def build():
+            return atlas.build_atlas(book, str(tmp_path / "a.pdf"), str(maps), cache_dir=str(tmp_path / "c"))
+
+        first = build()
+        assert first.failures == {} and first.drawn == 3
+        assert first.incomplete == dict.fromkeys(("cover", "2", "3"), "Skipping the ports: offline")
+        plans = atlas.plan_maps(book, str(maps), str(tmp_path / "c"))
+        assert all(plan.drawn and not plan.cached for plan in plans)    # printed as drawn, but not kept as whole
+        proof = atlas.build_atlas(book, str(tmp_path / "p.pdf"), str(maps), proof=True, cache_dir=str(tmp_path / "c"))
+        assert len(calls) == 3 and proof.incomplete == first.incomplete
+        assert build().reused == 0 and len(calls) == 6                     # still down: drawn again
+        ports_down = False
+        recovered = build()
+        assert len(calls) == 9 and recovered.drawn == 3 and recovered.incomplete == {}
+        assert sorted(f.suffix for f in maps.iterdir()) == [".png"] * 3
+        assert build().reused == 3 and len(calls) == 9                     # whole now: used as it is
+
+    def test_a_map_with_something_left_out_stays_printed_when_drawing_it_again_fails(self, tmp_path, monkeypatch):
+        def render(**kwargs):
+            incomplete.note(ortho.logger, "Skipping the ports: %s", "offline")
+            Image.new("RGBA", (200, 230), (90, 150, 200, 255)).save(kwargs["output_filename"])
+            return kwargs["output_filename"]
+
+        def fail(**kwargs):
+            raise OSError("offline")
+
+        book, maps = _load(tmp_path), tmp_path / "maps"
+        monkeypatch.setattr(ortho, "generate_orthographic_map", render)
+        atlas.build_atlas(book, str(tmp_path / "a.pdf"), str(maps), cache_dir=str(tmp_path / "c"))
+        printed = {}
+        monkeypatch.setattr(ortho, "generate_orthographic_map", fail)
+        monkeypatch.setattr(atlas, "write_pdf", lambda _book, _output, images, _failures: printed.update(images) or 1)
+        again = atlas.build_atlas(book, str(tmp_path / "a.pdf"), str(maps), cache_dir=str(tmp_path / "c"))
+        assert set(again.failures) == set(printed) == {"cover", "2", "3"}       # the last drawing, not a placeholder
+        assert again.incomplete == dict.fromkeys(("cover", "2", "3"), "Skipping the ports: offline")
+
+    def test_marks_go_with_their_maps(self, tmp_path):
+        maps = tmp_path / "maps"
+        maps.mkdir()
+        for name in ("kept-0123456789ab.png", "kept-0123456789ab.png.incomplete", "gone-0123456789ab.png",
+                     "gone-0123456789ab.png.incomplete", "notes.txt.incomplete"):
+            (maps / name).write_text("x", encoding="utf-8")
+        assert atlas.prune_maps(str(maps), [str(maps / "kept-0123456789ab.png")]) == 2
+        assert sorted(p.name for p in maps.iterdir()) == [
+            "kept-0123456789ab.png", "kept-0123456789ab.png.incomplete", "notes.txt.incomplete"]
 
     def test_wide_maps_turn_the_page(self, tmp_path, renders):
         book = _load(tmp_path)
@@ -483,6 +554,24 @@ class TestCommandLine:
         out = capsys.readouterr().out
         assert "  2  map      Relief (to draw)" in out and "4 pages, 3 maps, 0 of them drawn already" in out
 
+    def test_check_tells_a_map_with_something_left_out_from_one_drawn_whole(self, tmp_path, capsys):
+        # Value: protects=--check labels a marked map "to draw again" and does not count it drawn;
+        # fails_when=the .incomplete mark is ignored by --check; why_new=only the unmarked state was checked;
+        # seam=none; no_claim=what the build redraws
+        path = _write(tmp_path)
+        maps = tmp_path / "m"
+        maps.mkdir()
+        plans = atlas.plan_maps(atlas.load_atlas(str(path)), str(maps), str(tmp_path / "c"))
+        whole, marked = (item for item in plans if item.key in ("2", "3"))
+        for item in (whole, marked):
+            Image.new("RGBA", (20, 20)).save(item.path)
+        with open(marked.path + atlas.INCOMPLETE, "w", encoding="utf-8") as fh:
+            fh.write("Skipping the ports: offline")
+        assert atlas.main([str(path), "--check", "--maps-dir", str(maps), "--cache-dir", str(tmp_path / "c")]) == 0
+        out = capsys.readouterr().out
+        assert f"  {whole.key}  map      " in out and "(to draw again: something was left out)" in out
+        assert out.count("(drawn)") == 1 and "1 of them drawn already" in out
+
     def test_check_prints_diacritics_to_a_narrow_code_page(self, tmp_path, monkeypatch):
         path = _write(tmp_path, SMALL.replace('title = "Relief"', 'title = "Harta fizică a României"', 1))
         out = io.BytesIO()
@@ -594,6 +683,112 @@ class TestFiles:
         page = atlas.load_atlas(str(atlases / "a.toml")).pages[0]
         assert page.recipe is None
         assert page.map == {"city": "Lisbon", "radius": 500, "volcanoes": True}   # kept from the recipe; no dpi
+
+    def test_a_save_names_only_the_folders_files_or_those_an_atlas_names(self, dirs, tmp_path):
+        atlases, routes = dirs
+        recipes, outside = tmp_path / "recipes", tmp_path / "outside"
+        recipes.mkdir()
+        outside.mkdir()
+        (recipes / "r.toml").write_text('city = "Paris"\n', encoding="utf-8")
+        (outside / "r.toml").write_text('city = "Paris"\n', encoding="utf-8")
+        (outside / "elsewhere.geojson").write_text(json.dumps(LINE), encoding="utf-8")
+        def save(name, data):
+            atlas.write_atlas(str(atlases), str(routes), name, data, FIELDS, overwrite=True,
+                              cache_dir=str(tmp_path / "c"), recipes_dir=str(recipes))
+
+        def page(**part):
+            return {"title": "A", "pages": [{"type": "map", "title": "M", "map": {"city": "Paris"}, **part}]}
+
+        elsewhere = (outside / "elsewhere.geojson").as_posix()
+        for data, match in [
+            (page(kept=[["route", [elsewhere]]]), "route file .* is not in the routes folder"),
+            (page(kept=[["route", ["../outside/elsewhere.geojson"]]]), "not in the routes folder"),
+            (page(kept=[["iucn-data", outside.as_posix()]]), "iucn-data .* is not one the atlases name"),
+            (page(recipe="../outside/r.toml"), "recipe .* is not in the recipes folder"),
+            (page(recipe=(outside / "r.toml").as_posix()), "not in the recipes folder"),
+            ({"title": "A", "cover": {"map": {"city": "Paris"}, "kept": [["route", [elsewhere]]]}, "pages": []},
+             "not in the routes folder"),
+            (page(second={"title": "S", "map": {"city": "Paris"}, "kept": [["route", [elsewhere]]]}),
+             "not in the routes folder"),
+        ]:
+            with pytest.raises(atlas.AtlasError, match=match):
+                save(name="new", data=data)
+        assert not (atlases / "new.toml").exists()
+        save(name="new", data=page(recipe="../recipes/r.toml", map={"route": ["line.geojson"]}))
+        # A route a hand-written atlas names elsewhere stays, in it and in a copy of it
+        (atlases / "hand.toml").write_text('title = "H"\n[[pages]]\ntitle = "M"\n[pages.map]\ncity = "Paris"\n'
+                                           'route = ["../outside/elsewhere.geojson"]\n', encoding="utf-8")
+        data = atlas.read_atlas_json(str(atlases), str(routes), "hand", FIELDS)["atlas"]
+        assert data["pages"][0]["kept"] == [("route", ["../outside/elsewhere.geojson"])]
+        save(name="hand", data=data)
+        save(name="copy", data=data)
+        assert atlas.load_atlas(str(atlases / "copy.toml")).pages[0].map["route"] == ["../outside/elsewhere.geojson"]
+
+    def test_a_flag_turned_off_on_top_of_a_recipe_is_saved(self, dirs, tmp_path):
+        atlases, routes = dirs
+        (tmp_path / "recipes").mkdir()
+        (tmp_path / "recipes" / "r.toml").write_text('city = "Paris"\nice = true\nvolcanoes = true\n',
+                                                     encoding="utf-8")
+        fields = [*FIELDS, "ice"]
+        data = {"title": "A", "pages": [
+            {"type": "map", "title": "Off", "recipe": "../recipes/r.toml", "map": {"ice": False}},
+            {"type": "map", "title": "Own", "map": {"city": "Paris", "ice": False}}]}
+        atlas.write_atlas(str(atlases), str(routes), "a", data, fields, cache_dir=str(tmp_path / "c"),
+                          recipes_dir=str(tmp_path / "recipes"))
+        book = atlas.load_atlas(str(atlases / "a.toml"))
+        assert [page.map for page in book.pages] == [{"ice": False}, {"city": "Paris"}]   # no recipe, nothing to turn off
+        args = atlas.page_args(book, book.pages[0], "here", str(tmp_path / "m.png"))
+        assert (args.ice, args.volcanoes) == (False, True)
+        assert atlas.map_request(str(atlases), str(routes), "a", "1", fields)["ice"] is False
+        assert atlas.read_atlas_json(str(atlases), str(routes), "a", fields)["atlas"]["pages"][0]["map"] == {
+            "ice": False}
+
+    def test_the_form_has_a_pages_choice_over_its_recipes(self, dirs, tmp_path):
+        atlases, routes = dirs
+        (tmp_path / "recipes").mkdir()
+        (tmp_path / "recipes" / "r.toml").write_text('city = "Paris"\nup = 45\ntemperature = "July"\n',
+                                                     encoding="utf-8")
+        (atlases / "a.toml").write_text('title = "A"\n[[pages]]\ntitle = "M"\nrecipe = "../recipes/r.toml"\n'
+                                        '[pages.map]\nup-toward = "London"\nkoppen = true\n', encoding="utf-8")
+        book = atlas.load_atlas(str(atlases / "a.toml"))
+        args = atlas.page_args(book, book.pages[0], "here", str(tmp_path / "m.png"))
+        assert (args.up, args.up_toward, args.koppen, args.temperature) == (0.0, "London", True, None)
+        assert atlas.map_request(str(atlases), str(routes), "a", "1", [*FIELDS, "up", "up_toward"]) == {
+            "city": "Paris", "up_toward": "London", "koppen": True}
+
+    def test_a_recipes_own_routes_stay_when_a_page_map_replaces_it(self, dirs, tmp_path):
+        atlases, routes = dirs
+        (tmp_path / "recipes").mkdir()
+        (tmp_path / "trips").mkdir()
+        (tmp_path / "trips" / "far.geojson").write_text(json.dumps(LINE), encoding="utf-8")
+        (tmp_path / "recipes" / "r.toml").write_text('city = "Paris"\nroute = ["../trips/far.geojson"]\n',
+                                                     encoding="utf-8")
+        (atlases / "a.toml").write_text('title = "A"\n[[pages]]\ntitle = "M"\nrecipe = "../recipes/r.toml"\n',
+                                        encoding="utf-8")
+        atlas.set_page_map(str(atlases), str(routes), "a", "1", {"city": "Lisbon"}, FIELDS,
+                           cache_dir=str(tmp_path / "c"))
+        assert atlas.load_atlas(str(atlases / "a.toml")).pages[0].map == {
+            "city": "Lisbon", "route": ["../trips/far.geojson"]}
+
+    @pytest.mark.parametrize("data, match", [
+        ({"title": "A", "cover": "x"}, "The cover is a table"),
+        ({"title": "A", "dpi": [1], "pages": []}, "dpi and text scale are numbers"),
+        ({"title": "A", "text_scale": {}, "pages": []}, "dpi and text scale are numbers"),
+        ({"title": "A", "pages": [{"type": "text", "title": "T", "questions": 5}]}, "questions are a list"),
+        ({"title": "A", "pages": [{"title": "M", "map": [1]}]}, r"\[pages.map\] is a table"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "kept": {"a": 1}}]}, "list of"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "kept": [[1, 2, 3]]}]}, "list of"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "kept": [["route", 5]]}]}, "file names"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "kept": [["route", None]]}]}, "file names"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris"}, "second": "x"}]}, "second map is a table"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris", "route": 5}}]}, "route is a list"),
+        ({"title": "A", "pages": [{"title": "M", "map": {"city": "Paris", "route": [5]}}]}, "route is a list"),
+    ])
+    def test_a_malformed_atlas_is_refused(self, dirs, tmp_path, data, match):
+        atlases, routes = dirs
+        with pytest.raises(atlas.AtlasError, match=match):
+            atlas.write_atlas(str(atlases), str(routes), "bad", data, FIELDS, cache_dir=str(tmp_path / "c"))
+        assert not (atlases / "bad.toml").exists()
 
     def test_pages_without_maps_are_refused(self, dirs):
         atlases, routes = dirs

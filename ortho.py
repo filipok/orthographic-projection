@@ -11,7 +11,7 @@ import os
 import sys
 import time
 import tomllib
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -177,6 +177,7 @@ from trewartha import (
 )
 from routes import Route, add_route_legend, draw_routes, load_routes
 from tile_fetch import download_tile
+import incomplete
 from frame import MAX_ASPECT, half_sides, inside, is_rectangle, max_rectangle_radius_km, parse_aspect, set_rectangle
 
 logger = logging.getLogger(__name__)
@@ -1239,13 +1240,13 @@ def generate_orthographic_map(
         try:
             taxon = resolve_taxon(species)
         except GbifDataError as e:
-            logger.warning("Skipping the species records: %s", e)
+            incomplete.note(logger, "Skipping the species records: %s", e)
     species_range = None
     if iucn:
         try:
             species_range = load_range(iucn, iucn_data)
         except IucnDataError as e:
-            logger.warning("Skipping the IUCN range: %s", e)
+            incomplete.note(logger, "Skipping the IUCN range: %s", e)
     cities_year = resolve_cities_year(cities) if cities is not None else None
     industry_sectors = resolve_sectors(industry) if industry else ()
     ship_kind = resolve_ship_kind(shipping) if shipping else None
@@ -1254,32 +1255,32 @@ def generate_orthographic_map(
         try:
             landforms = load_relief(resolve_relief_level(relief_units))
         except (ReliefError, OSError) as e:
-            logger.warning("Skipping the relief units: %s", e)
+            incomplete.note(logger, "Skipping the relief units: %s", e)
     divisions = None
     if ro_admin:
         try:
             divisions = load_admin(resolve_admin_level(ro_admin))
         except (AdminError, OSError) as e:
-            logger.warning("Skipping Romania's counties and UATs: %s", e)
+            incomplete.note(logger, "Skipping Romania's counties and UATs: %s", e)
     harbours = None
     if ports:
         try:
             harbours = load_ports(resolve_port_kind(ports))
         except (PortsDataError, OSError) as e:
-            logger.warning("Skipping the ports: %s", e)
+            incomplete.note(logger, "Skipping the ports: %s", e)
     flights = None
     if air_routes:
         try:
             flights = load_air_routes(resolve_air_routes(air_routes))
         except AirRoutesDataError as e:
-            logger.warning("Skipping the air routes: %s", e)
+            incomplete.note(logger, "Skipping the air routes: %s", e)
     statistic = None
     if indicator:
         stat_year = resolve_indicator_year(indicator_year)
         try:
             statistic = load_values(resolve_indicator(indicator), stat_year)
         except IndicatorDataError as e:
-            logger.warning("Skipping the statistics: %s", e)
+            incomplete.note(logger, "Skipping the statistics: %s", e)
     if cities_min is not None and cities_min < 0:
         raise ValueError(f"cities_min must be a number of people, got {cities_min}")
     wind_period = resolve_wind_period(wind) if wind is not None else None
@@ -1466,7 +1467,7 @@ def generate_orthographic_map(
             for ax in axes:
                 draw_ice_sheets(ax, sheets, regrid_shape=regrid_shape)
         except (IceAgeDataError, OSError) as e:
-            logger.warning("Skipping the ice-age ice sheets: %s", e)
+            incomplete.note(logger, "Skipping the ice-age ice sheets: %s", e)
         else:
             ice_sheets_drawn = True
 
@@ -1507,7 +1508,7 @@ def generate_orthographic_map(
         try:
             colormap = load_colormap(population_year, tile_cache_dir)
         except (PopulationDataError, OSError) as e:
-            logger.warning("Skipping the population density: %s", e)
+            incomplete.note(logger, "Skipping the population density: %s", e)
         else:
             people = BufferedTileSource(
                 population_tiles(population_year, tile_cache_dir, use_cache=tile_cache_dir is not None),
@@ -1531,7 +1532,7 @@ def generate_orthographic_map(
                                       classes=biome_codes or None, by=colour_by)
         except (BiomeDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
-            logger.warning("Skipping %s: %s", what, e)
+            incomplete.note(logger, "Skipping %s: %s", what, e)
             biome_layer = None
 
     # Holt et al.'s zoogeographic realms in the same place, and their regions outlined
@@ -1549,7 +1550,7 @@ def generate_orthographic_map(
                     draw_holt_regions(ax, holt)
         except (HoltDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
-            logger.warning("Skipping the zoogeographic realms: %s", e)
+            incomplete.note(logger, "Skipping the zoogeographic realms: %s", e)
             holt = None
         else:
             holt_drawn = True
@@ -1565,7 +1566,7 @@ def generate_orthographic_map(
                                    classes=koppen_codes or None)
         except (KoppenDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
-            logger.warning("Skipping Köppen-Geiger overlay: %s", e)
+            incomplete.note(logger, "Skipping Köppen-Geiger overlay: %s", e)
         else:
             add_koppen_legend(near, x=key_x, classes=koppen_codes or None)
             climate_credits = [KOPPEN_ATTRIBUTION]
@@ -1576,7 +1577,7 @@ def generate_orthographic_map(
                 add_trewartha_overlay(ax, alpha=koppen_alpha, regrid_shape=regrid_shape,
                                       classes=trewartha_codes or None)
         except (TrewarthaDataError, OSError) as e:
-            logger.warning("Skipping Trewartha overlay: %s", e)
+            incomplete.note(logger, "Skipping Trewartha overlay: %s", e)
         else:
             add_trewartha_legend(near, x=key_x, classes=trewartha_codes or None)
             # Its highland group uses the terrain tiles' heights
@@ -1591,7 +1592,7 @@ def generate_orthographic_map(
         try:
             sea_grid = load_sea_air(climate_mean[1])
         except (SeaDataError, OSError) as e:
-            logger.warning("Skipping the air temperature over the sea: %s", e)
+            incomplete.note(logger, "Skipping the air temperature over the sea: %s", e)
         else:
             sea_credit = SEA_AIR_ATTRIBUTION
     elif sea_period is not None:
@@ -1599,7 +1600,7 @@ def generate_orthographic_map(
         try:
             sea_grid = load_sea_temperature(sea_period)
         except (SeaDataError, OSError) as e:
-            logger.warning("Skipping the sea surface temperature: %s", e)
+            incomplete.note(logger, "Skipping the sea surface temperature: %s", e)
         else:
             sea_credit = SEA_TEMPERATURE_ATTRIBUTION
     sea_with_land = (sea_grid is not None and climate_mean is not None and climate_mean[0].key == "temperature"
@@ -1615,7 +1616,7 @@ def generate_orthographic_map(
                                     zoom=zoom, sea=sea_grid if sea_with_land else None)
         except (ClimateDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
-            logger.warning("Skipping %s: %s", variable.title.lower(), e)
+            incomplete.note(logger, "Skipping %s: %s", variable.title.lower(), e)
             sea_with_land = False                    # the sea is drawn on its own below
         else:
             climate_mean_drawn = True
@@ -1634,7 +1635,7 @@ def generate_orthographic_map(
             for ax in axes:
                 add_soil_property_overlay(ax, prop, prop_depth, alpha=soil_alpha, regrid_shape=regrid_shape)
         except (SoilPropertyError, OSError) as e:
-            logger.warning("Skipping soil property overlay: %s", e)
+            incomplete.note(logger, "Skipping soil property overlay: %s", e)
         else:
             property_drawn = True
     if soil:
@@ -1645,7 +1646,7 @@ def generate_orthographic_map(
                                  classes=soil_codes or None)
         except (SoilDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
-            logger.warning("Skipping soil overlay: %s", e)
+            incomplete.note(logger, "Skipping soil overlay: %s", e)
         else:
             soil_drawn = True
 
@@ -1660,14 +1661,14 @@ def generate_orthographic_map(
             try:
                 polities = in_language(polities, border_when, language, border_source)
             except BordersError as e:
-                logger.warning("The states keep their English names: %s", e)
+                incomplete.note(logger, "The states keep their English names: %s", e)
                 language = "en"
             border_colours = colour_groups(polities) if polities else {}
             border_counts = [draw_borders(ax, polities, border_colours, alpha=borders_alpha, labels=borders_names)
                              for ax in axes]
         except (BordersError, OSError) as e:
             # Missing data should not throw away the rest of the map
-            logger.warning("Skipping the borders: %s", e)
+            incomplete.note(logger, "Skipping the borders: %s", e)
             polities = None
     alliance_list = None
     if alliances:
@@ -1677,7 +1678,7 @@ def generate_orthographic_map(
             for ax in axes:
                 draw_alliances(ax, alliance_list)
         except AllianceError as e:
-            logger.warning("Skipping the EU and NATO lines: %s", e)
+            incomplete.note(logger, "Skipping the EU and NATO lines: %s", e)
             alliance_list = None
 
     # Step 5b4: River basins (like the borders), time zones, livestock and permafrost
@@ -1691,7 +1692,7 @@ def generate_orthographic_map(
             basin_colour_map = basin_colours(basin_list)
             basin_counts = [draw_basins(ax, basin_list, basin_colour_map, alpha=basins_alpha) for ax in axes]
         except (HydrologyDataError, OSError) as e:
-            logger.warning("Skipping the river basins: %s", e)
+            incomplete.note(logger, "Skipping the river basins: %s", e)
             basin_list = None
     zones_drawn = False
     if time_zones:
@@ -1700,7 +1701,7 @@ def generate_orthographic_map(
             for ax in axes:
                 draw_time_zones(ax, zones)
         except (TimeZoneDataError, OSError) as e:
-            logger.warning("Skipping the time zones: %s", e)
+            incomplete.note(logger, "Skipping the time zones: %s", e)
         else:
             zones_drawn = True
     livestock_drawn = False
@@ -1710,7 +1711,7 @@ def generate_orthographic_map(
             for ax in axes:
                 add_livestock_overlay(ax, herd, alpha=livestock_alpha, regrid_shape=regrid_shape)
         except (LivestockDataError, OSError) as e:
-            logger.warning("Skipping the livestock: %s", e)
+            incomplete.note(logger, "Skipping the livestock: %s", e)
         else:
             livestock_drawn = True
     malaria_drawn = False
@@ -1720,7 +1721,7 @@ def generate_orthographic_map(
             for ax in axes:
                 add_malaria_overlay(ax, parasites, alpha=malaria_alpha, regrid_shape=regrid_shape)
         except (MalariaDataError, OSError) as e:
-            logger.warning("Skipping the malaria map: %s", e)
+            incomplete.note(logger, "Skipping the malaria map: %s", e)
         else:
             malaria_drawn = True
     mosquitoes = []
@@ -1728,7 +1729,7 @@ def generate_orthographic_map(
         try:
             mosquitoes.append(load_aedes(species))
         except (AedesDataError, OSError) as e:
-            logger.warning("Skipping the Aedes %s records: %s", species, e)
+            incomplete.note(logger, "Skipping the Aedes %s records: %s", species, e)
     if mosquitoes:
         for ax in axes:
             draw_aedes(ax, mosquitoes)
@@ -1741,7 +1742,7 @@ def generate_orthographic_map(
         try:
             nations = load_areas(statistic)
         except Exception as e:                 # Natural Earth, GISCO and shapefile errors alike
-            logger.warning("Skipping the statistics: could not read the countries or regions: %s", e)
+            incomplete.note(logger, "Skipping the statistics: could not read the countries or regions: %s", e)
             statistic = None
         else:
             stat_breaks = class_breaks(list(statistic.values.values()), bool(statistic.indicator.log))
@@ -1753,7 +1754,7 @@ def generate_orthographic_map(
             for ax in axes:
                 add_shipping_overlay(ax, ship_kind, alpha=shipping_alpha, regrid_shape=regrid_shape)
         except (ShippingDataError, OSError) as e:
-            logger.warning("Skipping the ship traffic: %s", e)
+            incomplete.note(logger, "Skipping the ship traffic: %s", e)
         else:
             ships_drawn = True
     factories: list = []
@@ -1762,7 +1763,7 @@ def generate_orthographic_map(
         try:
             factories.append(load_plants(sector))
         except (IndustryDataError, OSError) as e:
-            logger.warning("Skipping the %s: %s", INDUSTRY_SECTORS[sector].label.lower(), e)
+            incomplete.note(logger, "Skipping the %s: %s", INDUSTRY_SECTORS[sector].label.lower(), e)
     # Cities are named first, then plants, ports, counties and UATs, and relief units where their names still fit
     towns = None
     town_floor = cities_min if cities_min is not None else default_min_population(radius_km)
@@ -1771,7 +1772,7 @@ def generate_orthographic_map(
         try:
             towns = load_cities(cities_year)
         except (CitiesDataError, OSError) as e:
-            logger.warning("Skipping the cities: %s", e)
+            incomplete.note(logger, "Skipping the cities: %s", e)
         else:
             towns_shown = max(len(draw_cities(ax, towns, town_floor)) for ax in axes)
     if factories:
@@ -1795,7 +1796,7 @@ def generate_orthographic_map(
         try:
             sightings = load_occurrences(taxon, record_years)
         except (GbifDataError, OSError) as e:
-            logger.warning("Skipping the records of %s: %s", taxon.name, e)
+            incomplete.note(logger, "Skipping the records of %s: %s", taxon.name, e)
         else:
             if not len(sightings.records):
                 logger.warning("GBIF has no wild records of %s%s.", taxon.name,
@@ -1811,7 +1812,7 @@ def generate_orthographic_map(
             for ax in axes:
                 add_permafrost_overlay(ax, frozen, alpha=permafrost_alpha, regrid_shape=regrid_shape)
         except (PermafrostDataError, OSError) as e:
-            logger.warning("Skipping the permafrost: %s", e)
+            incomplete.note(logger, "Skipping the permafrost: %s", e)
         else:
             permafrost_drawn = True
     rivers_drawn = False
@@ -1821,7 +1822,7 @@ def generate_orthographic_map(
             for ax in axes:
                 draw_rivers(ax, river_list)
         except (HydrologyDataError, OSError) as e:
-            logger.warning("Skipping the rivers: %s", e)
+            incomplete.note(logger, "Skipping the rivers: %s", e)
         else:
             rivers_drawn = True
 
@@ -1833,7 +1834,7 @@ def generate_orthographic_map(
             crop_layer = load_crop_layer(crops)
         except (CropDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
-            logger.warning("Skipping crop areas: %s", e)
+            incomplete.note(logger, "Skipping crop areas: %s", e)
         else:
             for ax in axes:
                 draw_crops(ax, crop_layer, regrid_shape=regrid_shape)
@@ -1846,7 +1847,7 @@ def generate_orthographic_map(
             ice_layers = load_ice_layers(year=ice_year)
         except (IceDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
-            logger.warning("Skipping polar ice: %s", e)
+            incomplete.note(logger, "Skipping polar ice: %s", e)
         else:
             for ax in axes:
                 draw_ice(ax, ice_layers)
@@ -1861,7 +1862,7 @@ def generate_orthographic_map(
                 add_wind_overlay(ax, wind_period)
         except (WindDataError, OSError) as e:
             # Missing data should not throw away the rest of the map
-            logger.warning("Skipping prevailing winds: %s", e)
+            incomplete.note(logger, "Skipping prevailing winds: %s", e)
         else:
             wind_drawn = True
 
@@ -1873,7 +1874,7 @@ def generate_orthographic_map(
             for ax in axes:
                 add_currents_overlay(ax, field)
         except (CurrentsDataError, OSError) as e:
-            logger.warning("Skipping the ocean currents: %s", e)
+            incomplete.note(logger, "Skipping the ocean currents: %s", e)
         else:
             currents_drawn = True
     cyclones_drawn = False
@@ -1883,7 +1884,7 @@ def generate_orthographic_map(
             for ax in axes:
                 draw_tracks(ax, tracks)
         except (CycloneDataError, OSError) as e:
-            logger.warning("Skipping the cyclone tracks: %s", e)
+            incomplete.note(logger, "Skipping the cyclone tracks: %s", e)
         else:
             cyclones_drawn = True
     plates_drawn = False
@@ -1893,7 +1894,7 @@ def generate_orthographic_map(
             for ax in axes:
                 draw_plates(ax, boundaries)
         except (TectonicsDataError, OSError) as e:
-            logger.warning("Skipping the plate boundaries: %s", e)
+            incomplete.note(logger, "Skipping the plate boundaries: %s", e)
         else:
             plates_drawn = True
     quakes = None
@@ -1903,7 +1904,7 @@ def generate_orthographic_map(
             for ax in axes:
                 draw_quakes(ax, quakes)
         except (TectonicsDataError, OSError) as e:
-            logger.warning("Skipping the earthquakes: %s", e)
+            incomplete.note(logger, "Skipping the earthquakes: %s", e)
             quakes = None
     volcanoes_drawn = False
     if volcanoes:
@@ -1912,7 +1913,7 @@ def generate_orthographic_map(
             for ax in axes:
                 draw_volcanoes(ax, vents)
         except (TectonicsDataError, OSError) as e:
-            logger.warning("Skipping the volcanoes: %s", e)
+            incomplete.note(logger, "Skipping the volcanoes: %s", e)
         else:
             volcanoes_drawn = True
 
@@ -2181,16 +2182,16 @@ def generate_orthographic_map(
     if tiles is not None:
         _report_tile_failures(tiles)
     if vegetation is not None and vegetation.failed_tiles:
-        logger.warning("%d of %d vegetation tiles could not be downloaded (first error: %s).",
-                       len(vegetation.failed_tiles), vegetation.total_tiles, vegetation.failed_tiles[0][1])
+        incomplete.note(logger, "%d of %d vegetation tiles could not be downloaded (first error: %s).",
+                                len(vegetation.failed_tiles), vegetation.total_tiles, vegetation.failed_tiles[0][1])
     for layer, what in ((ocean, "terrain (ocean)"), (people, "population")):
         if layer is not None and layer.failed_tiles:
-            logger.warning("%d of %d %s tiles could not be downloaded (first error: %s).",
-                           len(layer.failed_tiles), layer.total_tiles, what, layer.failed_tiles[0][1])
+            incomplete.note(logger, "%d of %d %s tiles could not be downloaded (first error: %s).",
+                                    len(layer.failed_tiles), layer.total_tiles, what, layer.failed_tiles[0][1])
     if relief is not None and relief.failed_tiles:
-        logger.warning("%d of %d terrain tiles could not be downloaded (first error: %s); "
-                       "those areas have no elevation colours.", len(relief.failed_tiles),
-                       relief.total_tiles, relief.failed_tiles[0][1])
+        incomplete.note(logger, "%d of %d terrain tiles could not be downloaded (first error: %s); "
+                                "those areas have no elevation colours.", len(relief.failed_tiles),
+                                relief.total_tiles, relief.failed_tiles[0][1])
 
     output_path = os.path.abspath(output_filename)
     logger.info("Map successfully created: %s", output_path)
@@ -2380,12 +2381,12 @@ def _report_tile_failures(tiles: BufferedTileSource) -> None:
         return
     first_error = tiles.failed_tiles[0][1]
     if failed == total:
-        logger.warning(
+        incomplete.note(logger,
             "No map tiles could be downloaded (%s). The map was saved with the "
             "fallback land/ocean features only.", first_error,
         )
     else:
-        logger.warning(
+        incomplete.note(logger,
             "%d of %d map tiles could not be downloaded (first error: %s). Those "
             "areas show the fallback land/ocean features.", failed, total, first_error,
         )
@@ -3496,6 +3497,20 @@ def _recipe_tokens(
     return option_tokens(parser, recipe, f"recipe {path}", os.path.dirname(os.path.abspath(path)), cli_argv)
 
 
+def overridden_dests(parser: argparse.ArgumentParser, given: Collection[str]) -> set[str]:
+    """The dests a recipe gives up when the options *given* (by dest) pick one side of a choice.
+
+    Location counts as one choice (city, or lat with lon), as does each of
+    *parser*'s mutually exclusive groups.
+    """
+    overridden = {"city", "lat", "lon"} if set(given) & {"city", "lat", "lon"} else set()
+    for group in parser._mutually_exclusive_groups:
+        dests = {a.dest for a in group._group_actions}
+        if dests & set(given):
+            overridden |= dests
+    return overridden
+
+
 def option_tokens(
     parser: argparse.ArgumentParser, recipe: dict[str, Any], where: str, base: str, cli_argv: Sequence[str] = (),
 ) -> list[str]:
@@ -3507,14 +3522,7 @@ def option_tokens(
     describes.
     """
     actions = _option_actions(parser)
-    given = _given_dests(parser, cli_argv)
-    # Location counts as one choice: city, or lat with lon
-    overridden = {"city", "lat", "lon"} if given & {"city", "lat", "lon"} else set()
-    for group in parser._mutually_exclusive_groups:
-        dests = {a.dest for a in group._group_actions}
-        if dests & given:
-            overridden |= dests
-
+    overridden = overridden_dests(parser, _given_dests(parser, cli_argv))
     tokens: list[str] = []
     for key, value in recipe.items():
         name = key.replace("_", "-")

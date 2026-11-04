@@ -466,6 +466,14 @@ uvicorn and the `ortho-web` command:
 pip install -e ".[web,dev]"
 ```
 
+A regular install (`pip install ".[web]"`, without `-e`) brings the web app's
+page and the bundled recipes, routes and atlases too, in
+`<prefix>/share/orthographic-projection`. The first time the web app runs, it
+copies the recipes, routes and atlases to `~/.local/share/orthographic-projection`
+and saves into that copy, so your changes outlive upgrades. With
+`ORTHO_WEB_READ_ONLY` set it copies nothing and serves the installed folders
+themselves.
+
 ## Usage
 
 ### Interactive Mode
@@ -933,10 +941,10 @@ last settings in the browser.
 | `ORTHO_WEB_MAX_DPI` | Largest dpi a request may ask for | `300` |
 | `ORTHO_WEB_MAX_QUEUE` | Maps that may wait or render at once | `10` |
 | `ORTHO_WEB_KEEP` | Finished maps kept | `50` |
-| `ORTHO_WEB_RECIPES_DIR` | The recipes the form loads and saves | `recipes/` beside `webapp.py` |
-| `ORTHO_WEB_ROUTES_DIR` | The route files the form offers and uploads into | `routes/` beside `webapp.py` |
-| `ORTHO_WEB_ATLASES_DIR` | The atlases the atlas page edits and prints | `atlases/` beside `webapp.py` |
-| `ORTHO_WEB_READ_ONLY` | `1` to offer recipes, routes and atlases without saving, deleting or uploading any; set it on a server others can reach | off |
+| `ORTHO_WEB_RECIPES_DIR` | The recipes the form loads and saves | `recipes/` beside `webapp.py`; installed, `~/.local/share/orthographic-projection/recipes` |
+| `ORTHO_WEB_ROUTES_DIR` | The route files the form offers and uploads into | `routes/` beside `webapp.py`; installed, `~/.local/share/orthographic-projection/routes` |
+| `ORTHO_WEB_ATLASES_DIR` | The atlases the atlas page edits and prints | `atlases/` beside `webapp.py`; installed, `~/.local/share/orthographic-projection/atlases` |
+| `ORTHO_WEB_READ_ONLY` | `1` to offer recipes, routes and atlases without saving, deleting or uploading any; set it on a server others can reach. Installed, it serves the installed folders in `<prefix>/share/orthographic-projection` themselves, not a copy in `~/.local/share/orthographic-projection` | off |
 
 ### Atlases (PDF)
 
@@ -1005,7 +1013,8 @@ elevation = true
 
 - **Editing.** Change the text, reorder the `[[pages]]` tables, delete or add
   pages. A map page takes a `[pages.map]` table, a `recipe = "../recipes/x.toml"`
-  (relative to the atlas), or both, the table's options on top of the recipe's.
+  (relative to the atlas), or both, the table's options on top of the recipe's
+  (`ice = false` turns off the recipe's `ice`; `up-toward` replaces its `up`).
   `orientation` is `auto` (landscape when the map is wide, as two globes or a
   `rectangle = "3:2"` are), `portrait` or `landscape`. A radius map with
   `rectangle` fills the page instead of leaving its corners empty (see
@@ -1064,6 +1073,9 @@ elevation = true
   hash leaves out options at their defaults, so a new option of this program
   keeps the maps drawn before it; a change to how a layer draws does not show
   in the hash, and `--force` draws them all again; `--maps-dir` and `-o` choose other places.
+  A map drawn without something it asks for (a layer whose data could not be
+  downloaded, or tiles that failed) is printed as it is, marked with a
+  `.incomplete` file beside it, and drawn again by every build until it is whole.
   The first build of the bundled atlas downloads every layer's data and takes a
   long while.
 - **A map that cannot be drawn** (no network, say) gets a placeholder naming the
@@ -1073,7 +1085,10 @@ elevation = true
   pages, and build the PDF (or a quick proof) to open or download. **Edit the
   map in the form** opens a page's map in the map form, to change and render it
   there, then **Save to the atlas**. Saving from the web app keeps the comment
-  at the top of the file but not the others. The API: `GET /api/atlases`,
+  at the top of the file but not the others. A saved atlas's recipes must be in
+  the recipes folder and its route files in the routes folder, unless an atlas
+  already names them; a recipe or route file from elsewhere, or an `iucn-data`
+  path no atlas names, is refused with a 400. The API: `GET /api/atlases`,
   `GET`/`PUT`/`DELETE /api/atlases/{name}`, `GET`/`PUT /api/atlases/{name}/maps/{page}`
   (`page` is the page's number or `cover`), and `POST /api/atlases/{name}/pdf`
   (`{"proof": true}` for a proof), followed like a map at `/api/maps/{id}`, with
@@ -1799,13 +1814,17 @@ python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider osm_local --ro-adm
   Transnistria's places, named only in Russian in Geofabrik's files, take
   OSM's Romanian names (`name:ro`: `Tiraspol`, `Rîbnița`, `Dubăsari`, `Bender`,
   which Romanian also calls Tighina), asked once of the Overpass API; 158 of
-  its 163 have one. A river's parts of one name that join up are one
-  river; of a name in two languages (`Dunărea - Дунав`, `Dunav/Dunărea`) the
-  Romanian part is kept, a Danube branch is named for the branch (`Brațul
-  Sulina`), and `Râul Mureș` is `Mureș` where OSM names the rest of it so
-  (`Râul Doamnei` keeps its word). Names only in another script (Transnistria's
-  towns, the Serbian and Bulgarian rivers) are left out, as are unnamed canals,
-  the plains' irrigation and drainage channels.
+  its 163 have one. If the API does not answer when the data is read, they
+  keep their Russian names for now (a map naming one says so, and an atlas
+  draws it again), and a run at least an hour later asks again; once it
+  answers, the cache takes the Romanian names. A river's parts of one name
+  that join up are one river; of a name in two languages (`Dunărea - Дунав`,
+  `Dunav/Dunărea`) the Romanian part is kept, a Danube branch is named for the
+  branch (`Brațul Sulina`), and `Râul Mureș` is `Mureș` where OSM names the
+  rest of it so (`Râul Doamnei` keeps its word). Names only in another script
+  (Transnistria's towns without a Romanian name, the Serbian and Bulgarian
+  rivers) are left out, as are unnamed canals, the plains' irrigation and
+  drainage channels.
 - **Data.** Geofabrik's free shapefiles are 0.2-1.8 GB per country, mostly
   buildings, roads and land use; only the places, waterways and water areas
   are read from them, with HTTP range requests (~280 MB in all, most of it
@@ -3041,6 +3060,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [tile_fetch.py](tile_fetch.py): single-tile downloader shared by the tile sources
 - [webapp.py](webapp.py): the local web app (FastAPI): map requests, the render queue and the JSON API
 - [atlas.py](atlas.py): atlases: the atlas file, checking and drawing its maps, laying out the PDF, and the files for the web app
+- [incomplete.py](incomplete.py): what a map leaves out that it was asked for (a layer whose data could not be loaded, or tiles that failed), so an atlas draws that map again
 - [web/](web/): the web app's page, script and styles
 - [LICENSE](LICENSE): MIT licence
 - [routes/](routes/): bundled route files
