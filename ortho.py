@@ -61,6 +61,11 @@ from cyclones import (
     CYCLONES_ATTRIBUTION, FIRST_YEAR as FIRST_CYCLONE_YEAR, CycloneDataError, add_cyclones_legend, draw_tracks,
     load_tracks,
 )
+from storms import (
+    DEFAULT_MAX_PRESSURE as DEFAULT_STORM_PRESSURE, FIRST_YEAR as FIRST_STORM_YEAR,
+    LAST_YEAR as LAST_STORM_YEAR, MAX_PRESSURE as MAX_STORM_PRESSURE, MIN_PRESSURE as MIN_STORM_PRESSURE,
+    STORMS_ATTRIBUTION, StormDataError, add_storms_legend, draw_storms, load_storms, parse_storm_years,
+)
 from hydrology import (
     BASINS_ATTRIBUTION, RIVERS_ATTRIBUTION, HydrologyDataError, add_basins_legend, basin_colours, draw_basins,
     draw_rivers, load_basins, load_rivers,
@@ -715,6 +720,7 @@ def validate_render_options(
     earthquakes: float | None = None, cyclones: int | None = None, malaria_alpha: float = 0.75,
     iucn_alpha: float = 0.45, indicator_alpha: float = 0.75, shipping_alpha: float = 0.85,
     relief_alpha: float = 0.55, ro_admin_alpha: float = 0.0, text_scale: float = 1.0, language: str = "en",
+    storms: str | None = None, storm_pressure: float = DEFAULT_STORM_PRESSURE,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -781,6 +787,11 @@ def validate_render_options(
     if cyclones is not None and not FIRST_CYCLONE_YEAR <= cyclones <= time.localtime().tm_year:
         raise ValueError(f"cyclones must start from a year between {FIRST_CYCLONE_YEAR} and this year, "
                          f"got {cyclones}")
+    if storms is not None:
+        parse_storm_years(storms)
+    if not (math.isfinite(storm_pressure) and MIN_STORM_PRESSURE <= storm_pressure <= MAX_STORM_PRESSURE):
+        raise ValueError(f"storm_pressure must be between {MIN_STORM_PRESSURE:g} and {MAX_STORM_PRESSURE:g} hPa, "
+                         f"got {storm_pressure:g}")
     if land_cover_year is not None and not FIRST_LAND_COVER_YEAR <= land_cover_year <= LATEST_LAND_COVER_YEAR:
         raise ValueError(f"land_cover_year must be between {FIRST_LAND_COVER_YEAR} and "
                          f"{LATEST_LAND_COVER_YEAR}, got {land_cover_year}")
@@ -859,6 +870,9 @@ def generate_orthographic_map(
     basins: bool = False,
     basins_alpha: float = 0.5,
     cyclones: int | None = None,
+    cyclones_et: bool = False,
+    storms: str | None = None,
+    storm_pressure: float = DEFAULT_STORM_PRESSURE,
     time_zones: bool = False,
     permafrost: bool = False,
     permafrost_alpha: float = 0.7,
@@ -1123,6 +1137,16 @@ def generate_orthographic_map(
     cyclones : int, optional
         Draw the tropical cyclone tracks (IBTrACS) from this year (1980 on),
         coloured by Saffir-Simpson category.
+    cyclones_et : bool
+        With *cyclones*, draw the storms' extratropical stage too, in one colour.
+    storms : str, optional
+        Draw the tracks of the Northern Hemisphere's storms (ERA5, Crawford et
+        al. 2021) of these years, ``"2020"`` or ``"2010-2020"`` (1940-2024; the
+        latest when blank), each step coloured by its central pressure (see
+        :mod:`storms`).
+    storm_pressure : float
+        Draw the storms whose centre fell to this pressure or lower (920-1000
+        hPa; default 970).
     time_zones : bool
         Shade and label the standard-time zones (Natural Earth).
     permafrost : bool
@@ -1226,7 +1250,8 @@ def generate_orthographic_map(
         permafrost_alpha=permafrost_alpha, population_alpha=population_alpha, livestock_alpha=livestock_alpha,
         earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha, iucn_alpha=iucn_alpha,
         indicator_alpha=indicator_alpha, shipping_alpha=shipping_alpha, relief_alpha=relief_alpha,
-        ro_admin_alpha=ro_admin_alpha, text_scale=text_scale, language=language,
+        ro_admin_alpha=ro_admin_alpha, text_scale=text_scale, language=language, storms=storms,
+        storm_pressure=storm_pressure,
     )
     population_year = resolve_population_year(population) if population is not None else None
     livestock_species = resolve_species(livestock) if livestock else None
@@ -1880,13 +1905,24 @@ def generate_orthographic_map(
     cyclones_drawn = False
     if cyclones is not None:
         try:
-            tracks = load_tracks(cyclones)
+            tracks = load_tracks(cyclones, extratropical=cyclones_et)
             for ax in axes:
                 draw_tracks(ax, tracks)
         except (CycloneDataError, OSError) as e:
             incomplete.note(logger, "Skipping the cyclone tracks: %s", e)
         else:
             cyclones_drawn = True
+    storm_years = None
+    if storms is not None:
+        try:
+            years = parse_storm_years(storms)
+            lows = load_storms(years, storm_pressure)
+            for ax in axes:
+                draw_storms(ax, lows)
+        except (StormDataError, OSError) as e:
+            incomplete.note(logger, "Skipping the storm tracks: %s", e)
+        else:
+            storm_years = years
     plates_drawn = False
     if plates:
         try:
@@ -2067,7 +2103,9 @@ def generate_orthographic_map(
     if currents_drawn:
         keys.append(add_currents_legend(near, x=key_x))
     if cyclones_drawn and cyclones is not None:
-        keys.append(add_cyclones_legend(near, cyclones, x=key_x))
+        keys.append(add_cyclones_legend(near, cyclones, x=key_x, extratropical=cyclones_et))
+    if storm_years is not None:
+        keys.append(add_storms_legend(near, storm_years, storm_pressure, x=key_x))
     if plates_drawn or quakes is not None or volcanoes_drawn:
         keys.append(add_tectonics_legend(near, plates_drawn, quakes, volcanoes_drawn, x=key_x))
     if routes and route_legend:
@@ -2149,6 +2187,8 @@ def generate_orthographic_map(
         credits.append(CURRENTS_ATTRIBUTION)
     if cyclones_drawn:
         credits.append(CYCLONES_ATTRIBUTION)
+    if storm_years is not None:
+        credits.append(STORMS_ATTRIBUTION)
     credits += tectonics_credits(plates_drawn, quakes is not None, volcanoes_drawn)
     credit = _add_attribution(axes[-1], credits)
 
@@ -2707,7 +2747,8 @@ EXTRA_LAYERS: dict[str, tuple[str, Any]] = {
     "ocean-depth": ("ocean_depth", True), "ice-age": ("ice_age", True), "currents": ("currents", True),
     "plates": ("plates", True), "earthquakes": ("earthquakes", DEFAULT_MIN_MAGNITUDE),
     "volcanoes": ("volcanoes", True), "rivers": ("rivers", True), "basins": ("basins", True),
-    "cyclones": ("cyclones", FIRST_CYCLONE_YEAR), "time-zones": ("time_zones", True),
+    "cyclones": ("cyclones", FIRST_CYCLONE_YEAR), "storms": ("storms", str(LAST_STORM_YEAR)),
+    "time-zones": ("time_zones", True),
     "permafrost": ("permafrost", True), "population": ("population", LATEST_POPULATION_YEAR),
     "malaria": ("malaria", "pf"), "aedes": ("aedes", "both"), "cities": ("cities", 2025),
     "shipping": ("shipping", "commercial"), "ports": ("ports", "all"), "air-routes": ("air_routes", "all"),
@@ -2762,6 +2803,10 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             spec = item.split(":", 1)[1].strip()
             resolve_air_routes(spec)
             chosen["air_routes"] = spec or "all"
+        elif item.startswith("storms:"):
+            years = item.split(":", 1)[1].strip()
+            parse_storm_years(years)
+            chosen["storms"] = years or str(LAST_STORM_YEAR)
         elif item.startswith("cities:"):
             chosen["cities"] = resolve_cities_year(item.split(":", 1)[1])
         elif item.startswith("aedes:"):
@@ -2773,7 +2818,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen[key] = value
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
-                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, indicator:NAME, industry:SECTORS, "
+                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, storms:YEARS, indicator:NAME, industry:SECTORS, "
                              "shipping:KIND, ports:KIND, air-routes:AIRPORTS, relief-units:regions, ro-admin:uats.")
     return chosen
 
@@ -2782,7 +2827,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, relief-units:regions, ro-admin:uats …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, storms:2010-2020, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, relief-units:regions, ro-admin:uats …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -3254,7 +3299,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
                            help="Fill the counties in pastel colours, no two neighbours alike, at this opacity "
                                 "(0-1, default: 0, borders only).")
 
-    earth = parser.add_argument_group("Plate tectonics, rivers, cyclones, time zones, permafrost")
+    earth = parser.add_argument_group("Plate tectonics, rivers, cyclones, storms, time zones, permafrost")
     earth.add_argument("--plates", action="store_true",
                        help="Draw the plate boundaries (Bird 2003): spreading ridges, subduction zones and "
                             "transform faults, and name the large plates.")
@@ -3279,6 +3324,17 @@ def build_cli_parser() -> argparse.ArgumentParser:
     earth.add_argument("--cyclones", nargs="?", const=FIRST_CYCLONE_YEAR, type=int, default=None, metavar="SINCE",
                        help=f"Draw the tropical cyclone tracks (IBTrACS) from the year SINCE (default "
                             f"{FIRST_CYCLONE_YEAR}), coloured by Saffir-Simpson category.")
+    earth.add_argument("--cyclones-et", action="store_true",
+                       help="With --cyclones, draw the storms' extratropical stage too, after they lose their "
+                            "tropical core, in one colour.")
+    earth.add_argument("--storms", nargs="?", const=str(LAST_STORM_YEAR), default=None, metavar="YEARS",
+                       help=f"Draw the tracks of the Northern Hemisphere's storms (ERA5, Crawford et al. 2021) "
+                            f"of YEARS, e.g. 2020 or 2010-2020 ({FIRST_STORM_YEAR}-{LAST_STORM_YEAR}; default "
+                            f"{LAST_STORM_YEAR}; ~5 MB per year, downloaded once), coloured by central "
+                            "pressure, the deepest named.")
+    earth.add_argument("--storm-pressure", type=float, default=DEFAULT_STORM_PRESSURE, metavar="HPA",
+                       help=f"Draw the storms whose centre fell to HPA or lower ({MIN_STORM_PRESSURE:g}-"
+                            f"{MAX_STORM_PRESSURE:g}, default {DEFAULT_STORM_PRESSURE:g}).")
     earth.add_argument("--time-zones", action="store_true",
                        help="Shade and label the standard-time zones (Natural Earth).")
     earth.add_argument("--permafrost", action="store_true",
@@ -3871,6 +3927,10 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         parse_years(args.species_years)
     if args.iucn_data and not args.iucn:
         logger.warning("--iucn-data is ignored because no --iucn was given.")
+    if args.cyclones_et and args.cyclones is None:
+        logger.warning("--cyclones-et is ignored because no --cyclones was given.")
+    if args.storm_pressure != DEFAULT_STORM_PRESSURE and args.storms is None:
+        logger.warning("--storm-pressure is ignored because no --storms was given.")
     if args.cities is not None:
         resolve_cities_year(args.cities)
     elif args.cities_min is not None:
@@ -3986,6 +4046,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             malaria_alpha=args.malaria_alpha, iucn_alpha=args.iucn_alpha, indicator_alpha=args.indicator_alpha,
             shipping_alpha=args.shipping_alpha, relief_alpha=args.relief_alpha,
             ro_admin_alpha=args.ro_admin_alpha, text_scale=args.text_scale, language=args.language,
+            storms=args.storms, storm_pressure=args.storm_pressure,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -4044,6 +4105,9 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         basins=args.basins,
         basins_alpha=args.basins_alpha,
         cyclones=args.cyclones,
+        cyclones_et=args.cyclones_et and args.cyclones is not None,
+        storms=args.storms,
+        storm_pressure=args.storm_pressure,
         time_zones=args.time_zones,
         permafrost=args.permafrost,
         permafrost_alpha=args.permafrost_alpha,

@@ -1,0 +1,8 @@
+# The typhoons of the western Pacific since 2015 by Saffir-Simpson category, and their extratropical stage
+# in violet as they recurve past Japan into the Sea of Okhotsk, the Bering Sea and the Gulf of Alaska.
+lat = 40
+lon = 165
+provider = "osm_plain"
+cyclones = 2015
+cyclones_et = true
+output = "orthographic_map_north_pacific_osm_plain_z3_typhoons_extratropical.png"

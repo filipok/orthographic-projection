@@ -159,7 +159,15 @@ function buildRequest() {
     req.basins = true;
     req.basins_alpha = changed("basins-alpha", options.alpha.basins);
   }
-  if ($("cyclones").checked) req.cyclones = Number($("cyclones-since").value) || options.first_cyclone_year;
+  if ($("cyclones").checked) {
+    req.cyclones = Number($("cyclones-since").value) || options.first_cyclone_year;
+    if ($("cyclones-et").checked) req.cyclones_et = true;
+  }
+  if ($("storms").checked) {
+    req.storms = $("storms-years").value.trim() || String(options.storms.last);
+    const pressure = Number($("storm-pressure").value);
+    if (pressure && pressure !== options.storms.pressure.default) req.storm_pressure = pressure;
+  }
   if ($("permafrost").checked) {
     req.permafrost = true;
     req.permafrost_alpha = changed("permafrost-alpha", options.alpha.permafrost);
@@ -366,6 +374,10 @@ function fillForm(req) {
   set("basins-alpha", req.basins_alpha);
   $("cyclones").checked = req.cyclones != null;
   set("cyclones-since", req.cyclones);
+  $("cyclones-et").checked = Boolean(req.cyclones_et);
+  $("storms").checked = req.storms != null;
+  set("storms-years", req.storms);
+  set("storm-pressure", req.storm_pressure);
   $("permafrost").checked = Boolean(req.permafrost);
   set("permafrost-alpha", req.permafrost_alpha);
   if (req.population != null) pick("population", String(req.population), "population year");
@@ -800,6 +812,11 @@ async function init() {
   $("earthquake-magnitude").value = options.earthquakes.default;
   $("cyclones-since").min = options.first_cyclone_year;
   $("cyclones-since").value = options.first_cyclone_year;
+  $("storms-years").value = String(options.storms.last);
+  $("storms-years").placeholder = `${options.storms.first}-${options.storms.last}`;
+  $("storm-pressure").min = options.storms.pressure.min;
+  $("storm-pressure").max = options.storms.pressure.max;
+  $("storm-pressure").value = options.storms.pressure.default;
   $("population").append(...options.population_years.slice().reverse().map((y) => option(String(y))));
   $("industry-list").append(...Object.entries(options.industry).map(([name, about]) => option(name, about)));
   $("shipping").append(...Object.entries(options.shipping).map(([name, label]) => option(name, label)));

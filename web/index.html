@@ -191,6 +191,13 @@
         <label class="check"><input id="cyclones" type="checkbox"> Tropical cyclone tracks</label>
         <label class="field" data-show="cyclones" hidden><span>From the year</span>
           <input id="cyclones-since" type="number" step="1"></label>
+        <label class="check" data-show="cyclones" hidden><input id="cyclones-et" type="checkbox">
+          And their extratropical stage</label>
+        <label class="check"><input id="storms" type="checkbox"> Storm tracks, extratropical (~5 MB a year once)</label>
+        <label class="field" data-show="storms" hidden><span>Years (e.g. 2020 or 2010-2020)</span>
+          <input id="storms-years" type="text"></label>
+        <label class="field" data-show="storms" hidden><span>Centre fell to (hPa) or lower</span>
+          <input id="storm-pressure" type="number" step="5"></label>
         <label class="check"><input id="time-zones" type="checkbox"> Time zones</label>
         <label class="check"><input id="permafrost" type="checkbox"> Permafrost</label>
         <label class="field slider" data-show="permafrost" hidden><span>Opacity <output for="permafrost-alpha"></output></span>

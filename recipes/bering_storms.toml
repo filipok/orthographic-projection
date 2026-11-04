@@ -1,0 +1,10 @@
+# The storms of 2020 between Sakhalin, the Bering Strait and the Aleutians that fell to 960 hPa or below,
+# each step coloured by its central pressure, the deepest named: among them the Bering Sea's record low of
+# 31 December, 923 hPa.
+lat = 54
+lon = 172
+provider = "osm_plain"
+radius = 2600
+storms = "2020"
+storm_pressure = 960
+output = "orthographic_map_bering_osm_plain_r2600km_storms_2020.png"

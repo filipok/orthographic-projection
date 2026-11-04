@@ -828,6 +828,14 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc", "--earthquakes", "7.5", "--cyclones", "2000", "--population", "2005"])
         assert args.earthquakes == 7.5 and args.cyclones == 2000 and args.population == 2005
 
+    def test_storm_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert args.storms is None and not args.cyclones_et and args.storm_pressure == ortho.DEFAULT_STORM_PRESSURE
+        args = self._parse(["--city", "nyc", "--storms", "--cyclones", "--cyclones-et"])
+        assert args.storms == str(ortho.LAST_STORM_YEAR) and args.cyclones_et
+        args = self._parse(["--city", "nyc", "--storms", "2010-2020", "--storm-pressure", "950"])
+        assert args.storms == "2010-2020" and args.storm_pressure == 950.0
+
     def test_malaria_and_aedes_flags(self):
         args = self._parse(["--city", "nyc"])
         assert args.malaria is None and args.malaria_year == 2025 and args.malaria_alpha == 0.75 and args.aedes is None
@@ -1073,7 +1081,8 @@ class TestRunCLIValidation:
             biomes=False, biome_class=None, ecoregions=False, realms=None, realm_regions=False, biome_alpha=0.6,
             borders=None, borders_source="auto", borders_alpha=0.55, no_borders_names=False, alliance=None,
             ocean_depth=False, ice_age=False, plates=False, earthquakes=None, volcanoes=False, currents=False,
-            rivers=False, basins=False, basins_alpha=0.5, cyclones=None, time_zones=False, permafrost=False,
+            rivers=False, basins=False, basins_alpha=0.5, cyclones=None, cyclones_et=False, storms=None,
+            storm_pressure=970.0, time_zones=False, permafrost=False,
             permafrost_alpha=0.7, population=None, population_alpha=0.7, livestock=None, livestock_alpha=0.7,
             malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None, species=None, species_years=None,
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
@@ -1538,6 +1547,26 @@ class TestRunCLIValidation:
         assert (kwargs["earthquakes"], kwargs["cyclones"], kwargs["population"], kwargs["livestock"]) == \
             (7.0, 1990, 2010, "cow")
 
+    def test_storms_and_extratropical_stage_passed_to_renderer(self):
+        args = self._make_args(city="paris", cyclones=1990, cyclones_et=True, storms="2015-2020",
+                               storm_pressure=950.0)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert (kwargs["cyclones_et"], kwargs["storms"], kwargs["storm_pressure"]) == (True, "2015-2020", 950.0)
+
+    @pytest.mark.parametrize("overrides, warning", [
+        ({"cyclones_et": True}, "--cyclones-et is ignored"),
+        ({"storm_pressure": 950.0}, "--storm-pressure is ignored"),
+    ])
+    def test_storm_options_without_their_layer_warn(self, caplog, overrides, warning):
+        args = self._make_args(city="paris", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert warning in caplog.text and not render.call_args.kwargs["cyclones_et"]
+
     def test_malaria_and_aedes_passed_to_renderer(self):
         args = self._make_args(city="paris", malaria="vivax", malaria_year=2005, malaria_alpha=0.5, aedes="both")
         with mock.patch.object(ortho, "generate_orthographic_map") as render, \
@@ -1715,6 +1744,9 @@ class TestRunCLIValidation:
         ({"indicator": "fertility", "indicator_alpha": 2.0}, "indicator_alpha"),
         ({"earthquakes": 4.0}, "earthquakes must be a magnitude"),
         ({"cyclones": 1970}, "cyclones must start"),
+        ({"storms": "1930"}, "storms must be YEAR or FROM-TO"),
+        ({"storms": "2020-2010"}, "storms must be YEAR or FROM-TO"),
+        ({"storms": "2020", "storm_pressure": 1010.0}, "storm_pressure must be between"),
         ({"basins": True, "basins_alpha": 2.0}, "basins_alpha"),
     ])
     def test_bad_atlas_options_exit_before_render(self, caplog, overrides, message):
@@ -2052,6 +2084,7 @@ class TestGenerateOrthographicMapIntegration:
     @pytest.mark.parametrize("option, loader, drawer, key, credit", [
         ({"currents": True}, "load_currents", "add_currents_overlay", "add_currents_legend", "CURRENTS_ATTRIBUTION"),
         ({"cyclones": 1980}, "load_tracks", "draw_tracks", "add_cyclones_legend", "CYCLONES_ATTRIBUTION"),
+        ({"storms": "2020"}, "load_storms", "draw_storms", "add_storms_legend", "STORMS_ATTRIBUTION"),
         ({"permafrost": True}, "load_permafrost", "add_permafrost_overlay", "add_permafrost_legend",
          "PERMAFROST_ATTRIBUTION"),
         ({"livestock": "sheep"}, "load_livestock", "add_livestock_overlay", "add_livestock_legend",
@@ -2078,6 +2111,33 @@ class TestGenerateOrthographicMapIntegration:
         if key:
             legend.assert_called_once()
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], getattr(ortho, credit)]
+
+    def test_storms_and_extratropical_stage_reach_the_layers(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_tracks", return_value=mock.Mock()) as tracks, \
+                mock.patch.object(ortho, "draw_tracks"), \
+                mock.patch.object(ortho, "add_cyclones_legend") as cyclones_key, \
+                mock.patch.object(ortho, "load_storms", return_value=mock.Mock()) as storms, \
+                mock.patch.object(ortho, "draw_storms"), \
+                mock.patch.object(ortho, "add_storms_legend") as storms_key:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), cyclones=2000, cyclones_et=True,
+                                            storms="2010-2012", storm_pressure=955)
+        assert tracks.call_args.args == (2000,) and tracks.call_args.kwargs == {"extratropical": True}
+        assert cyclones_key.call_args.kwargs["extratropical"]
+        assert storms.call_args.args == ((2010, 2012), 955)
+        assert storms_key.call_args.args[1:] == ((2010, 2012), 955)
+
+    def test_storms_failure_still_saves_map_without_key_or_credit(self, tmp_path, caplog):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_storms", side_effect=ortho.StormDataError("offline")), \
+                mock.patch.object(ortho, "add_storms_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), storms="2020")
+        assert os.path.exists(result) and "Skipping the storm tracks" in caplog.text
+        key.assert_not_called()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
 
     def test_species_records_drawn_with_key_and_credit(self, tmp_path):
         taxon = mock.Mock()
@@ -2593,6 +2653,8 @@ class TestGenerateOrthographicMapIntegration:
         ("relief-units:Regions", {"relief_units": "regions"}),
         ("ro-admin", {"ro_admin": "counties"}),
         ("ro-admin:UAT", {"ro_admin": "uats"}),
+        ("storms", {"storms": str(ortho.LAST_STORM_YEAR)}),
+        ("storms:2010-2020, cyclones", {"storms": "2010-2020", "cyclones": 1980}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected
