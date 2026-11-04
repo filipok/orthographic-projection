@@ -44,6 +44,7 @@ The main script is [ortho.py](ortho.py).
 - [Ocean Currents](#ocean-currents)
 - [Rivers and Basins](#rivers-and-basins)
 - [Cyclones, Time Zones and Permafrost](#cyclones-time-zones-and-permafrost)
+- [Storm Tracks](#storm-tracks)
 - [Population Density](#population-density)
 - [Livestock](#livestock)
 - [Malaria and Aedes Mosquitoes](#malaria-and-aedes-mosquitoes)
@@ -165,6 +166,14 @@ The main script is [ortho.py](ortho.py).
 
 *Left: The Atlantic's surface currents, warm and cold, with the hurricane tracks since 1980 (plain OSM, zoom 3).*<br>
 *Right: Africa's river basins and rivers, inland drainage in grey (plain OSM, zoom 3, HydroBASINS).*
+
+<p align="center">
+  <img src="sample_bering_storms.png" alt="A disc 2,600 km around the Bering Sea with the tracks of the storms of 2020 that fell to 960 hPa or below, coloured from grey and blue where the centre was shallow through teal, yellow and orange to pink and purple where it was deepest, sweeping north-east from off Japan across the Aleutians into the Bering Sea and the Gulf of Alaska, the deepest five named, among them 923 hPa on 31 December 2020 just south of the Aleutians" width="48%">
+  <img src="sample_pacific_typhoons_extratropical.png" alt="Globe centred on the North Pacific with the typhoon tracks since 2015 coloured by Saffir-Simpson category, thick in the Philippine Sea and off Mexico, and their extratropical stage in thin violet lines carrying on past Japan into the Sea of Okhotsk, the Bering Sea and the Gulf of Alaska" width="48%">
+</p>
+
+*Left: The storms of 2020 between Sakhalin, the Bering Strait and the Aleutians, by central pressure (plain OSM, radius 2,600 km, ERA5 tracks by Crawford et al. 2021).*<br>
+*Right: The typhoons since 2015 and, in violet, their extratropical stage (plain OSM, zoom 3, IBTrACS).*
 
 <p align="center">
   <img src="sample_asia_population.png" alt="Globe centred on the Bay of Bengal with population density in 2020, from pale yellow under 1 person per km² across Siberia, Tibet and Australia to deep red over 1,000 along the Ganges plain, eastern China, Java and the Nile" width="48%">
@@ -324,7 +333,8 @@ The main script is [ortho.py](ortho.py).
 - Optional plate tectonics: plate boundaries by kind, earthquakes since 1900 by depth and magnitude, and volcanoes
 - Optional ocean surface currents, warm and cold, from drifting buoys
 - Optional rivers, and river basins coloured and named, inland drainage in grey
-- Optional tropical cyclone tracks by Saffir-Simpson category, time zones, and Northern Hemisphere permafrost
+- Optional tropical cyclone tracks by Saffir-Simpson category (and their extratropical stage), time zones, and Northern Hemisphere permafrost
+- Optional storm tracks of the Northern Hemisphere, 1940–2024, by central pressure, the deepest named
 - Optional population density (2000–2020) and livestock density (cattle, sheep, goats, pigs, chickens and more)
 - Optional malaria parasite rate, *P. falciparum* or *P. vivax*, for any year from 2000 to 2025, and where the dengue mosquitoes *Aedes aegypti* and *Ae. albopictus* have been recorded
 - Optional records of any species, genus or family from GBIF, by scientific or common name, for all years or a span of years
@@ -499,7 +509,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `relief-units`, `relief-units:regions`, `ro-admin`, `ro-admin:uats` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `storms`, `storms:2010-2020`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `relief-units`, `relief-units:regions`, `ro-admin`, `ro-admin:uats` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -568,6 +578,10 @@ python ortho.py --lat 10 --lon 150 --plates --earthquakes --volcanoes
 # Ocean currents with hurricane tracks; rivers and basins (see "Ocean Currents", "Rivers and Basins")
 python ortho.py --lat 25 --lon -50 --currents --cyclones
 python ortho.py --lat 0 --lon 20 --rivers --basins
+
+# The storms of 2020 around the Bering Sea; typhoons and their extratropical stage (see "Storm Tracks")
+python ortho.py --lat 54 --lon 172 --radius 2600 --storms 2020 --storm-pressure 960
+python ortho.py --lat 40 --lon 165 --cyclones 2015 --cyclones-et
 
 # Permafrost and time zones; population; livestock (see the sections of the same names)
 python ortho.py --lat 75 --lon 90 --permafrost --time-zones
@@ -730,6 +744,9 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--basins` | Colour the river basins of 100,000 km² or more, named, inland drainage in grey | off |
 | `--basins-alpha ALPHA` | Opacity of the river basins (0–1) | `0.5` |
 | `--cyclones [SINCE]` | Draw the tropical cyclone tracks from the year SINCE (1980 on), by Saffir-Simpson category | off (`1980` when given alone) |
+| `--cyclones-et` | With `--cyclones`, draw the storms' extratropical stage too, in one colour | off |
+| `--storms [YEARS]` | Draw the Northern Hemisphere's storm tracks of YEARS (`2020` or `2010-2020`, 1940–2024), by central pressure | off (`2024` when given alone) |
+| `--storm-pressure HPA` | Draw the storms whose centre fell to HPA or lower (920–1000) | `970` |
 | `--time-zones` | Shade and label the standard-time zones | off |
 | `--permafrost` | Colour the Northern Hemisphere's permafrost zones | off |
 | `--permafrost-alpha ALPHA` | Opacity of the permafrost (0–1) | `0.7` |
@@ -776,7 +793,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
-Historical borders, The European Union and NATO, Relief units of Romania, Plate tectonics, rivers, cyclones, time zones, permafrost, People and livestock,
+Historical borders, The European Union and NATO, Relief units of Romania, Plate tectonics, rivers, cyclones, storms, time zones, permafrost, People and livestock,
 Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Shipping, ports and air routes (World Bank and IMF, OpenFlights), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
@@ -844,6 +861,8 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `ice_age_north_sea.toml` | The North Sea in the last ice age, with the sea floor by depth |
 | `ring_of_fire.toml` | Plate boundaries, earthquakes and volcanoes of the western Pacific |
 | `atlantic_currents_hurricanes.toml` | The Atlantic's currents and hurricane tracks |
+| `bering_storms.toml` | The storms of 2020 between Sakhalin, the Bering Strait and the Aleutians |
+| `pacific_typhoons_extratropical.toml` | The typhoons since 2015 and their extratropical stage |
 | `africa_river_basins.toml` | Africa's river basins and rivers |
 | `asia_population.toml` | Population density in 2020, centred on the Bay of Bengal |
 | `india_cattle.toml` | Cattle per km² in 2015, centred on India |
@@ -1989,7 +2008,13 @@ The sample above is `python ortho.py --config recipes/africa_river_basins.toml`.
 - `--cyclones [SINCE]` draws the tracks of the tropical cyclones (hurricanes,
   typhoons, cyclones) from the year SINCE (default 1980) in IBTrACS, from
   tropical storm strength up, each step coloured by its Saffir-Simpson category.
-  The tracks since 1980, ~22 MB, are downloaded once.
+  The tracks since 1980, ~22 MB, are downloaded once. `--cyclones-et` draws
+  the extratropical stage of those storms as well, after they lose their
+  tropical core, in one violet line: the typhoons that recurve past Japan into
+  the Sea of Okhotsk and the Bering Sea, or the hurricanes that cross the
+  Atlantic to Europe. It has no Saffir-Simpson category (a scale for tropical
+  storms only), and the agencies often stop recording the wind once a storm
+  has turned extratropical.
 - `--time-zones` shades the standard-time zones in turn (half-hour zones in a
   third shade), outlines them and labels each with its offset from UTC; daylight
   saving time is not shown (Natural Earth).
@@ -1999,8 +2024,42 @@ The sample above is `python ortho.py --config recipes/africa_river_basins.toml`.
 
 ```powershell
 python ortho.py --lat 20 --lon 130 --cyclones 2000
+python ortho.py --lat 40 --lon 165 --cyclones 2015 --cyclones-et
 python ortho.py --lat 75 --lon 90 --permafrost --time-zones
 ```
+
+## Storm Tracks
+
+`--storms [YEARS]` draws the tracks of the Northern Hemisphere's storms, the
+lows of the mid-latitudes and the Arctic that `--cyclones` leaves out: the
+winter storms of the Aleutian Low between Sakhalin, the Bering Strait and the
+Gulf of Alaska, of the Icelandic Low, of the Mediterranean. They come from
+Crawford et al. (2021), who tracked every low in ERA5's sea-level pressure
+every three hours from 1940 to 2024. YEARS is one year or a span, `2020` or
+`2010-2020` (the latest, 2024, when left out).
+
+- A storm counts in the year its centre was deepest, and is drawn if it fell
+  to `--storm-pressure` hPa or below (920–1000, default 970). Its whole track
+  is drawn, each three-hour step coloured by its central pressure, from grey
+  (990 hPa or more) to purple (below 940 hPa), the deeper wider and on top.
+- Each storm's deepest point is marked, and the five deepest in sight are
+  named with their pressure and day, e.g. *923 hPa, 31 Dec 2020*.
+- Only the storms that lasted a day and fell to 1,000 hPa are kept. A typhoon
+  or hurricane is a low in ERA5 too, and is tracked here as well, if more
+  coarsely than in IBTrACS.
+- Each year is downloaded once, ~5 MB, and cached in under 300 KB. The tracks
+  are filed by the year they end in, so the next year's file is read too, for
+  the storms deepest in late December.
+
+A few hundred storms a year cross the North Pacific, so a span of years needs
+a deeper `--storm-pressure` to stay legible: 960 suits a single year.
+
+```powershell
+python ortho.py --lat 54 --lon 172 --radius 2600 --storms 2020 --storm-pressure 960
+python ortho.py --lat 60 --lon -20 --storms 2010-2020 --storm-pressure 950
+```
+
+The sample above is `python ortho.py --config recipes/bering_storms.toml`.
 
 ## Population Density
 
@@ -2878,6 +2937,7 @@ to the attribution block.
 | HydroBASINS level 4 (HydroSHEDS) | Lehner, B. & Grill, G. (2013), WWF | Free for scientific, educational and commercial use, with citation ([licence](https://www.hydrosheds.org/products/hydrobasins)) | [doi:10.1002/hyp.9740](https://doi.org/10.1002/hyp.9740) |
 | Natural Earth 1:10m rivers, time zones and countries (for `--alliance`) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | IBTrACS v04r01, tropical cyclone tracks since 1980 | Knapp, K. R. et al. (2010), NOAA NCEI | Public domain (US government) | [doi:10.1175/2009BAMS2755.1](https://doi.org/10.1175/2009BAMS2755.1) |
+| Northern Hemisphere Extratropical Cyclone Tracks from ERA-5, 1940–2024 | Crawford, A. D. et al. (2021), Centre for Earth Observation Science, University of Manitoba; from ERA5 (Hersbach et al. 2020, Copernicus C3S/ECMWF) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1175/MWR-D-20-0417.1](https://doi.org/10.1175/MWR-D-20-0417.1), data on [CanWIN](https://canwin-datahub.ad.umanitoba.ca/data/dataset/nsidc-extratropical-cyclone-tracking-cnect) |
 | Northern Hemisphere permafrost zones, 2000–2016, 1 km, used at 5 km | Obu, J. et al. (2019), ESA Permafrost CCI / University of Oslo | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1016/j.earscirev.2019.04.023](https://doi.org/10.1016/j.earscirev.2019.04.023), data on [PANGAEA](https://doi.org/10.1594/PANGAEA.888600) |
 | Gridded Population of the World v4.11, population density 2000–2020, via NASA GIBS | CIESIN (2018), NASA SEDAC | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.7927/H49C6VHW](https://doi.org/10.7927/H49C6VHW) |
 | Gridded Livestock of the World v4, 2015, 5 arc-minutes | Gilbert, M. et al., FAO | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Harvard Dataverse, e.g. cattle [doi:10.7910/DVN/LHBICE](https://doi.org/10.7910/DVN/LHBICE) |
@@ -2945,6 +3005,7 @@ the globe:
 | `--rivers` | *Rivers: Natural Earth* |
 | `--basins` | *River basins: HydroBASINS (Lehner & Grill 2013), HydroSHEDS / WWF* |
 | `--cyclones` | *Cyclone tracks: IBTrACS v04r01 (Knapp et al. 2010), NOAA NCEI* |
+| `--storms` | *Storm tracks: Crawford et al. (2021), CEOS University of Manitoba, CC BY 4.0, from ERA5 (Copernicus C3S/ECMWF)* |
 | `--time-zones` | *Time zones: Natural Earth* |
 | `--alliance` | *EU and NATO: Natural Earth* |
 | `--permafrost` | *Permafrost: Obu et al. (2019), ESA Permafrost CCI / University of Oslo, CC BY 4.0* |
@@ -3024,7 +3085,8 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [tectonics.py](tectonics.py): plate boundaries, earthquakes and volcanoes, and their key
 - [currents.py](currents.py): ocean surface current arrows, warm and cold, and their key
 - [hydrology.py](hydrology.py): rivers, and river basins merged from HydroBASINS and named
-- [cyclones.py](cyclones.py): tropical cyclone tracks by Saffir-Simpson category
+- [cyclones.py](cyclones.py): tropical cyclone tracks by Saffir-Simpson category, and their extratropical stage
+- [storms.py](storms.py): the Northern Hemisphere's storm tracks from ERA5 by central pressure, the deepest named
 - [timezones.py](timezones.py): standard-time zones, shaded and labelled
 - [permafrost.py](permafrost.py): Northern Hemisphere permafrost zones
 - [population.py](population.py): population density from GPWv4 tiles (NASA GIBS), in classed bands

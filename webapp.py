@@ -222,6 +222,9 @@ class MapRequest(BaseModel):
     basins: bool | None = None
     basins_alpha: float | None = None
     cyclones: int | None = None
+    cyclones_et: bool | None = None
+    storms: str | None = None
+    storm_pressure: float | None = None
     time_zones: bool | None = None
     permafrost: bool | None = None
     permafrost_alpha: float | None = None
@@ -552,6 +555,9 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "malaria_years": [ortho.FIRST_MALARIA_YEAR, ortho.LATEST_MALARIA_YEAR],
         "aedes": list(ortho.AEDES_CHOICES),
         "first_cyclone_year": ortho.FIRST_CYCLONE_YEAR,
+        "storms": {"first": ortho.FIRST_STORM_YEAR, "last": ortho.LAST_STORM_YEAR,
+                   "pressure": {"default": ortho.DEFAULT_STORM_PRESSURE, "min": ortho.MIN_STORM_PRESSURE,
+                                "max": ortho.MAX_STORM_PRESSURE}},
         "earthquakes": {"default": ortho.DEFAULT_MIN_MAGNITUDE, "min": ortho.MIN_MAGNITUDE, "max": ortho.MAX_MAGNITUDE},
         "crops": list(CROP_NAMES),
         "editable": not settings.read_only,
