@@ -470,7 +470,9 @@ A regular install (`pip install ".[web]"`, without `-e`) brings the web app's
 page and the bundled recipes, routes and atlases too, in
 `<prefix>/share/orthographic-projection`. The first time the web app runs, it
 copies the recipes, routes and atlases to `~/.local/share/orthographic-projection`
-and saves into that copy, so your changes outlive upgrades.
+and saves into that copy, so your changes outlive upgrades. With
+`ORTHO_WEB_READ_ONLY` set it copies nothing and serves the installed folders
+themselves.
 
 ## Usage
 
@@ -942,7 +944,7 @@ last settings in the browser.
 | `ORTHO_WEB_RECIPES_DIR` | The recipes the form loads and saves | `recipes/` beside `webapp.py`; installed, `~/.local/share/orthographic-projection/recipes` |
 | `ORTHO_WEB_ROUTES_DIR` | The route files the form offers and uploads into | `routes/` beside `webapp.py`; installed, `~/.local/share/orthographic-projection/routes` |
 | `ORTHO_WEB_ATLASES_DIR` | The atlases the atlas page edits and prints | `atlases/` beside `webapp.py`; installed, `~/.local/share/orthographic-projection/atlases` |
-| `ORTHO_WEB_READ_ONLY` | `1` to offer recipes, routes and atlases without saving, deleting or uploading any; set it on a server others can reach | off |
+| `ORTHO_WEB_READ_ONLY` | `1` to offer recipes, routes and atlases without saving, deleting or uploading any; set it on a server others can reach. Installed, it serves the installed folders in `<prefix>/share/orthographic-projection` themselves, not a copy in `~/.local/share/orthographic-projection` | off |
 
 ### Atlases (PDF)
 
@@ -1083,7 +1085,10 @@ elevation = true
   pages, and build the PDF (or a quick proof) to open or download. **Edit the
   map in the form** opens a page's map in the map form, to change and render it
   there, then **Save to the atlas**. Saving from the web app keeps the comment
-  at the top of the file but not the others. The API: `GET /api/atlases`,
+  at the top of the file but not the others. A saved atlas's recipes must be in
+  the recipes folder and its route files in the routes folder, unless an atlas
+  already names them; a recipe or route file from elsewhere, or an `iucn-data`
+  path no atlas names, is refused with a 400. The API: `GET /api/atlases`,
   `GET`/`PUT`/`DELETE /api/atlases/{name}`, `GET`/`PUT /api/atlases/{name}/maps/{page}`
   (`page` is the page's number or `cover`), and `POST /api/atlases/{name}/pdf`
   (`{"proof": true}` for a proof), followed like a map at `/api/maps/{id}`, with
@@ -3055,6 +3060,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [tile_fetch.py](tile_fetch.py): single-tile downloader shared by the tile sources
 - [webapp.py](webapp.py): the local web app (FastAPI): map requests, the render queue and the JSON API
 - [atlas.py](atlas.py): atlases: the atlas file, checking and drawing its maps, laying out the PDF, and the files for the web app
+- [incomplete.py](incomplete.py): what a map leaves out that it was asked for (a layer whose data could not be loaded, or tiles that failed), so an atlas draws that map again
 - [web/](web/): the web app's page, script and styles
 - [LICENSE](LICENSE): MIT licence
 - [routes/](routes/): bundled route files
