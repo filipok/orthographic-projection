@@ -44,7 +44,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.setuptools]
-py-modules = ["ortho", "alliances", "incomplete", "koppen", "trewartha", "elevation", "biomes", "zoogeography", "borders", "tectonics", "currents", "hydrology", "cyclones", "storms", "birds", "timezones", "iceage", "permafrost", "population", "livestock", "malaria", "aedes", "gbif", "iucn", "cities", "indicators", "industry", "shipping", "air_routes", "high_speed_rail", "ports", "relief", "ro_admin", "osm_local", "ne_local", "soil", "soil_properties", "vegetation", "wind", "climate", "sea", "ice", "crops", "rotation", "routes", "google_tiles", "tile_fetch", "frame", "recipe_store", "webapp", "atlas"]
+py-modules = ["ortho", "alliances", "incomplete", "koppen", "trewartha", "elevation", "biomes", "zoogeography", "borders", "tectonics", "currents", "hydrology", "cyclones", "storms", "birds", "timezones", "iceage", "permafrost", "population", "livestock", "malaria", "aedes", "gbif", "iucn", "cities", "indicators", "industry", "shipping", "air_routes", "high_speed_rail", "rail_tracks", "ports", "relief", "ro_admin", "osm_local", "ne_local", "soil", "soil_properties", "vegetation", "wind", "climate", "sea", "ice", "crops", "rotation", "routes", "google_tiles", "tile_fetch", "frame", "recipe_store", "webapp", "atlas"]
 
 # The web app's page and the bundled recipes, routes and atlases, installed side by side (the atlases name
 # "../recipes/…") under <prefix>/share/orthographic-projection; webapp.py looks for them there

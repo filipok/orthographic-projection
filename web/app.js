@@ -213,7 +213,10 @@ function buildRequest() {
   }
   if ($("ports").value) req.ports = $("ports").value;
   if ($("air-routes").value.trim()) req.air_routes = $("air-routes").value.trim();
-  if ($("high-speed-rail").value) req.high_speed_rail = $("high-speed-rail").value;
+  if ($("high-speed-rail").value) {
+    req.high_speed_rail = $("high-speed-rail").value;
+    if ($("high-speed-rail-schematic").checked) req.high_speed_rail_schematic = true;
+  }
   if ($("cities-year").value) {
     req.cities = Number($("cities-year").value);
     if ($("cities-min").value) req.cities_min = Number($("cities-min").value);
@@ -409,6 +412,7 @@ function fillForm(req) {
   if (req.ports) pick("ports", req.ports, "kind of port traffic");
   set("air-routes", req.air_routes);
   if (req.high_speed_rail) pick("high-speed-rail", req.high_speed_rail, "high-speed rail choice");
+  $("high-speed-rail-schematic").checked = Boolean(req.high_speed_rail_schematic);
   set("indicator", req.indicator);
   set("indicator-year", req.indicator_year);
   set("indicator-alpha", req.indicator_alpha);

@@ -12,6 +12,11 @@ import high_speed_rail as hsr
 from rotation import globe_projection
 
 
+def _load(choice="open"):
+    """The links, drawn city to city (OSM's tracks are tested in test_rail_tracks.py)."""
+    return hsr.load_high_speed_rail(choice, tracks=False)
+
+
 def _globe(lat=48, lon=9, inches=8):
     ax = Figure(figsize=(inches, inches)).add_subplot(projection=globe_projection(lat, lon))
     assert isinstance(ax, GeoAxes)
@@ -95,7 +100,7 @@ class TestData:
             assert frozenset((a, b)) in pairs, (a, b)
 
     def test_open_network(self):
-        rail = hsr.load_high_speed_rail("open")
+        rail = _load("open")
         assert not rail.planned.any() and not rail.with_planned
         assert len(rail.a) == len({frozenset((int(a), int(b))) for a, b in zip(rail.a, rail.b)})
         assert np.all(np.diff(rail.score) >= 0)                           # the strongest drawn last
@@ -106,14 +111,14 @@ class TestData:
         assert "Riga" not in {rail.names[i] for i in (*rail.a, *rail.b)}
 
     def test_planned_adds_dashed_links(self):
-        rail = hsr.load_high_speed_rail("planned")
+        rail = _load("planned")
         assert rail.with_planned
         assert rail.planned[_link(rail, "Tallinn", "Riga")]
         assert not rail.planned[_link(rail, "Paris", "Lyon")]
         assert rail.planned.sum() == sum(len(items) // 2 for items in hsr.PLANNED_LINES.values())
 
     def test_links_within_one_urban_centre_are_not_scored(self):
-        rail = hsr.load_high_speed_rail()
+        rail = _load()
         k = _link(rail, "Guangzhou", "Shenzhen")
         assert rail.within[k] and rail.score[k] == 0
         assert not rail.within[_link(rail, "Shenzhen", "Hong Kong")]
@@ -124,7 +129,7 @@ class TestData:
 class TestDrawing:
     def test_links_in_view_drawn_and_counted(self):
         ax = _globe()
-        rail = hsr.load_high_speed_rail()
+        rail = _load()
         shown = hsr.draw_high_speed_rail(ax, rail)
         names = {frozenset((rail.names[rail.a[k]], rail.names[rail.b[k]])) for k in shown}
         assert frozenset(("Paris", "Lyon")) in names
@@ -138,7 +143,7 @@ class TestDrawing:
         assert hsr.format_score(float(rail.score[_link(rail, "Paris", "Lyon")])) in {t.get_text() for t in ax.texts}
 
     def test_a_radius_map_counts_only_its_links(self):
-        rail = hsr.load_high_speed_rail()
+        rail = _load()
         everywhere = hsr.draw_high_speed_rail(_globe(40, 116), rail)
         near = hsr.draw_high_speed_rail(_radius(40, 116, 3), rail)
         names = {rail.names[i] for k in near for i in (rail.a[k], rail.b[k])}
@@ -146,7 +151,7 @@ class TestDrawing:
 
     def test_score_labels_stay_on_the_map(self):
         ax = _radius(48, 9, 6)
-        hsr.draw_high_speed_rail(ax, hsr.load_high_speed_rail())
+        hsr.draw_high_speed_rail(ax, _load())
         ax.figure.canvas.draw()
         written = [t for t in ax.texts if isinstance(t, Text) and t.get_text()[:1].isdigit()]
         assert written
@@ -155,19 +160,19 @@ class TestDrawing:
 
     def test_nothing_in_view(self):
         ax = _globe(-40, -140)                                            # the South Pacific
-        assert hsr.draw_high_speed_rail(ax, hsr.load_high_speed_rail()) == set()
+        assert hsr.draw_high_speed_rail(ax, _load()) == set()
         assert not ax.collections
 
     def test_no_labels(self):
         ax = _globe()
-        assert hsr.draw_high_speed_rail(ax, hsr.load_high_speed_rail(), labels=False)
+        assert hsr.draw_high_speed_rail(ax, _load(), labels=False)
         assert not ax.texts
 
 
 class TestLegend:
     def test_classes_and_only_what_shows(self):
         ax = _radius(50, 5, 12)
-        rail = hsr.load_high_speed_rail("planned")
+        rail = _load("planned")
         shown = hsr.draw_high_speed_rail(ax, rail)
         legend = hsr.add_high_speed_rail_legend(ax, rail, shown)
         labels = [t.get_text() for t in legend.get_texts()]
@@ -178,7 +183,7 @@ class TestLegend:
 
     def test_within_one_urban_area_keyed_where_it_shows(self):
         ax = _globe(25, 115)
-        rail = hsr.load_high_speed_rail("open")
+        rail = _load("open")
         labels = [t.get_text() for t in hsr.add_high_speed_rail_legend(ax, rail, hsr.draw_high_speed_rail(ax, rail))
                   .get_texts()]
         assert "within one urban area" in labels and "planned" not in labels

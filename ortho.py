@@ -93,7 +93,7 @@ from air_routes import (
 )
 from high_speed_rail import (
     CHOICES as HIGH_SPEED_RAIL_CHOICES, HIGH_SPEED_RAIL_ATTRIBUTION, add_high_speed_rail_legend,
-    draw_high_speed_rail, load_high_speed_rail, resolve_high_speed_rail,
+    draw_high_speed_rail, high_speed_rail_attribution, load_high_speed_rail, resolve_high_speed_rail,
 )
 from shipping import (
     KINDS as SHIP_KINDS, SHIPPING_ATTRIBUTION, ShippingDataError, add_shipping_legend, add_shipping_overlay,
@@ -916,6 +916,7 @@ def generate_orthographic_map(
     ports: str | None = None,
     air_routes: str | None = None,
     high_speed_rail: str | None = None,
+    high_speed_rail_schematic: bool = False,
     relief_units: str | None = None,
     relief_alpha: float = 0.55,
     ro_admin: str | None = None,
@@ -1245,7 +1246,10 @@ def generate_orthographic_map(
         (2 × minutes), from the people in the cities (GHSL 2025) and the
         fastest train between them: ``"open"`` for the lines open in 2026, or
         ``"planned"`` for those planned or under construction too, dashed (see
-        :mod:`high_speed_rail`).
+        :mod:`high_speed_rail`). The links in view follow OpenStreetMap's
+        tracks, downloaded once per region (see :mod:`rail_tracks`).
+    high_speed_rail_schematic : bool
+        Draw the high-speed links from city to city instead, downloading nothing.
     relief_units : str, optional
         Draw Romania's relief units (Posea & Badea 1984, mapped by Candrea
         et al. 2008), filled in the colour of their major region (paler for
@@ -1342,7 +1346,8 @@ def generate_orthographic_map(
             flights = load_air_routes(resolve_air_routes(air_routes))
         except AirRoutesDataError as e:
             incomplete.note(logger, "Skipping the air routes: %s", e)
-    rail = load_high_speed_rail(resolve_high_speed_rail(high_speed_rail)) if high_speed_rail else None
+    rail = (load_high_speed_rail(resolve_high_speed_rail(high_speed_rail), tracks=not high_speed_rail_schematic)
+            if high_speed_rail else None)
     statistic = None
     if indicator:
         stat_year = resolve_indicator_year(indicator_year)
@@ -2239,7 +2244,7 @@ def generate_orthographic_map(
     if flights is not None:
         credits.append(AIR_ROUTES_ATTRIBUTION)
     if rail is not None:
-        credits.append(HIGH_SPEED_RAIL_ATTRIBUTION)
+        credits.append(high_speed_rail_attribution(rail))
     if sightings is not None:
         credits.append(gbif_attribution(sightings))
     if crop_layer is not None:
@@ -3525,8 +3530,11 @@ def build_cli_parser() -> argparse.ArgumentParser:
                          help="Draw the high-speed rail lines, each link between two cities wider and darker the "
                               "higher its gravity score, (P1 x P2 / 100,000) / (2 x minutes), from the people in "
                               "the cities (GHSL 2025) and the fastest train between them: open (the default), or "
-                              "planned to add the lines planned or under construction, dashed. Nothing is "
-                              "downloaded.")
+                              "planned to add the lines planned or under construction, dashed. The links follow "
+                              "OpenStreetMap's tracks, downloaded once per region.")
+    traffic.add_argument("--high-speed-rail-schematic", action="store_true",
+                         help="Draw the high-speed links from city to city instead of along OSM's tracks, "
+                              "downloading nothing.")
 
     winds = parser.add_argument_group("Winds (NCEP/NCAR Reanalysis)")
     winds.add_argument(
@@ -4063,6 +4071,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         resolve_air_routes(args.air_routes)
     if args.high_speed_rail:
         resolve_high_speed_rail(args.high_speed_rail)
+    elif args.high_speed_rail_schematic:
+        logger.warning("--high-speed-rail-schematic is ignored because no --high-speed-rail was given.")
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
@@ -4244,6 +4254,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         ports=args.ports,
         air_routes=args.air_routes,
         high_speed_rail=args.high_speed_rail,
+        high_speed_rail_schematic=args.high_speed_rail_schematic,
         relief_units=args.relief_units,
         relief_alpha=args.relief_alpha,
         ro_admin=args.ro_admin,

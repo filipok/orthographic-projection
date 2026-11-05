@@ -1097,7 +1097,7 @@ class TestRunCLIValidation:
             malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None, species=None, species_years=None,
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
             indicator=None, indicator_year=None, indicator_alpha=0.75, industry=None,
-            shipping=None, shipping_alpha=0.85, ports=None, air_routes=None, high_speed_rail=None, relief_units=None,
+            shipping=None, shipping_alpha=0.85, ports=None, air_routes=None, high_speed_rail=None, high_speed_rail_schematic=False, relief_units=None,
             relief_alpha=0.55, ro_admin=None, ro_admin_alpha=0.0, text_scale=1.0, language="en",
             wind=None, radius=None, rectangle=None, temperature=None, precipitation=None, humidity=None,
         )
@@ -1724,6 +1724,7 @@ class TestRunCLIValidation:
         assert parse(["--city", "paris", "--high-speed-rail"]).high_speed_rail == "open"
         assert parse(["--high-speed-rail", "planned"]).high_speed_rail == "planned"
         assert parse(["--city", "paris"]).high_speed_rail is None
+        assert parse(["--high-speed-rail", "--high-speed-rail-schematic"]).high_speed_rail_schematic is True
 
     def test_high_speed_rail_passed_to_renderer(self):
         args = self._make_args(city="paris", high_speed_rail="planned")
@@ -1731,6 +1732,7 @@ class TestRunCLIValidation:
                 mock.patch.object(ortho, "configure_tile_cache"):
             ortho.run_cli(args)
         assert render.call_args.kwargs["high_speed_rail"] == "planned"
+        assert render.call_args.kwargs["high_speed_rail_schematic"] is False
     def test_unknown_high_speed_rail_choice_exits(self, caplog):
         with pytest.raises(SystemExit):
             ortho.run_cli(self._make_args(city="paris", high_speed_rail="maglev"))
@@ -2605,7 +2607,7 @@ class TestGenerateOrthographicMapIntegration:
         assert ortho.AIR_ROUTES_ATTRIBUTION in attribution.call_args.args[1]
 
     def test_high_speed_rail_drawn_with_key_and_credit(self, tmp_path):
-        rail = mock.Mock()
+        rail = mock.Mock(router=None)
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
                 mock.patch.object(ortho, "load_high_speed_rail", return_value=rail) as loaded, \
                 mock.patch.object(ortho, "draw_high_speed_rail", side_effect=[{1, 2}, {2, 3}]) as draw, \
@@ -2613,10 +2615,20 @@ class TestGenerateOrthographicMapIntegration:
                 mock.patch.object(ortho, "_add_attribution") as attribution:
             ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
                                             output_dir=str(tmp_path), beside=(10, 10), high_speed_rail="planned")
-        assert loaded.call_args.args[0] == "planned"
+        assert loaded.call_args.args[0] == "planned" and loaded.call_args.kwargs == {"tracks": True}
         assert draw.call_count == 2
         assert key.call_args.args[1:] == (rail, {1, 2, 3})        # the links on either globe
         assert ortho.HIGH_SPEED_RAIL_ATTRIBUTION in attribution.call_args.args[1]
+
+    def test_high_speed_rail_schematic_downloads_no_tracks(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_high_speed_rail", return_value=mock.Mock(router=None)) as loaded, \
+                mock.patch.object(ortho, "draw_high_speed_rail", return_value=set()), \
+                mock.patch.object(ortho, "add_high_speed_rail_legend"):
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), high_speed_rail="open",
+                                            high_speed_rail_schematic=True)
+        assert loaded.call_args.kwargs == {"tracks": False}
 
     def test_unknown_high_speed_rail_stops_before_tiles(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image") as tiles:

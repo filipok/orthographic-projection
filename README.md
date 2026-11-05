@@ -799,7 +799,8 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--shipping-alpha ALPHA` | Opacity of the ship traffic (0–1) | `0.85` |
 | `--ports [KIND]` | Draw the ports as dots sized by the ships calling a year (2019–2025), the busiest named: `all` (default), `container`, `tanker`, `dry-bulk`, `general-cargo` or `roro` | — |
 | `--air-routes AIRPORTS` | Draw air routes as great-circle arcs: `all`, or airports by code or city (`LHR`, `EGLL`, `London`) and airlines (`airline:BA`), comma-separated | — |
-| `--high-speed-rail [WHICH]` | Draw the high-speed lines, each link between two cities by its gravity score, (P1 × P2 / 100,000) / (2 × minutes): `open` (default), or `planned` to add the lines planned or under construction, dashed | — |
+| `--high-speed-rail [WHICH]` | Draw the high-speed lines, each link between two cities by its gravity score, (P1 × P2 / 100,000) / (2 × minutes), along OSM's tracks: `open` (default), or `planned` to add the lines planned or under construction, dashed | — |
+| `--high-speed-rail-schematic` | Draw the high-speed links from city to city, downloading no tracks | off |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
@@ -2569,22 +2570,40 @@ largest named.
   are drawn thin and grey, not scored, and the cities beyond score with the
   whole area (Shenzhen–Hong Kong, 57M).
 - **The times and the places** were compiled for this layer from the 2025–26
-  timetables, in round minutes, and are approximate, as are the lines drawn:
-  from station to station through a few points along their way, not along
-  their track. Stations of towns too small to be an urban centre are left
-  out, so a link runs between the two cities they lie between. All of it is
-  bundled in [high_speed_rail.py](high_speed_rail.py) (`STATIONS`,
-  `OPEN_LINES`, `PLANNED_LINES`, `VIA`), to be corrected or added to there;
-  nothing is downloaded.
+  timetables, in round minutes, and are approximate. Stations of towns too
+  small to be an urban centre are left out, so a link runs between the two
+  cities they lie between. All of it is bundled in
+  [high_speed_rail.py](high_speed_rail.py) (`STATIONS`, `OPEN_LINES`,
+  `PLANNED_LINES`, `VIA`), to be corrected or added to there.
+- **The track** is OpenStreetMap's, through the Overpass API: the ways tagged
+  `railway=rail` with `highspeed=yes` or a `maxspeed` of 200 km/h (125 mph)
+  or more, and for the planned links those tagged `railway=construction` and
+  high-speed. They are downloaded once per region a map shows links in (18
+  regions, from Iberia to Java; [rail_tracks.py](rail_tracks.py)'s
+  `REGIONS`), cached in `~/.cache/ortho_tiles/high_speed_rail/` and
+  downloaded again after a year. Each link follows the shortest way along the
+  tracks between its two stations, joined to the nearest track in each
+  direction within 30 km (the approaches to a terminus are rarely tagged
+  high-speed) and across gaps of up to 3 km; an open link keeps to open
+  track. Where OSM has no such way, or it is more than 1.5 times as long as
+  the link drawn city to city (plus 20 km), or less than half of it is on
+  track, the link is drawn from city to city through a few points along its
+  way, as it is when the tracks cannot be downloaded (the map is then noted
+  incomplete, so an atlas draws it again). `--high-speed-rail-schematic`
+  draws every link so and downloads nothing. Each Overpass server is asked
+  for its status first (20 s) and given 5 minutes for a region; one that
+  does not answer is not asked again in that run.
 
 ```powershell
 python ortho.py --lat 49 --lon 10 --radius 1500 --provider osm_plain --high-speed-rail planned --no-circles
 python ortho.py --lat 32 --lon 121 --radius 2100 --provider osm_plain --high-speed-rail --no-circles
 python ortho.py --lat 57 --lon 23 --radius 600 --high-speed-rail planned
+python ortho.py --lat 49 --lon 10 --radius 1500 --high-speed-rail --high-speed-rail-schematic
 ```
 
 The samples above are `python ortho.py --config recipes/europe_high_speed_rail.toml`
-and `recipes/east_asia_high_speed_rail.toml`.
+and `recipes/east_asia_high_speed_rail.toml`, drawn city to city (before the
+tracks were taken from OSM).
 
 ## Polar Ice
 
@@ -3103,6 +3122,7 @@ to the attribution block.
 | Harta unităților de relief din România: 820 relief units after Posea & Badea's geomorphological regionalisation (1984), with its legend | Candrea, B., Candrea, P. & Niță, M. D. (2008), geo-spatial.org | [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/); downloaded by each user, not shipped | [geo-spatial.org](https://geo-spatial.org/vechi/download/harta-unitati-relief-romania) |
 | CROPGRIDS v1.08, physical crop area of 173 crops, c. 2020, 0.05° | Tang, F. H. M. et al. (2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-024-03247-7](https://doi.org/10.1038/s41597-024-03247-7), data [doi:10.6084/m9.figshare.22491997](https://doi.org/10.6084/m9.figshare.22491997) |
 | Sea Ice Index, Version 4 (G02135), monthly sea ice extent | Fetterer, F. et al. (2025), NSIDC | Free to use; citation required | [doi:10.7265/a98x-0f50](https://doi.org/10.7265/a98x-0f50) |
+| OpenStreetMap high-speed rail tracks (`--high-speed-rail`), through the Overpass API | OpenStreetMap contributors | [ODbL 1.0](https://www.openstreetmap.org/copyright) | [openstreetmap.org](https://www.openstreetmap.org/), [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) |
 | OpenStreetMap tiles | OpenStreetMap contributors | Data [ODbL](https://www.openstreetmap.org/copyright); attribution required by the [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) | [openstreetmap.org](https://www.openstreetmap.org/) |
 | NASA Black Marble 2016 (VIIRS day/night band night lights, layer `VIIRS_Black_Marble`) via GIBS | NASA Earth Observatory; NASA ESDIS | Public domain (NASA open data, CC0); acknowledgement requested | [NASA GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api) |
 | NASA Blue Marble (Next Generation, shaded relief and bathymetry) via GIBS | NASA Earth Observatory; NASA ESDIS | Public domain (NASA open data, CC0); acknowledgement requested | [NASA GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api) |
@@ -3162,7 +3182,7 @@ the globe:
 | `--shipping` | *Shipping: Global Shipping Traffic Density (World Bank, IMF, AIS 2015-2021), CC BY 4.0* |
 | `--ports` | *Ports: IMF PortWatch (portwatch.imf.org), ships calling 2019-2025* |
 | `--air-routes` | *Air routes: OpenFlights (openflights.org), June 2014, ODbL* |
-| `--high-speed-rail` | *High-speed rail: lines and fastest scheduled times compiled for ortho (2025-26, approximate); populations GHS-UCDB R2024A 2025 (European Commission, JRC) and GeoNames, CC BY 4.0* |
+| `--high-speed-rail` | *High-speed rail: lines and fastest scheduled times compiled for ortho (2025-26, approximate); populations GHS-UCDB R2024A 2025 (European Commission, JRC) and GeoNames, CC BY 4.0*, and with the links drawn along their track *; tracks © OpenStreetMap contributors, ODbL* |
 | `--indicator` | *Statistics: World Bank, World Development Indicators (CODE), CC BY 4.0, retrieved YYYY-MM-DD; countries: Natural Earth*, or *Statistics: Eurostat (DATASET), retrieved YYYY-MM-DD; regions: © EuroGeographics for the administrative boundaries* |
 | `--iucn` | *Range: IUCN (YYYY), The IUCN Red List of Threatened Species, spatial data of YYYY-MM-DD*, or for birds *Range: BirdLife International and Handbook of the Birds of the World (YYYY), Bird species distribution maps of the world, version YYYY.N* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
@@ -3246,7 +3266,8 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [shipping.py](shipping.py): ship traffic from the World Bank and IMF's AIS density grids, read once into cached tiles
 - [ports.py](ports.py): the IMF PortWatch ports as dots sized by the ships calling, the busiest named
 - [air_routes.py](air_routes.py): the OpenFlights airline network as great-circle arcs
-- [high_speed_rail.py](high_speed_rail.py): the high-speed lines city to city, each link by gravity score, from the bundled lines, journey times and GHSL populations
+- [high_speed_rail.py](high_speed_rail.py): the high-speed lines, each link between two cities by gravity score, from the bundled lines, journey times and GHSL populations
+- [rail_tracks.py](rail_tracks.py): OpenStreetMap's high-speed tracks from the Overpass API, cached per region, and the links routed along them
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key; Crimea kept in Ukraine
 - [alliances.py](alliances.py): today's European Union (a line) and NATO (a shade) (Natural Earth countries) and their key
 - [relief.py](relief.py): Romania's relief units (Posea & Badea, geo-spatial.org): names restored from the legend, fills by region, names and key

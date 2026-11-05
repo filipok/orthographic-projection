@@ -23,22 +23,24 @@ Budapest-Belgrade, Lisbon-Porto and Mumbai-Ahmedabad.
 The cities, the stations' places and the journey times (the fastest train
 between two neighbouring cities, from the 2025-26 timetables, in round
 minutes) were compiled for this module and are approximate; the intermediate
-stations of towns too small to be an urban centre are left out, and the lines
-are drawn from city to city through a few points along their way, not along
-their track. A city's population is that of the GHSL urban centre its station
+stations of towns too small to be an urban centre are left out. The links in
+view are drawn along their track, from OpenStreetMap's high-speed tracks (see
+:mod:`rail_tracks`: downloaded once per region, ODbL); a link OSM has no track
+for, or with the tracks not to be had, is drawn from city to city through a
+few points along its way (:data:`VIA`). A city's population is that of the GHSL urban centre its station
 is in (GHS-UCDB R2024A, 2025: European Commission, JRC, CC BY 4.0), the
 metropolitan area as it is built, so the Pearl River Delta is one city
 (Guangzhou with Shenzhen) and Tokyo takes in Yokohama: a link within one urban
 centre is drawn but not scored. The few towns too small or sparse to be an
 urban centre (Toledo, Cuenca, Segovia, Zamora, Santiago de Compostela) have
-their people in GeoNames (cities5000, CC BY 4.0). Nothing is downloaded.
+their people in GeoNames (cities5000, CC BY 4.0).
 """
 
 from __future__ import annotations
 
 import logging
 import math
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -50,6 +52,7 @@ from matplotlib.lines import Line2D
 
 import frame
 from air_routes import great_circle, near_side
+from rail_tracks import TRACKS_ATTRIBUTION, TrackRouter
 from biomes import on_globe
 from cities import label_space
 
@@ -67,7 +70,8 @@ LABEL_MAX = 60
 SCORE_LABEL_MAX = 80
 
 HIGH_SPEED_RAIL_ATTRIBUTION = ("High-speed rail: lines and fastest scheduled times compiled for ortho (2025-26, "
-                               "approximate); populations GHS-UCDB R2024A 2025 (European Commission, JRC) and GeoNames, CC BY 4.0")
+                               "approximate); populations GHS-UCDB R2024A 2025 (European Commission, JRC) and "
+                               "GeoNames, CC BY 4.0")
 
 # The cities: where their high-speed station is (lat, lon), the people in the GHSL urban centre it is in in 2025,
 # and that centre's name in GHSL; a town too small or sparse to be an urban centre ("") has its people in GeoNames
@@ -530,6 +534,7 @@ class HighSpeedRail(NamedTuple):
     within: np.ndarray         # True for a link within one urban centre (Guangzhou-Shenzhen), not scored
     lines: list[str]           # the line each link is on
     with_planned: bool
+    router: TrackRouter | None = None    # draws the links along OSM's tracks; None draws them city to city
 
 
 def resolve_high_speed_rail(text: str | bool | None) -> str:
@@ -576,14 +581,20 @@ def _sequence(name: str, items: list[str | int]) -> list[tuple[str, str, int]]:
         if not isinstance(a, str) or not isinstance(b, str) or not isinstance(minutes, int) or minutes <= 0:
             raise ValueError(f"High-speed line {name!r} must alternate cities and minutes")
         if a not in STATIONS or b not in STATIONS:
-            raise ValueError(f"High-speed line {name!r} names a city without a station: {a if a not in STATIONS else b}")
+            missing = a if a not in STATIONS else b
+            raise ValueError(f"High-speed line {name!r} names a city without a station: {missing}")
         links.append((a, b, minutes))
     return links
 
 
-def load_high_speed_rail(choice: str | bool | None = "open") -> HighSpeedRail:
+def load_high_speed_rail(choice: str | bool | None = "open", tracks: bool = True, cache_dir: str | None = None,
+                         fetch: Any = None) -> HighSpeedRail:
     """The links of the high-speed lines, open or (``"planned"``) open and planned, each scored. A pair of cities
-    on two lines is one link, the faster."""
+    on two lines is one link, the faster.
+
+    With *tracks* the links in view are drawn along OSM's tracks, downloaded as they are needed into
+    *cache_dir* (see :mod:`rail_tracks`; *fetch* stands in for the Overpass API); without, city to city.
+    """
     with_planned = resolve_high_speed_rail(choice) == "planned"
     names = list(STATIONS)
     index = {n: i for i, n in enumerate(names)}
@@ -614,7 +625,18 @@ def load_high_speed_rail(choice: str | bool | None = "open") -> HighSpeedRail:
                 ", with those planned" if with_planned else "")
     return HighSpeedRail(names, lon, lat, population, a[order], b[order], minutes[order], score[order],
                          np.array([l[3] for l in links], bool)[order], within[order], [links[i][4] for i in order],
-                         with_planned)
+                         with_planned, _router(names, cache_dir, fetch) if tracks else None)
+
+
+def _router(names: list[str], cache_dir: str | None, fetch: Any) -> TrackRouter:
+    return TrackRouter({n: (STATIONS[n][1], STATIONS[n][0]) for n in names}, cache_dir, fetch)
+
+
+def high_speed_rail_attribution(rail: HighSpeedRail) -> str:
+    """The credit for *rail*, OSM's among them once a link was drawn along its tracks."""
+    if rail.router is not None and rail.router.used:
+        return f"{HIGH_SPEED_RAIL_ATTRIBUTION}; {TRACKS_ATTRIBUTION}"
+    return HIGH_SPEED_RAIL_ATTRIBUTION
 
 
 # ---------------------------------------------------------------------------
@@ -674,10 +696,21 @@ def draw_high_speed_rail(ax: GeoAxes, rail: HighSpeedRail, labels: bool = True,
     links that show (indices into *rail*)."""
     scale = _width_scale(ax)
     classes = score_class(rail.score)
+    paths = {k: _path(rail, k) for k in range(len(rail.a))}
+    if rail.router is not None:
+        # The links near the map, drawn city to city, are drawn along OSM's tracks where they can be
+        near = [k for k, path in paths.items()
+                if any(frame.inside(ax, p[:, 0], p[:, 1], margin=1.2).any() for p in _pieces(ax, *path))]
+        rail.router.prepare(paths[k] for k in near)
+        for k in near:
+            track = rail.router.route(rail.names[rail.a[k]], rail.names[rail.b[k]], bool(rail.planned[k]),
+                                      *paths[k])
+            if track is not None:
+                paths[k] = track
     shown: list[tuple[int, np.ndarray]] = []         # the parts on the near side, drawn (the map clips them)
     seen: list[tuple[int, np.ndarray]] = []          # the parts on the map, for the count and the scores
-    for k in range(len(rail.a)):
-        for piece in _pieces(ax, *_path(rail, k)):
+    for k, path in paths.items():
+        for piece in _pieces(ax, *path):
             on_map = frame.inside(ax, piece[:, 0], piece[:, 1])
             if on_map.any():
                 shown.append((k, piece))
@@ -709,10 +742,15 @@ def draw_high_speed_rail(ax: GeoAxes, rail: HighSpeedRail, labels: bool = True,
     return set(links)
 
 
+def _centre(name: str) -> str:
+    """The GHSL urban centre city *name*'s station is in ("" for none)."""
+    return STATIONS[name][3] if name in STATIONS else ""
+
+
 def _draw_stations(ax: GeoAxes, rail: HighSpeedRail, links: list[int], scale: float, labels: bool,
                    limit: int) -> None:
     cities = sorted({int(rail.a[k]) for k in links} | {int(rail.b[k]) for k in links},
-                    key=lambda i: (-rail.population[i], STATIONS.get(rail.names[i], ("", "", 0, ""))[3] != rail.names[i]))
+                    key=lambda i: (-rail.population[i], _centre(rail.names[i]) != rail.names[i]))
     seen = [i for i in cities if on_globe(ax, float(rail.lon[i]), float(rail.lat[i]), margin=1.0)]
     if not seen:
         return
