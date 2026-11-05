@@ -23,7 +23,7 @@ FIELDS = [
     "ecoregions", "realms", "realm_regions", "biome_alpha", "soil", "soil_class",
     "soil_alpha", "soil_property", "soil_depth", "wind", "ice", "ice_year", "crop", "borders", "borders_source",
     "borders_alpha", "no_borders_names", "alliance", "ocean_depth", "ice_age", "currents", "plates", "earthquakes", "volcanoes", "rivers", "basins",
-    "basins_alpha", "cyclones", "cyclones_et", "storms", "storm_pressure", "time_zones", "permafrost", "permafrost_alpha", "population", "population_alpha",
+    "basins_alpha", "cyclones", "cyclones_et", "storms", "storm_pressure", "birds", "bird_max_mb", "bird_geolocators", "time_zones", "permafrost", "permafrost_alpha", "population", "population_alpha",
     "livestock", "livestock_alpha", "malaria", "malaria_year", "malaria_alpha", "aedes", "species", "species_years", "iucn", "iucn_alpha", "cities", "cities_min", "indicator", "indicator_year", "indicator_alpha", "industry", "shipping", "shipping_alpha", "ports", "air_routes", "relief_units", "relief_alpha", "ro_admin", "ro_admin_alpha", "route", "route_legend",
 ]
 

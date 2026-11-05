@@ -417,6 +417,16 @@ class TestBuilding:
         assert sorted(p.name for p in maps.iterdir()) == [
             "kept-0123456789ab.png", "kept-0123456789ab.png.incomplete", "notes.txt.incomplete"]
 
+    def test_bird_studies_go_with_their_maps(self, tmp_path):
+        maps = tmp_path / "maps"
+        maps.mkdir()
+        for name in ("kept-0123456789ab.png", "kept-0123456789ab_bird_studies.txt", "gone-0123456789ab.png",
+                     "gone-0123456789ab_bird_studies.txt"):
+            (maps / name).write_text("x", encoding="utf-8")
+        assert atlas.prune_maps(str(maps), [str(maps / "kept-0123456789ab.png")]) == 1
+        assert sorted(p.name for p in maps.iterdir()) == ["kept-0123456789ab.png",
+                                                          "kept-0123456789ab_bird_studies.txt"]
+
     def test_wide_maps_turn_the_page(self, tmp_path, renders):
         book = _load(tmp_path)
         out = tmp_path / "a.pdf"

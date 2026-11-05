@@ -1,0 +1,9 @@
+# The tracks of the tagged birds of the open Movebank studies between Europe and Africa, coloured by
+# species: storks, kites and other soaring birds funnel over Gibraltar and the Bosporus, while smaller
+# birds cross the Mediterranean and the Sahara on a broad front.
+lat = 30
+lon = 15
+provider = "osm_plain"
+birds = "all"
+no_circles = true
+output = "orthographic_map_europe_africa_osm_plain_z3_birds.png"

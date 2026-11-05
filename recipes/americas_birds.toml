@@ -1,0 +1,9 @@
+# The tracks of the tagged birds of the open Movebank studies across the Americas, coloured by species:
+# ospreys down the Atlantic coast and over Cuba to the Amazon, golden eagles over the Rockies, pelicans and
+# ibis round the Gulf, eiders off Alaska, Hudsonian godwits nonstop over the Pacific to Tierra del Fuego.
+lat = 25
+lon = -90
+provider = "osm_plain"
+birds = "all"
+no_circles = true
+output = "orthographic_map_americas_osm_plain_z3_birds.png"

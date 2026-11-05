@@ -56,6 +56,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
 import atlas as atlases
+from birds import sources_path as bird_sources_path
 import ortho
 import recipe_store
 from crops import CROP_NAMES
@@ -225,6 +226,9 @@ class MapRequest(BaseModel):
     cyclones_et: bool | None = None
     storms: str | None = None
     storm_pressure: float | None = None
+    birds: str | None = None
+    bird_max_mb: float | None = None
+    bird_geolocators: bool | None = None
     time_zones: bool | None = None
     permafrost: bool | None = None
     permafrost_alpha: float | None = None
@@ -357,6 +361,8 @@ class Job:
             "seconds": round(end - self.started, 1) if self.started else None,
             "image": f"/api/maps/{self.id}/image" if self.status == "done" and self.task is None else None,
             "pdf": f"/api/maps/{self.id}/pdf" if self.status == "done" and self.task is not None else None,
+            "bird_studies": f"/api/maps/{self.id}/bird-studies" if self.status == "done" and self.path
+            and self.task is None and os.path.isfile(bird_sources_path(self.path)) else None,
             "progress": self.progress,
         }
 
@@ -558,6 +564,8 @@ def map_options(settings: Settings) -> dict[str, Any]:
         "storms": {"first": ortho.FIRST_STORM_YEAR, "last": ortho.LAST_STORM_YEAR,
                    "pressure": {"default": ortho.DEFAULT_STORM_PRESSURE, "min": ortho.MIN_STORM_PRESSURE,
                                 "max": ortho.MAX_STORM_PRESSURE}},
+        "birds": {"max_mb": {"default": ortho.DEFAULT_BIRD_MAX_MB, "min": ortho.MIN_BIRD_MAX_MB,
+                             "max": ortho.MAX_BIRD_MAX_MB}},
         "earthquakes": {"default": ortho.DEFAULT_MIN_MAGNITUDE, "min": ortho.MIN_MAGNITUDE, "max": ortho.MAX_MAGNITUDE},
         "crops": list(CROP_NAMES),
         "editable": not settings.read_only,
@@ -778,6 +786,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(404, "This map has no image yet.")
         return FileResponse(job.path, media_type="image/png", filename=job.filename,
                             content_disposition_type="attachment" if download else "inline")
+
+    @app.get("/api/maps/{job_id}/bird-studies")
+    def bird_studies(job_id: str) -> FileResponse:
+        job = find(job_id)
+        path = bird_sources_path(job.path) if job.status == "done" and job.task is None and job.path else ""
+        if not path or not os.path.isfile(path):
+            raise HTTPException(404, "This map draws no bird tracks.")
+        return FileResponse(path, media_type="text/plain; charset=utf-8", filename=os.path.basename(path),
+                            content_disposition_type="inline")
 
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
     return app

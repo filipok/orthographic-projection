@@ -323,6 +323,31 @@ class TestMaps:
         assert response.status_code == 422
         assert renders == []
 
+    def test_bird_tracks_and_their_studies(self, client, renders, monkeypatch):
+        def render(**kwargs):
+            path = os.path.join(kwargs["output_dir"], kwargs["output_filename"])
+            os.makedirs(kwargs["output_dir"], exist_ok=True)
+            with open(path, "wb") as fh:
+                fh.write(PNG)
+            with open(path[:-4] + "_bird_studies.txt", "w", encoding="utf-8") as fh:
+                fh.write("- Someone A. 2024. Data from: Storks. [CC0 1.0; 3 birds drawn]\n")
+            renders.append(kwargs)
+            return path
+
+        monkeypatch.setattr(ortho, "generate_orthographic_map", render)
+        job, status = _render(client, city="Paris", birds="white stork", bird_max_mb=200, bird_geolocators=True)
+        assert (renders[0]["birds"], renders[0]["bird_max_mb"], renders[0]["bird_geolocators"]) == \
+            ("white stork", 200, True)
+        assert "--birds 'white stork'" in status["command"] and "--bird-max-mb 200" in status["command"]
+        assert status["bird_studies"] == f"/api/maps/{job.id}/bird-studies"
+        studies = client.get(status["bird_studies"])
+        assert studies.status_code == 200 and "Data from: Storks" in studies.text
+
+    def test_no_bird_studies_without_birds(self, client, renders):
+        job, status = _render(client, city="Paris")
+        assert status["bird_studies"] is None
+        assert client.get(f"/api/maps/{job.id}/bird-studies").status_code == 404
+
     def test_a_failed_render_is_reported(self, client, monkeypatch):
         def fail(**_kwargs):
             raise ortho.GoogleTilesError("API key not valid")

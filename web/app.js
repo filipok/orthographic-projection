@@ -191,6 +191,12 @@ function buildRequest() {
     req.species = $("species").value.trim();
     if ($("species-years").value.trim()) req.species_years = $("species-years").value.trim();
   }
+  if ($("birds").checked) {
+    req.birds = $("bird-names").value.trim() || "all";
+    const maxMb = Number($("bird-max-mb").value);
+    if (maxMb && maxMb !== options.birds.max_mb.default) req.bird_max_mb = maxMb;
+    if ($("bird-geolocators").checked) req.bird_geolocators = true;
+  }
   if ($("iucn").value.trim()) {
     req.iucn = $("iucn").value.trim();
     req.iucn_alpha = changed("iucn-alpha", options.alpha.iucn);
@@ -390,6 +396,10 @@ function fillForm(req) {
   if (req.aedes) pick("aedes", req.aedes, "Aedes species");
   set("species", req.species);
   set("species-years", req.species_years);
+  $("birds").checked = req.birds != null;
+  set("bird-names", req.birds && req.birds.toLowerCase() !== "all" ? req.birds : null);
+  set("bird-max-mb", req.bird_max_mb);
+  $("bird-geolocators").checked = Boolean(req.bird_geolocators);
   set("iucn", req.iucn);
   set("iucn-alpha", req.iucn_alpha);
   set("industry", req.industry);
@@ -702,6 +712,8 @@ function show(job) {
     img.src = job.image;
     $("open").href = job.image;
     $("download").href = `${job.image}?download=1`;
+    $("bird-studies").hidden = !job.bird_studies;
+    if (job.bird_studies) $("bird-studies").href = job.bird_studies;
     $("actions").hidden = false;
   }
 }
@@ -817,6 +829,9 @@ async function init() {
   $("storm-pressure").min = options.storms.pressure.min;
   $("storm-pressure").max = options.storms.pressure.max;
   $("storm-pressure").value = options.storms.pressure.default;
+  $("bird-max-mb").min = options.birds.max_mb.min;
+  $("bird-max-mb").max = options.birds.max_mb.max;
+  $("bird-max-mb").value = options.birds.max_mb.default;
   $("population").append(...options.population_years.slice().reverse().map((y) => option(String(y))));
   $("industry-list").append(...Object.entries(options.industry).map(([name, about]) => option(name, about)));
   $("shipping").append(...Object.entries(options.shipping).map(([name, label]) => option(name, label)));

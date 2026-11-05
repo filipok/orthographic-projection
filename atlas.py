@@ -78,6 +78,7 @@ from matplotlib.patches import Circle, FancyBboxPatch, Rectangle
 from PIL import Image
 
 import frame
+from birds import sources_path as bird_sources_path
 import incomplete
 import ortho
 import recipe_store
@@ -465,6 +466,9 @@ def prune_maps(maps_dir: str, keep: Collection[str]) -> int:
             if _MAP_FILE.match(name.removesuffix(INCOMPLETE)) and name.removesuffix(INCOMPLETE) not in keep_names:
                 os.remove(os.path.join(maps_dir, name))
                 removed += 1
+                studies = os.path.join(maps_dir, bird_sources_path(name.removesuffix(INCOMPLETE)))  # its bird studies
+                if os.path.exists(studies):
+                    os.remove(studies)
     return removed
 
 
