@@ -243,8 +243,11 @@
         <label class="check"><input id="birds" type="checkbox"> Tracks of tagged birds, by species (~1.7 GB once)</label>
         <label class="field" data-show="birds" hidden><span>Only these, separated by commas (blank for every bird)</span>
           <input id="bird-names" type="text" placeholder="white stork, black kite, Accipitridae" autocomplete="off"></label>
-        <label class="field" data-show="birds" hidden><span>Leave out study files larger than (MB)</span>
-          <input id="bird-max-mb" type="number" step="10"></label>
+        <label class="field" data-show="birds" hidden><span>Largest study file to download (MB)</span>
+          <input id="bird-max-mb" type="number" step="10" aria-describedby="bird-max-mb-hint"></label>
+        <p id="bird-max-mb-hint" class="hint" data-show="birds" hidden>Larger studies are left out. 50 MB:
+          ~230 files, 1.7 GB in all; 500 MB: ~30 GB, adding the biggest GPS studies (vultures, storks).
+          Each file is downloaded once, then kept.</p>
         <label class="check" data-show="birds" hidden><input id="bird-geolocators" type="checkbox">
           And geolocator tracks (~200 km), paler</label>
       </details>
