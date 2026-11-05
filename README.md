@@ -55,6 +55,7 @@ The main script is [ortho.py](ortho.py).
 - [Statistics](#statistics)
 - [Industry](#industry)
 - [Shipping, Ports and Air Routes](#shipping-ports-and-air-routes)
+- [High-Speed Rail](#high-speed-rail)
 - [Polar Ice](#polar-ice)
 - [Elevation](#elevation)
 - [Vegetation](#vegetation)
@@ -246,6 +247,14 @@ The main script is [ortho.py](ortho.py).
 
 *Left: The airline network, wider for routes more airlines fly (plain OSM, zoom 3, OpenFlights 2014).*<br>
 *Right: Every route out of London Heathrow (plain OSM, zoom 3, OpenFlights 2014).*
+
+<p align="center">
+  <img src="sample_europe_high_speed_rail.png" alt="A disc 1,500 km around Germany with Europe's high-speed lines from city to city, wider and darker the higher each link's gravity score, the score written along it: London-Lille 576k, Lille-Paris 682k and Rome-Naples 510k the strongest, Paris-Lyon 480k, the German, Italian and Spanish lines in between, and small scores on the branches to Spain's smaller towns; Rail Baltica from Warsaw through Kaunas and Riga to Tallinn, HS2 and Budapest-Belgrade dashed" width="48%">
+  <img src="sample_east_asia_high_speed_rail.png" alt="A disc 2,100 km around the East China Sea with East Asia's high-speed lines by gravity score: China's network from Harbin to Kunming and Hong Kong, darkest and widest between Shanghai and the Yangtze delta's cities, Beijing and Tianjin, and the Pearl River Delta and Shantou (23M), with the Shinkansen from Kagoshima to Hokkaido, Korea's KTX from Seoul to Busan and Mokpo, and Taiwan's line from Taipei to Kaohsiung" width="48%">
+</p>
+
+*Left: Europe's high-speed lines by gravity score, the planned ones dashed (plain OSM, radius 1,500 km).*<br>
+*Right: East Asia's high-speed lines by gravity score (plain OSM, radius 2,100 km).*
 
 <p align="center">
   <img src="sample_europe_night.png" alt="Globe centred on the Balkans at night, NASA's Black Marble: Europe's cities as a web of lights from the Low Countries and the Ruhr to Italy and Moscow, the Nile valley a bright thread across the dark desert, the Gulf and India lit up, the seas and the Sahara black" width="48%">
@@ -519,7 +528,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `storms`, `storms:2010-2020`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `birds`, `birds:white stork+black kite`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `relief-units`, `relief-units:regions`, `ro-admin`, `ro-admin:uats` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `storms`, `storms:2010-2020`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `birds`, `birds:white stork+black kite`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `high-speed-rail`, `high-speed-rail:planned`, `relief-units`, `relief-units:regions`, `ro-admin`, `ro-admin:uats` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -790,6 +799,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--shipping-alpha ALPHA` | Opacity of the ship traffic (0–1) | `0.85` |
 | `--ports [KIND]` | Draw the ports as dots sized by the ships calling a year (2019–2025), the busiest named: `all` (default), `container`, `tanker`, `dry-bulk`, `general-cargo` or `roro` | — |
 | `--air-routes AIRPORTS` | Draw air routes as great-circle arcs: `all`, or airports by code or city (`LHR`, `EGLL`, `London`) and airlines (`airline:BA`), comma-separated | — |
+| `--high-speed-rail [WHICH]` | Draw the high-speed lines, each link between two cities by its gravity score, (P1 × P2 / 100,000) / (2 × minutes): `open` (default), or `planned` to add the lines planned or under construction, dashed | — |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
 | `--route GEOJSON` | GeoJSON route file to draw; repeat for multiple files | — |
@@ -811,7 +821,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
 Historical borders, The European Union and NATO, Relief units of Romania, Plate tectonics, rivers, cyclones, storms, time zones, permafrost, People and livestock,
-Malaria and Aedes mosquitoes, Species records (GBIF), Bird tracks (Movebank Data Repository), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Shipping, ports and air routes (World Bank and IMF, OpenFlights), Winds, Polar ice, Crops, Routes and areas, Recipes.
+Malaria and Aedes mosquitoes, Species records (GBIF), Bird tracks (Movebank Data Repository), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Shipping, ports, air routes and high-speed rail (World Bank and IMF, OpenFlights), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -881,6 +891,8 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `bering_storms.toml` | The storms of 2020 between Sakhalin, the Bering Strait and the Aleutians |
 | `americas_birds.toml` | The tracks of tagged birds across the Americas, by species |
 | `europe_africa_birds.toml` | The tracks of tagged birds between Europe and Africa, by species |
+| `europe_high_speed_rail.toml` | Europe's high-speed lines by gravity score, with the planned ones (Rail Baltica, HS2) dashed |
+| `east_asia_high_speed_rail.toml` | East Asia's high-speed lines by gravity score: China, Japan, Korea and Taiwan |
 | `pacific_typhoons_extratropical.toml` | The typhoons since 2015 and their extratropical stage |
 | `africa_river_basins.toml` | Africa's river basins and rivers |
 | `asia_population.toml` | Population density in 2020, centred on the Bay of Bengal |
@@ -2521,6 +2533,59 @@ The samples above are `python ortho.py --config recipes/world_shipping.toml`,
 `recipes/heathrow_air_routes.toml`, `recipes/east_asia_ports.toml`,
 `recipes/europe_night.toml` and `recipes/romania_night.toml`.
 
+## High-Speed Rail
+
+`--high-speed-rail` draws the high-speed lines city to city, each link between
+two cities next to each other on a line scored as a gravity model scores it,
+after a #30DayMapChallenge map of Rail Baltica:
+
+```text
+gravity = (P1 × P2 / 100,000) / (2 × t)
+```
+
+P1 and P2 are the people in the two cities and t the fastest scheduled train
+between them in minutes. The links are drawn wider and darker the higher they
+score, in six classes a power of ten apart (under 1k, 1k–10k … 10M or more),
+and the highest scores are written along their links where they fit
+(`730`, `27k`, `4.2M`). The cities are dotted, sized by their people, and the
+largest named.
+
+- **The lines**: those built for 250 km/h or more, and the lines upgraded for
+  about 200 km/h that join them, with high-speed trains on them in 2026: in
+  Europe (France, Spain, Italy, Germany, Benelux and HS1, Switzerland,
+  Austria, Poland, Serbia), East Asia (China's trunk lines, the Shinkansen,
+  Korea's KTX, Taiwan) and, fewer, Turkey, Russia, Morocco, Saudi Arabia,
+  Uzbekistan, Indonesia and the Northeast Corridor: 197 links between 206
+  cities. `--high-speed-rail planned` adds, dashed, the lines planned or under
+  construction with their promised times: Rail Baltica (Warsaw–Białystok–
+  Kaunas–Riga–Tallinn and Kaunas–Vilnius), HS2, the Chūō Shinkansen,
+  Budapest–Belgrade, Lisbon–Porto and Mumbai–Ahmedabad.
+- **The people**: those in the GHSL urban centre each station is in
+  (GHS-UCDB R2024A, 2025), the metropolitan area as it is built, the same as
+  `--cities` draws; a town too small or sparse to be one (Toledo, Cuenca,
+  Segovia, Zamora, Santiago de Compostela) takes its people in GeoNames. As
+  GHSL joins built-up areas across city limits, Tokyo takes in Yokohama, Osaka
+  Kyoto, Suzhou Wuxi and Guangzhou Shenzhen: such links within one urban area
+  are drawn thin and grey, not scored, and the cities beyond score with the
+  whole area (Shenzhen–Hong Kong, 57M).
+- **The times and the places** were compiled for this layer from the 2025–26
+  timetables, in round minutes, and are approximate, as are the lines drawn:
+  from station to station through a few points along their way, not along
+  their track. Stations of towns too small to be an urban centre are left
+  out, so a link runs between the two cities they lie between. All of it is
+  bundled in [high_speed_rail.py](high_speed_rail.py) (`STATIONS`,
+  `OPEN_LINES`, `PLANNED_LINES`, `VIA`), to be corrected or added to there;
+  nothing is downloaded.
+
+```powershell
+python ortho.py --lat 49 --lon 10 --radius 1500 --provider osm_plain --high-speed-rail planned --no-circles
+python ortho.py --lat 32 --lon 121 --radius 2100 --provider osm_plain --high-speed-rail --no-circles
+python ortho.py --lat 57 --lon 23 --radius 600 --high-speed-rail planned
+```
+
+The samples above are `python ortho.py --config recipes/europe_high_speed_rail.toml`
+and `recipes/east_asia_high_speed_rail.toml`.
+
 ## Polar Ice
 
 `--ice` (`ice=True` in the API, or the interactive prompt) draws the ice at both
@@ -3027,7 +3092,7 @@ to the attribution block.
 | Natural Earth 1:50m countries (for `--indicator`) | Natural Earth contributors | Public domain | [naturalearthdata.com](https://www.naturalearthdata.com/) |
 | Eurostat regional statistics, read from Eurostat's API | Eurostat | Reuse allowed with acknowledgement ([Eurostat copyright notice](https://ec.europa.eu/eurostat/about-us/policies/copyright)) | [Eurostat database](https://ec.europa.eu/eurostat/data/database), [API](https://wikis.ec.europa.eu/display/EUROSTATHELP/API+Statistics+-+data+query) |
 | NUTS regions (2024, 2021, 2016) at 1:10 million, from GISCO | Eurostat GISCO; © EuroGeographics for the administrative boundaries | Free with attribution; see [GISCO's terms](https://ec.europa.eu/eurostat/web/gisco/geodata/administrative-units) | [GISCO NUTS](https://ec.europa.eu/eurostat/web/gisco/geodata/statistical-units/territorial-units-statistics) |
-| GeoNames places of 5,000 people and more (cities5000), used to restore the urban centres' names | GeoNames | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [geonames.org](https://www.geonames.org), [download.geonames.org/export/dump](https://download.geonames.org/export/dump/) |
+| GeoNames places of 5,000 people and more (cities5000), used to restore the urban centres' names, and the people of the few high-speed rail towns outside them | GeoNames | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [geonames.org](https://www.geonames.org), [download.geonames.org/export/dump](https://download.geonames.org/export/dump/) |
 | GHS Urban Centre Database 2025 (R2024A, v1.2), multi-temporal urban centres 1975–2030 | European Commission, Joint Research Centre (Mari Rivero, Melchiorri et al. 2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd](https://doi.org/10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd), [human-settlement.emergency.copernicus.eu](https://human-settlement.emergency.copernicus.eu/ghs_ucdb_2024.php) |
 | BirdLife bird species distribution maps (GeoPackage) and the HBW-BirdLife checklist, read from files each user requests | BirdLife International and Handbook of the Birds of the World | [BirdLife data terms of use](https://datazone.birdlife.org/about-our-science/terms-of-use): non-commercial use; no reposting or redistribution, of the data or of works made from it, without BirdLife's permission. Not shipped or downloaded here | [datazone.birdlife.org/species/requestdis](https://datazone.birdlife.org/species/requestdis) |
 | IUCN Red List range polygons (spatial data), read from files each user downloads | IUCN | [IUCN Red List Terms and Conditions of Use](https://www.iucnredlist.org/terms/terms-of-use): non-commercial use; no reposting or redistribution, of the data or of works made from it, without IUCN's permission. Not shipped or downloaded here | [iucnredlist.org/resources/spatial-data-download](https://www.iucnredlist.org/resources/spatial-data-download) |
@@ -3097,6 +3162,7 @@ the globe:
 | `--shipping` | *Shipping: Global Shipping Traffic Density (World Bank, IMF, AIS 2015-2021), CC BY 4.0* |
 | `--ports` | *Ports: IMF PortWatch (portwatch.imf.org), ships calling 2019-2025* |
 | `--air-routes` | *Air routes: OpenFlights (openflights.org), June 2014, ODbL* |
+| `--high-speed-rail` | *High-speed rail: lines and fastest scheduled times compiled for ortho (2025-26, approximate); populations GHS-UCDB R2024A 2025 (European Commission, JRC) and GeoNames, CC BY 4.0* |
 | `--indicator` | *Statistics: World Bank, World Development Indicators (CODE), CC BY 4.0, retrieved YYYY-MM-DD; countries: Natural Earth*, or *Statistics: Eurostat (DATASET), retrieved YYYY-MM-DD; regions: © EuroGeographics for the administrative boundaries* |
 | `--iucn` | *Range: IUCN (YYYY), The IUCN Red List of Threatened Species, spatial data of YYYY-MM-DD*, or for birds *Range: BirdLife International and Handbook of the Birds of the World (YYYY), Bird species distribution maps of the world, version YYYY.N* |
 | `--crop` overlay | *Crop areas: CROPGRIDS v1.08, Tang et al. (2024), CC BY 4.0* |
@@ -3180,6 +3246,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [shipping.py](shipping.py): ship traffic from the World Bank and IMF's AIS density grids, read once into cached tiles
 - [ports.py](ports.py): the IMF PortWatch ports as dots sized by the ships calling, the busiest named
 - [air_routes.py](air_routes.py): the OpenFlights airline network as great-circle arcs
+- [high_speed_rail.py](high_speed_rail.py): the high-speed lines city to city, each link by gravity score, from the bundled lines, journey times and GHSL populations
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key; Crimea kept in Ukraine
 - [alliances.py](alliances.py): today's European Union (a line) and NATO (a shade) (Natural Earth countries) and their key
 - [relief.py](relief.py): Romania's relief units (Posea & Badea, geo-spatial.org): names restored from the legend, fills by region, names and key

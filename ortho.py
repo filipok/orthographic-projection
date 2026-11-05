@@ -91,6 +91,10 @@ from air_routes import (
     AirRoutesDataError, AIR_ROUTES_ATTRIBUTION, add_air_routes_legend, draw_air_routes, load_air_routes,
     resolve_air_routes,
 )
+from high_speed_rail import (
+    CHOICES as HIGH_SPEED_RAIL_CHOICES, HIGH_SPEED_RAIL_ATTRIBUTION, add_high_speed_rail_legend,
+    draw_high_speed_rail, load_high_speed_rail, resolve_high_speed_rail,
+)
 from shipping import (
     KINDS as SHIP_KINDS, SHIPPING_ATTRIBUTION, ShippingDataError, add_shipping_legend, add_shipping_overlay,
     resolve_ship_kind,
@@ -911,6 +915,7 @@ def generate_orthographic_map(
     shipping_alpha: float = 0.85,
     ports: str | None = None,
     air_routes: str | None = None,
+    high_speed_rail: str | None = None,
     relief_units: str | None = None,
     relief_alpha: float = 0.55,
     ro_admin: str | None = None,
@@ -1234,6 +1239,13 @@ def generate_orthographic_map(
         more airlines: ``"all"`` for the whole network, or airports by code
         or city (``"LHR"``, ``"London"``) and airlines (``"airline:BA"``),
         comma-separated.
+    high_speed_rail : str, optional
+        Draw the high-speed rail lines, each link between two cities on them
+        wider and darker the higher its gravity score, (P1 × P2 / 100,000) /
+        (2 × minutes), from the people in the cities (GHSL 2025) and the
+        fastest train between them: ``"open"`` for the lines open in 2026, or
+        ``"planned"`` for those planned or under construction too, dashed (see
+        :mod:`high_speed_rail`).
     relief_units : str, optional
         Draw Romania's relief units (Posea & Badea 1984, mapped by Candrea
         et al. 2008), filled in the colour of their major region (paler for
@@ -1330,6 +1342,7 @@ def generate_orthographic_map(
             flights = load_air_routes(resolve_air_routes(air_routes))
         except AirRoutesDataError as e:
             incomplete.note(logger, "Skipping the air routes: %s", e)
+    rail = load_high_speed_rail(resolve_high_speed_rail(high_speed_rail)) if high_speed_rail else None
     statistic = None
     if indicator:
         stat_year = resolve_indicator_year(indicator_year)
@@ -2067,6 +2080,9 @@ def generate_orthographic_map(
     flights_shown = 0
     if flights is not None:
         flights_shown = max(draw_air_routes(ax, flights) for ax in axes)
+    rail_shown: set[int] = set()
+    if rail is not None:
+        rail_shown = set().union(*(draw_high_speed_rail(ax, rail) for ax in axes))
     if routes:
         for ax in axes:
             draw_routes(ax, routes)
@@ -2137,6 +2153,8 @@ def generate_orthographic_map(
         keys.append(add_admin_legend(near, divisions, divisions_shown, alpha=ro_admin_alpha, x=key_x))
     if flights is not None:
         keys.append(add_air_routes_legend(near, flights, flights_shown, x=key_x))
+    if rail is not None:
+        keys.append(add_high_speed_rail_legend(near, rail, rail_shown, x=key_x))
     if sightings is not None:
         keys.append(add_occurrences_legend(near, sightings, x=key_x))
     if crop_layer is not None:
@@ -2220,6 +2238,8 @@ def generate_orthographic_map(
         credits.append(ADMIN_ATTRIBUTION)
     if flights is not None:
         credits.append(AIR_ROUTES_ATTRIBUTION)
+    if rail is not None:
+        credits.append(HIGH_SPEED_RAIL_ATTRIBUTION)
     if sightings is not None:
         credits.append(gbif_attribution(sightings))
     if crop_layer is not None:
@@ -2803,6 +2823,7 @@ EXTRA_LAYERS: dict[str, tuple[str, Any]] = {
     "permafrost": ("permafrost", True), "population": ("population", LATEST_POPULATION_YEAR),
     "malaria": ("malaria", "pf"), "aedes": ("aedes", "both"), "cities": ("cities", 2025),
     "shipping": ("shipping", "commercial"), "ports": ("ports", "all"), "air-routes": ("air_routes", "all"),
+    "high-speed-rail": ("high_speed_rail", "open"),
     "relief-units": ("relief_units", "units"), "ro-admin": ("ro_admin", "counties"),
 }
 
@@ -2855,6 +2876,8 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             spec = item.split(":", 1)[1].strip()
             resolve_air_routes(spec)
             chosen["air_routes"] = spec or "all"
+        elif item.startswith("high-speed-rail:"):
+            chosen["high_speed_rail"] = resolve_high_speed_rail(item.split(":", 1)[1])
         elif item.startswith("birds:"):
             names = item.split(":", 1)[1].strip()
             chosen["birds"] = ", ".join(parse_birds(names.replace("+", ","))) or "all"
@@ -2874,7 +2897,8 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
                              "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, storms:YEARS, birds:NAMES, indicator:NAME, industry:SECTORS, "
-                             "shipping:KIND, ports:KIND, air-routes:AIRPORTS, relief-units:regions, ro-admin:uats.")
+                             "shipping:KIND, ports:KIND, air-routes:AIRPORTS, high-speed-rail:planned, relief-units:regions, "
+                             "ro-admin:uats.")
     return chosen
 
 
@@ -2882,7 +2906,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, storms:2010-2020, birds:white stork+black kite, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, relief-units:regions, ro-admin:uats …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, storms:2010-2020, birds:white stork+black kite, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, high-speed-rail:planned, relief-units:regions, ro-admin:uats …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -3482,7 +3506,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
                              "named: comma-separated sectors (" + ", ".join(INDUSTRY_SECTORS) + ") or groups ("
                              + ", ".join(INDUSTRY_GROUPS) + "). Each sector is downloaded once.")
 
-    traffic = parser.add_argument_group("Shipping, ports and air routes (World Bank and IMF, OpenFlights)")
+    traffic = parser.add_argument_group("Shipping, ports, air routes and high-speed rail (World Bank and IMF, OpenFlights)")
     traffic.add_argument("--shipping", nargs="?", const="commercial", metavar="KIND",
                          help="Colour the sea by how busy it is with ships, from their AIS positions in 2015-2021: "
                               + ", ".join(SHIP_KINDS) + " (default: commercial). Each kind is downloaded once "
@@ -3497,6 +3521,12 @@ def build_cli_parser() -> argparse.ArgumentParser:
                          help="Draw air routes as great-circle arcs, wider the more airlines fly them (OpenFlights, "
                               "2014): 'all' for the whole network, or comma-separated airports by code or city "
                               "(LHR, EGLL, London) and airlines (airline:BA, airline:Lufthansa).")
+    traffic.add_argument("--high-speed-rail", nargs="?", const="open", metavar="WHICH",
+                         help="Draw the high-speed rail lines, each link between two cities wider and darker the "
+                              "higher its gravity score, (P1 x P2 / 100,000) / (2 x minutes), from the people in "
+                              "the cities (GHSL 2025) and the fastest train between them: open (the default), or "
+                              "planned to add the lines planned or under construction, dashed. Nothing is "
+                              "downloaded.")
 
     winds = parser.add_argument_group("Winds (NCEP/NCAR Reanalysis)")
     winds.add_argument(
@@ -4031,6 +4061,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         logger.warning("--ro-admin-alpha is ignored because no --ro-admin was given.")
     if args.air_routes:
         resolve_air_routes(args.air_routes)
+    if args.high_speed_rail:
+        resolve_high_speed_rail(args.high_speed_rail)
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
     resolve_soil_classes(args.soil_class or [])
@@ -4211,6 +4243,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         shipping_alpha=args.shipping_alpha,
         ports=args.ports,
         air_routes=args.air_routes,
+        high_speed_rail=args.high_speed_rail,
         relief_units=args.relief_units,
         relief_alpha=args.relief_alpha,
         ro_admin=args.ro_admin,

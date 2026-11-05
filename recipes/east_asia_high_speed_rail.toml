@@ -1,0 +1,10 @@
+# East Asia's high-speed lines by gravity score, (P1 x P2 / 100,000) / (2 x minutes): China's network from
+# Harbin to Hong Kong and Kunming, the Shinkansen, Korea's KTX and Taiwan's line, with the links between the
+# Yangtze delta's cities, Beijing and Tianjin, and the Pearl River Delta and Hong Kong scoring highest.
+lat = 32
+lon = 121
+provider = "osm_plain"
+radius = 2100
+high_speed_rail = "open"
+no_circles = true
+output = "orthographic_map_east_asia_osm_plain_z7_r2100km_high_speed_rail.png"

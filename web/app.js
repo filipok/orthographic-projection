@@ -213,6 +213,7 @@ function buildRequest() {
   }
   if ($("ports").value) req.ports = $("ports").value;
   if ($("air-routes").value.trim()) req.air_routes = $("air-routes").value.trim();
+  if ($("high-speed-rail").value) req.high_speed_rail = $("high-speed-rail").value;
   if ($("cities-year").value) {
     req.cities = Number($("cities-year").value);
     if ($("cities-min").value) req.cities_min = Number($("cities-min").value);
@@ -407,6 +408,7 @@ function fillForm(req) {
   set("shipping-alpha", req.shipping_alpha);
   if (req.ports) pick("ports", req.ports, "kind of port traffic");
   set("air-routes", req.air_routes);
+  if (req.high_speed_rail) pick("high-speed-rail", req.high_speed_rail, "high-speed rail choice");
   set("indicator", req.indicator);
   set("indicator-year", req.indicator_year);
   set("indicator-alpha", req.indicator_alpha);
@@ -836,6 +838,7 @@ async function init() {
   $("industry-list").append(...Object.entries(options.industry).map(([name, about]) => option(name, about)));
   $("shipping").append(...Object.entries(options.shipping).map(([name, label]) => option(name, label)));
   $("ports").append(...Object.entries(options.ports).map(([name, label]) => option(name, label)));
+  $("high-speed-rail").append(...Object.entries(options.high_speed_rail).map(([name, label]) => option(name, label)));
   $("ro-admin").append(...Object.entries(options.ro_admin).map(([name, label]) => option(name, label)));
   $("relief-units").append(...Object.entries(options.relief_units).map(([name, label]) => option(name, label)));
   $("indicator-list").append(...Object.entries(options.indicators).map(([name, title]) => option(name, title)));

@@ -254,6 +254,7 @@ class MapRequest(BaseModel):
     shipping_alpha: float | None = None
     ports: str | None = None
     air_routes: str | None = None
+    high_speed_rail: str | None = None
     relief_units: str | None = None
     relief_alpha: float | None = None
     ro_admin: str | None = None
@@ -553,6 +554,8 @@ def map_options(settings: Settings) -> dict[str, Any]:
                           for name, preset in ortho.EUROSTAT_PRESETS.items()}},
         "shipping": {name: kind.label for name, kind in ortho.SHIP_KINDS.items()},
         "ports": {name: kind.label for name, kind in ortho.PORT_KINDS.items()},
+        "high_speed_rail": {"open": "The lines open in 2026",
+                            "planned": "And those planned or under construction, dashed"},
         "relief_units": {"units": "Every unit, down to single depressions and plains (820)",
                          "regions": "The 16 major regions"},
         "ro_admin": {"counties": "The 41 counties and Bucharest, with their seats",

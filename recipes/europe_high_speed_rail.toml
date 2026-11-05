@@ -1,0 +1,10 @@
+# Europe's high-speed lines, each link between two cities by its gravity score, (P1 x P2 / 100,000) /
+# (2 x minutes): London-Paris and Rome-Naples score highest, the Spanish branches to small towns lowest;
+# the planned lines dashed, Rail Baltica from Warsaw to Tallinn among them.
+lat = 49
+lon = 10
+provider = "osm_plain"
+radius = 1500
+high_speed_rail = "planned"
+no_circles = true
+output = "orthographic_map_europe_osm_plain_z7_r1500km_high_speed_rail_planned.png"

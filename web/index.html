@@ -289,7 +289,7 @@
       </details>
 
       <details>
-        <summary>Shipping, ports and air routes (World Bank and IMF, OpenFlights)</summary>
+        <summary>Shipping, ports, air routes and high-speed rail (World Bank and IMF, OpenFlights)</summary>
         <label class="field"><span>Ship traffic, from AIS positions 2015-2021 (each kind downloaded once, 20-510 MB)</span>
           <select id="shipping"><option value="">None</option></select></label>
         <label class="field slider" data-show="shipping" hidden><span>Opacity <output for="shipping-alpha"></output></span>
@@ -299,6 +299,9 @@
         <label class="field"><span>Air routes, 2014: all, or airports and airlines, comma-separated</span>
           <input id="air-routes" type="text" placeholder="all, LHR, London, airline:BA" autocomplete="off"
                  spellcheck="false"></label>
+        <label class="field"><span>High-speed rail, each link by gravity score: people in the two cities over the
+          fastest train's minutes</span>
+          <select id="high-speed-rail"><option value="">None</option></select></label>
       </details>
 
       <details>

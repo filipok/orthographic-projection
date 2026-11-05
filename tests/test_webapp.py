@@ -272,6 +272,13 @@ class TestMaps:
                                                                                                    "LIS")
         assert "--shipping fishing" in status["command"] and "--air-routes LIS" in status["command"]
 
+    def test_high_speed_rail(self, client, renders):
+        options = client.get("/api/options").json()
+        assert list(options["high_speed_rail"]) == ["open", "planned"]
+        _, status = _render(client, city="Paris", high_speed_rail="planned")
+        assert renders[0]["high_speed_rail"] == "planned"
+        assert "--high-speed-rail planned" in status["command"]
+
     def test_industry(self, client, renders):
         _, status = _render(client, city="Lisbon", industry="petrochemical,steel")
         assert renders[0]["industry"] == "petrochemical,steel"
