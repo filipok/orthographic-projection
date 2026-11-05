@@ -50,6 +50,7 @@ The main script is [ortho.py](ortho.py).
 - [Malaria and Aedes Mosquitoes](#malaria-and-aedes-mosquitoes)
 - [Species Records](#species-records)
 - [Species Ranges](#species-ranges)
+- [Bird Tracks](#bird-tracks)
 - [Cities](#cities)
 - [Statistics](#statistics)
 - [Industry](#industry)
@@ -174,6 +175,14 @@ The main script is [ortho.py](ortho.py).
 
 *Left: The storms of 2020 between Sakhalin, the Bering Strait and the Aleutians, by central pressure (plain OSM, radius 2,600 km, ERA5 tracks by Crawford et al. 2021).*<br>
 *Right: The typhoons since 2015 and, in violet, their extratropical stage (plain OSM, zoom 3, IBTrACS).*
+
+<p align="center">
+  <img src="sample_americas_birds.png" alt="Globe centred on the Gulf of Mexico with the tracks of thousands of tagged birds coloured by species: ospreys in cyan from the eastern United States across Cuba and the Caribbean into Colombia and the Amazon, golden eagles in purple over the Rockies, bald eagles in green across Quebec, Leach's storm petrels in a dense red tangle off Newfoundland, brown pelicans in blue and white ibis in pink along the Gulf coast, and Hudsonian godwits in teal flying straight over the Pacific from Texas to Tierra del Fuego" width="48%">
+  <img src="sample_europe_africa_birds.png" alt="Globe centred on the Mediterranean with the tracks of thousands of tagged birds coloured by species: white storks in red funnelling from Germany over the Bosporus and down the Nile valley to East and South Africa, and over Gibraltar to West Africa, Montagu's harriers in blue crossing the Sahara on a broad front to the Sahel, barnacle and white-fronted geese in pink and green from the Netherlands to the Russian Arctic, and demoiselle cranes in yellow from Kazakhstan to India" width="48%">
+</p>
+
+*Left: The tracks of the tagged birds of the open Movebank studies across the Americas, by species (plain OSM, zoom 3).*<br>
+*Right: The same between Europe and Africa: storks over the Bosporus and Gibraltar, harriers across the Sahara, geese to the Arctic (plain OSM, zoom 3).*
 
 <p align="center">
   <img src="sample_asia_population.png" alt="Globe centred on the Bay of Bengal with population density in 2020, from pale yellow under 1 person per km² across Siberia, Tibet and Australia to deep red over 1,000 along the Ganges plain, eastern China, Java and the Nile" width="48%">
@@ -339,6 +348,7 @@ The main script is [ortho.py](ortho.py).
 - Optional malaria parasite rate, *P. falciparum* or *P. vivax*, for any year from 2000 to 2025, and where the dengue mosquitoes *Aedes aegypti* and *Ae. albopictus* have been recorded
 - Optional records of any species, genus or family from GBIF, by scientific or common name, for all years or a span of years
 - Optional IUCN Red List range of a species, genus or family, from range files you download from IUCN: where it lives, where it may still live, where it was introduced and where it has died out
+- Optional tracks of tagged birds worldwide, from the open studies in the Movebank Data Repository, coloured by species, for every bird or the species, genera and families you name
 - Optional big cities: built-up urban centres (metropolitan areas) as their real shape, the largest named, for any five-year step from 1975 to 2030
 - Optional statistics: each country shaded by a World Bank figure (GDP, life expectancy, CO₂ per person, internet use and 1,400 more), or each European region by a Eurostat one (unemployment, GDP, population density by NUTS 2 or 3 region), for any year
 - Optional industry: refineries, petrochemical and chemical plants, steelworks, aluminium, cement, glass, paper, mines and fossil-fuel power stations worldwide, as circles sized by their emissions, the largest named
@@ -509,7 +519,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `storms`, `storms:2010-2020`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `relief-units`, `relief-units:regions`, `ro-admin`, `ro-admin:uats` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `storms`, `storms:2010-2020`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `birds`, `birds:white stork+black kite`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `relief-units`, `relief-units:regions`, `ro-admin`, `ro-admin:uats` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -599,6 +609,10 @@ python ortho.py --lat 52 --lon 0 --radius 900 --species "red fox" --species-year
 
 # A species' IUCN range, from range files you downloaded (see "Species Ranges")
 python ortho.py --lat 10 --lon 30 --iucn lion --species lion
+
+# The tracks of tagged birds, coloured by species (see "Bird Tracks")
+python ortho.py --lat 30 --lon 15 --birds --no-circles
+python ortho.py --lat 40 --lon 20 --radius 3000 --birds "white stork, black kite"
 
 # Big cities, and how they grew (see "Cities")
 python ortho.py --lat 25 --lon 100 --cities
@@ -763,6 +777,9 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--iucn NAME` | Draw the IUCN Red List range of a species, genus or family, by scientific or common name: `"Panthera leo"`, `lion`, `Felidae` | — |
 | `--iucn-data PATH` | Folder, zip, `.shp` or `.gpkg` of IUCN or BirdLife range files | `~/.cache/ortho_tiles/iucn` |
 | `--iucn-alpha ALPHA` | Opacity of the IUCN range (0–1) | `0.45` |
+| `--birds [NAMES]` | Draw the tracks of tagged birds from the open Movebank studies, by species: every bird, or species, genera or families separated by commas: `"white stork, Accipitridae"` | off (every bird when given alone) |
+| `--bird-max-mb MB` | Leave out the study files larger than MB (1–5000): 50 MB is ~1.7 GB in all, 500 MB ~30 GB | `50` |
+| `--bird-geolocators` | With `--birds`, draw the light-level geolocator tracks too (~200 km accuracy), paler | off |
 | `--cities [YEAR]` | Draw the built-up urban centres and name the largest, as of `YEAR` (1975–2030 every five years; 2030 projected) | off (`2025` when given alone) |
 | `--cities-min PEOPLE` | Show only centres of at least this many people | 1,000,000 on a whole globe, fewer on a closer map (down to 50,000) |
 | `--indicator NAME` | Shade each country by a World Bank statistic (`life-expectancy`, `gdp-per-person`, a code such as `NY.GDP.PCAP.CD`) or each European region by a Eurostat one (`eurostat:unemployment`, `eurostat:DATASET?dim=CODE&level=nuts3`) | — |
@@ -794,7 +811,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 `python ortho.py --help` lists the options in groups: Location, Imagery and
 output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
 Historical borders, The European Union and NATO, Relief units of Romania, Plate tectonics, rivers, cyclones, storms, time zones, permafrost, People and livestock,
-Malaria and Aedes mosquitoes, Species records (GBIF), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Shipping, ports and air routes (World Bank and IMF, OpenFlights), Winds, Polar ice, Crops, Routes and areas, Recipes.
+Malaria and Aedes mosquitoes, Species records (GBIF), Bird tracks (Movebank Data Repository), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Shipping, ports and air routes (World Bank and IMF, OpenFlights), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
 ### Recipe Files
 
@@ -862,6 +879,8 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `ring_of_fire.toml` | Plate boundaries, earthquakes and volcanoes of the western Pacific |
 | `atlantic_currents_hurricanes.toml` | The Atlantic's currents and hurricane tracks |
 | `bering_storms.toml` | The storms of 2020 between Sakhalin, the Bering Strait and the Aleutians |
+| `americas_birds.toml` | The tracks of tagged birds across the Americas, by species |
+| `europe_africa_birds.toml` | The tracks of tagged birds between Europe and Africa, by species |
 | `pacific_typhoons_extratropical.toml` | The typhoons since 2015 and their extratropical stage |
 | `africa_river_basins.toml` | Africa's river basins and rivers |
 | `asia_population.toml` | Population density in 2020, centred on the Bay of Bengal |
@@ -2228,6 +2247,63 @@ python ortho.py --lat 30 --lon -60 --iucn osprey
 python ortho.py --lat 20 --lon 10 --iucn "white stork"
 ```
 
+## Bird Tracks
+
+`--birds` draws where tagged birds flew, worldwide: the GPS and satellite
+(Argos) tracks of the studies published in the
+[Movebank Data Repository](https://datarepository.movebank.org/), each bird's
+track a line coloured by its species. Ospreys fly down the Atlantic coast and
+over Cuba to Colombia and the Amazon, Hudsonian godwits nonstop over the
+Pacific to Tierra del Fuego, white storks funnel over the Bosporus and
+Gibraltar, Montagu's harriers cross the Sahara on a broad front, and geese
+fly from the Netherlands to the Russian Arctic.
+
+```powershell
+python ortho.py --lat 25 --lon -90 --birds --no-circles
+python ortho.py --lat 30 --lon 15 --birds --no-circles
+python ortho.py --lat 40 --lon 20 --radius 3000 --birds "white stork, black kite"
+python ortho.py --lat 60 --lon -150 --radius 2500 --birds Anatidae
+python ortho.py --lat 0 --lon -30 --birds --bird-max-mb 500 --bird-geolocators
+```
+
+- **Every bird, or some.** `--birds` alone draws every bird. Names separated
+  by commas, scientific or common, draw only those species, genera or families:
+  `"white stork, black kite"`, `Ciconia`, `Accipitridae` (looked up in GBIF's
+  taxonomy, as for `--species`). In the interactive prompt, join them with
+  `+`: `birds:white stork+black kite`.
+- **Open data only.** Of the repository's ~450 data packages, only those
+  released under CC0 1.0 or CC BY 4.0 are used (about 250 studies of birds);
+  those under CC BY-NC are left out, so a map can be used for anything. Most
+  of the studies are from North America and Europe, with fewer from Africa,
+  Asia and South America, and the map shows it.
+- **Downloaded once.** The first map lists the open bird studies (a few
+  minutes; the list is kept for 90 days) and downloads their location files,
+  each once: every file up to 50 MB, ~230 files and 1.7 GB in all, about
+  5,300 birds of 117 species from 160 studies. `--bird-max-mb` raises the
+  limit: 500 MB is ~30 GB. The tracks are cached in ~12 MB under
+  `~/.cache/ortho_tiles/birds/`. A file that cannot be downloaded is left out
+  with a warning and tried again on the next map.
+- **Cleaned and thinned.** Fixes the authors marked as outliers or invisible,
+  impossible positions and ring recoveries are dropped; so are spikes (a fix,
+  or an Argos pair, far from both neighbours) and fixes reached faster than
+  100 km/h. One fix is kept every six hours per bird. A track breaks where no
+  fix was kept for ten days, or where it jumps 300 km or more slower than
+  20 km/h, where the tag fell silent and a straight line would invent the
+  route. Argos errors can still leave the odd straight line.
+- **Coloured by species.** The 14 species whose tracks run longest on the
+  map get a colour each and a place in the key, with the number of their
+  birds in sight; the rest are paler grey. Light-level geolocator tracks,
+  mostly of small songbirds and seabirds, are accurate only to ~200 km and are
+  left out unless `--bird-geolocators` is given; they are then drawn paler.
+- **Cited beside the map.** CC BY 4.0 asks for each study to be credited, so
+  the map's credit counts the studies and their licences, and
+  `<map>_bird_studies.txt`, saved next to the PNG, cites each study drawn, with
+  its DOI and the number of its birds in sight. The web app links it as **Bird
+  studies cited**; an atlas keeps it beside the map in its maps folder.
+
+The samples above are `python ortho.py --config recipes/americas_birds.toml`
+and `recipes/europe_africa_birds.toml`.
+
 ## Cities
 
 `--cities` draws the world's big cities as they are built: the urban centres of
@@ -2955,6 +3031,7 @@ to the attribution block.
 | GHS Urban Centre Database 2025 (R2024A, v1.2), multi-temporal urban centres 1975–2030 | European Commission, Joint Research Centre (Mari Rivero, Melchiorri et al. 2024) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd](https://doi.org/10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd), [human-settlement.emergency.copernicus.eu](https://human-settlement.emergency.copernicus.eu/ghs_ucdb_2024.php) |
 | BirdLife bird species distribution maps (GeoPackage) and the HBW-BirdLife checklist, read from files each user requests | BirdLife International and Handbook of the Birds of the World | [BirdLife data terms of use](https://datazone.birdlife.org/about-our-science/terms-of-use): non-commercial use; no reposting or redistribution, of the data or of works made from it, without BirdLife's permission. Not shipped or downloaded here | [datazone.birdlife.org/species/requestdis](https://datazone.birdlife.org/species/requestdis) |
 | IUCN Red List range polygons (spatial data), read from files each user downloads | IUCN | [IUCN Red List Terms and Conditions of Use](https://www.iucnredlist.org/terms/terms-of-use): non-commercial use; no reposting or redistribution, of the data or of works made from it, without IUCN's permission. Not shipped or downloaded here | [iucnredlist.org/resources/spatial-data-download](https://www.iucnredlist.org/resources/spatial-data-download) |
+| Bird tracks: the GPS, Argos and geolocator tracks of the open studies in the Movebank Data Repository, each a data package with its own DOI; the species named from GBIF's backbone taxonomy | Each study's authors; repository run by the Max Planck Institute of Animal Behavior | Per study: only those under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) or [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) are used; each map's studies are cited in `<map>_bird_studies.txt` | [datarepository.movebank.org](https://datarepository.movebank.org/), [API](https://datarepository.movebank.org/server/api) |
 | GBIF occurrence records, read as occurrence density maps (zoom 1, ~20 km cells) | GBIF.org and its data publishers | Per dataset: [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) or [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/); see [GBIF's terms](https://www.gbif.org/terms) | [gbif.org](https://www.gbif.org/), [maps API](https://techdocs.gbif.org/en/openapi/v2/maps) |
 | Cliopatria v0.2.1: borders of over 1,600 states and empires, 3400 BCE–2024 | Bennett, J. S. et al. (2025), Seshat Global History Databank | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1038/s41597-025-04516-9](https://doi.org/10.1038/s41597-025-04516-9), [github.com/Seshat-Global-History-Databank/cliopatria](https://github.com/Seshat-Global-History-Databank/cliopatria) |
 | CShapes 2.0: borders of states and dependent territories, 1886–2019 (Gleditsch & Ward system), from the `cshapes` R package | Schvitz, G. et al. (2022), ETH Zurich | No data licence stated; the article is CC BY-NC 4.0 and the R package GPL ≥ 2. Downloaded by each user, not shipped | [doi:10.1177/00220027211013563](https://doi.org/10.1177/00220027211013563), [icr.ethz.ch/data/cshapes](https://icr.ethz.ch/data/cshapes/) |
@@ -3014,6 +3091,7 @@ the globe:
 | `--malaria` | *Malaria: Malaria Atlas Project (2026 release), CC BY 3.0* |
 | `--aedes` | *Aedes records: Kraemer et al. (2015), global compendium of Aedes occurrence, via GBIF, CC0* |
 | `--species` | *Species records: GBIF.org occurrence data, retrieved YYYY-MM-DD* |
+| `--birds` | *Bird tracks: N studies in the Movebank Data Repository (CC0 1.0 / CC BY 4.0), cited in MAP_bird_studies.txt* |
 | `--cities` | *Urban centres: GHS-UCDB R2024A (European Commission, JRC), CC BY 4.0; names restored from GeoNames, CC BY 4.0* |
 | `--industry` | *Industry: Climate TRACE (climatetrace.org), CC BY 4.0, retrieved YYYY-MM-DD* |
 | `--shipping` | *Shipping: Global Shipping Traffic Density (World Bank, IMF, AIS 2015-2021), CC BY 4.0* |
@@ -3094,6 +3172,7 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [malaria.py](malaria.py): the malaria parasite rate from the Malaria Atlas Project, in classed bands
 - [aedes.py](aedes.py): where the dengue mosquitoes have been recorded, from Kraemer et al.'s compendium on GBIF
 - [gbif.py](gbif.py): where any species has been recorded, from GBIF's occurrence density maps, with name lookup
+- [birds.py](birds.py): the tracks of tagged birds from the open studies in the Movebank Data Repository, cleaned, thinned and coloured by species, with the studies cited beside the map
 - [iucn.py](iucn.py): a species' range from the IUCN Red List or, for birds, BirdLife, read from the files the user downloaded
 - [cities.py](cities.py): big cities, the GHSL urban centres with their names (restored from GeoNames), outlines and populations from 1975 to 2030
 - [indicators.py](indicators.py): statistics by country (World Bank) or European region (Eurostat), in classes, with the country and NUTS region shapes

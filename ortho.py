@@ -66,6 +66,11 @@ from storms import (
     LAST_YEAR as LAST_STORM_YEAR, MAX_PRESSURE as MAX_STORM_PRESSURE, MIN_PRESSURE as MIN_STORM_PRESSURE,
     STORMS_ATTRIBUTION, StormDataError, add_storms_legend, draw_storms, load_storms, parse_storm_years,
 )
+from birds import (
+    DEFAULT_MAX_MB as DEFAULT_BIRD_MAX_MB, MAX_MAX_MB as MAX_BIRD_MAX_MB, MIN_MAX_MB as MIN_BIRD_MAX_MB,
+    BirdDataError, add_birds_legend, birds_attribution, check_max_mb as check_bird_max_mb, draw_birds,
+    load_birds, parse_birds, sources_path as bird_sources_path, write_sources as write_bird_sources,
+)
 from hydrology import (
     BASINS_ATTRIBUTION, RIVERS_ATTRIBUTION, HydrologyDataError, add_basins_legend, basin_colours, draw_basins,
     draw_rivers, load_basins, load_rivers,
@@ -721,6 +726,7 @@ def validate_render_options(
     iucn_alpha: float = 0.45, indicator_alpha: float = 0.75, shipping_alpha: float = 0.85,
     relief_alpha: float = 0.55, ro_admin_alpha: float = 0.0, text_scale: float = 1.0, language: str = "en",
     storms: str | None = None, storm_pressure: float = DEFAULT_STORM_PRESSURE,
+    birds: str | None = None, bird_max_mb: float = DEFAULT_BIRD_MAX_MB,
 ) -> None:
     """Raise ``ValueError`` for options that would only fail after tiles are fetched."""
     if beside is not None:
@@ -792,6 +798,9 @@ def validate_render_options(
     if not (math.isfinite(storm_pressure) and MIN_STORM_PRESSURE <= storm_pressure <= MAX_STORM_PRESSURE):
         raise ValueError(f"storm_pressure must be between {MIN_STORM_PRESSURE:g} and {MAX_STORM_PRESSURE:g} hPa, "
                          f"got {storm_pressure:g}")
+    if birds is not None:
+        parse_birds(birds)
+    check_bird_max_mb(bird_max_mb)
     if land_cover_year is not None and not FIRST_LAND_COVER_YEAR <= land_cover_year <= LATEST_LAND_COVER_YEAR:
         raise ValueError(f"land_cover_year must be between {FIRST_LAND_COVER_YEAR} and "
                          f"{LATEST_LAND_COVER_YEAR}, got {land_cover_year}")
@@ -873,6 +882,9 @@ def generate_orthographic_map(
     cyclones_et: bool = False,
     storms: str | None = None,
     storm_pressure: float = DEFAULT_STORM_PRESSURE,
+    birds: str | None = None,
+    bird_max_mb: float = DEFAULT_BIRD_MAX_MB,
+    bird_geolocators: bool = False,
     time_zones: bool = False,
     permafrost: bool = False,
     permafrost_alpha: float = 0.7,
@@ -1147,6 +1159,19 @@ def generate_orthographic_map(
     storm_pressure : float
         Draw the storms whose centre fell to this pressure or lower (920-1000
         hPa; default 970).
+    birds : str, optional
+        Draw the tracks of tagged birds from the open (CC0 and CC BY) studies
+        in the Movebank Data Repository, worldwide, coloured by species:
+        ``"all"`` for every bird, or names separated by commas, scientific or
+        common, of species, genera or families (``"white stork, Accipitridae"``).
+        The studies drawn are listed in ``<map>_bird_studies.txt`` beside the
+        map (see :mod:`birds`).
+    bird_max_mb : float
+        Leave out the study files larger than this (MB; default 50): every
+        file up to 50 MB is ~1.7 GB, downloaded once.
+    bird_geolocators : bool
+        With *birds*, draw the light-level geolocator tracks too, accurate only
+        to ~200 km, paler.
     time_zones : bool
         Shade and label the standard-time zones (Natural Earth).
     permafrost : bool
@@ -1251,7 +1276,7 @@ def generate_orthographic_map(
         earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha, iucn_alpha=iucn_alpha,
         indicator_alpha=indicator_alpha, shipping_alpha=shipping_alpha, relief_alpha=relief_alpha,
         ro_admin_alpha=ro_admin_alpha, text_scale=text_scale, language=language, storms=storms,
-        storm_pressure=storm_pressure,
+        storm_pressure=storm_pressure, birds=birds, bird_max_mb=bird_max_mb,
     )
     population_year = resolve_population_year(population) if population is not None else None
     livestock_species = resolve_species(livestock) if livestock else None
@@ -1266,6 +1291,12 @@ def generate_orthographic_map(
             taxon = resolve_taxon(species)
         except GbifDataError as e:
             incomplete.note(logger, "Skipping the species records: %s", e)
+    bird_keys: list[int] | None = None
+    if birds is not None:
+        try:
+            bird_keys = [resolve_taxon(name).key for name in parse_birds(birds)]
+        except GbifDataError as e:
+            incomplete.note(logger, "Skipping the bird tracks: %s", e)
     species_range = None
     if iucn:
         try:
@@ -1923,6 +1954,18 @@ def generate_orthographic_map(
             incomplete.note(logger, "Skipping the storm tracks: %s", e)
         else:
             storm_years = years
+    tracked = None
+    if bird_keys is not None:
+        try:
+            flocks = load_birds(bird_keys, max_mb=bird_max_mb, geolocators=bird_geolocators)
+        except (BirdDataError, OSError) as e:
+            incomplete.note(logger, "Skipping the bird tracks: %s", e)
+        else:
+            drawn_birds = draw_birds(axes, flocks)
+            if drawn_birds.seen.any():
+                tracked = (flocks, drawn_birds)
+            else:
+                logger.warning("No tracked bird%s is on this map.", f" of {birds}" if bird_keys else "")
     plates_drawn = False
     if plates:
         try:
@@ -2106,6 +2149,8 @@ def generate_orthographic_map(
         keys.append(add_cyclones_legend(near, cyclones, x=key_x, extratropical=cyclones_et))
     if storm_years is not None:
         keys.append(add_storms_legend(near, storm_years, storm_pressure, x=key_x))
+    if tracked is not None:
+        keys.append(add_birds_legend(near, *tracked, x=key_x))
     if plates_drawn or quakes is not None or volcanoes_drawn:
         keys.append(add_tectonics_legend(near, plates_drawn, quakes, volcanoes_drawn, x=key_x))
     if routes and route_legend:
@@ -2189,6 +2234,8 @@ def generate_orthographic_map(
         credits.append(CYCLONES_ATTRIBUTION)
     if storm_years is not None:
         credits.append(STORMS_ATTRIBUTION)
+    if tracked is not None:
+        credits.append(birds_attribution(*tracked, bird_sources_path(output_filename)))
     credits += tectonics_credits(plates_drawn, quakes is not None, volcanoes_drawn)
     credit = _add_attribution(axes[-1], credits)
 
@@ -2219,6 +2266,9 @@ def generate_orthographic_map(
         logger.info("Fetching '%s' tiles at zoom %d and saving to '%s' at %g DPI …",
                     tile_provider, zoom, output_filename, dpi)
     fig.savefig(output_filename, dpi=dpi, bbox_inches="tight", transparent=True)
+    if tracked is not None:
+        logger.info("The bird studies drawn are cited in '%s'.",
+                    write_bird_sources(bird_sources_path(output_filename), *tracked))
     if tiles is not None:
         _report_tile_failures(tiles)
     if vegetation is not None and vegetation.failed_tiles:
@@ -2748,6 +2798,7 @@ EXTRA_LAYERS: dict[str, tuple[str, Any]] = {
     "plates": ("plates", True), "earthquakes": ("earthquakes", DEFAULT_MIN_MAGNITUDE),
     "volcanoes": ("volcanoes", True), "rivers": ("rivers", True), "basins": ("basins", True),
     "cyclones": ("cyclones", FIRST_CYCLONE_YEAR), "storms": ("storms", str(LAST_STORM_YEAR)),
+    "birds": ("birds", "all"),
     "time-zones": ("time_zones", True),
     "permafrost": ("permafrost", True), "population": ("population", LATEST_POPULATION_YEAR),
     "malaria": ("malaria", "pf"), "aedes": ("aedes", "both"), "cities": ("cities", 2025),
@@ -2761,7 +2812,8 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
 
     ``livestock:ANIMAL``, ``malaria:pf`` or ``malaria:pv`` and ``aedes:SPECIES`` choose
     which kind; ``species:NAME`` draws the GBIF records of a species and
-    ``iucn:NAME`` its IUCN range.
+    ``iucn:NAME`` its IUCN range; ``birds:NAMES`` the tracks of those birds,
+    joined with ``+`` (``birds:white stork+black kite``).
 
     Raises ``ValueError`` for a name it does not know.
     """
@@ -2803,6 +2855,9 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             spec = item.split(":", 1)[1].strip()
             resolve_air_routes(spec)
             chosen["air_routes"] = spec or "all"
+        elif item.startswith("birds:"):
+            names = item.split(":", 1)[1].strip()
+            chosen["birds"] = ", ".join(parse_birds(names.replace("+", ","))) or "all"
         elif item.startswith("storms:"):
             years = item.split(":", 1)[1].strip()
             parse_storm_years(years)
@@ -2818,7 +2873,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen[key] = value
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
-                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, storms:YEARS, indicator:NAME, industry:SECTORS, "
+                             "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, storms:YEARS, birds:NAMES, indicator:NAME, industry:SECTORS, "
                              "shipping:KIND, ports:KIND, air-routes:AIRPORTS, relief-units:regions, ro-admin:uats.")
     return chosen
 
@@ -2827,7 +2882,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, storms:2010-2020, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, relief-units:regions, ro-admin:uats …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, storms:2010-2020, birds:white stork+black kite, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, relief-units:regions, ro-admin:uats …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -3375,6 +3430,19 @@ def build_cli_parser() -> argparse.ArgumentParser:
                            "for more records.")
     wild.add_argument("--species-years", metavar="YEARS",
                       help="Only the records of these years: FROM-TO or YEAR (e.g. 1990-2020).")
+
+    flights = parser.add_argument_group("Bird tracks (Movebank Data Repository)")
+    flights.add_argument("--birds", nargs="?", const="all", default=None, metavar="NAMES",
+                         help="Draw the tracks of tagged birds, worldwide, from the open (CC0 and CC BY) studies in "
+                              "the Movebank Data Repository, coloured by species: every bird, or NAMES separated by "
+                              "commas, of species, genera or families ('white stork, Accipitridae'). The studies are "
+                              "cited in <map>_bird_studies.txt beside the map.")
+    flights.add_argument("--bird-max-mb", type=float, default=DEFAULT_BIRD_MAX_MB, metavar="MB",
+                         help=f"Leave out the study files larger than MB ({MIN_BIRD_MAX_MB:g}-{MAX_BIRD_MAX_MB:g}, "
+                              f"default {DEFAULT_BIRD_MAX_MB:g}: ~1.7 GB in all, downloaded once; 500 is ~30 GB).")
+    flights.add_argument("--bird-geolocators", action="store_true",
+                         help="With --birds, draw the light-level geolocator tracks too (small songbirds and "
+                              "seabirds), accurate only to ~200 km, paler.")
 
     ranges = parser.add_argument_group("Species ranges (IUCN Red List and BirdLife)")
     ranges.add_argument("--iucn", metavar="NAME",
@@ -3931,6 +3999,11 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         logger.warning("--cyclones-et is ignored because no --cyclones was given.")
     if args.storm_pressure != DEFAULT_STORM_PRESSURE and args.storms is None:
         logger.warning("--storm-pressure is ignored because no --storms was given.")
+    if args.birds is None:
+        if args.bird_max_mb != DEFAULT_BIRD_MAX_MB:
+            logger.warning("--bird-max-mb is ignored because no --birds was given.")
+        if args.bird_geolocators:
+            logger.warning("--bird-geolocators is ignored because no --birds was given.")
     if args.cities is not None:
         resolve_cities_year(args.cities)
     elif args.cities_min is not None:
@@ -4046,7 +4119,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             malaria_alpha=args.malaria_alpha, iucn_alpha=args.iucn_alpha, indicator_alpha=args.indicator_alpha,
             shipping_alpha=args.shipping_alpha, relief_alpha=args.relief_alpha,
             ro_admin_alpha=args.ro_admin_alpha, text_scale=args.text_scale, language=args.language,
-            storms=args.storms, storm_pressure=args.storm_pressure,
+            storms=args.storms, storm_pressure=args.storm_pressure, birds=args.birds,
+            bird_max_mb=args.bird_max_mb,
         )
     except ValueError as e:
         raise ValueError(f"Invalid option: {e}.") from e
@@ -4108,6 +4182,9 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         cyclones_et=args.cyclones_et and args.cyclones is not None,
         storms=args.storms,
         storm_pressure=args.storm_pressure,
+        birds=args.birds,
+        bird_max_mb=args.bird_max_mb,
+        bird_geolocators=args.bird_geolocators and args.birds is not None,
         time_zones=args.time_zones,
         permafrost=args.permafrost,
         permafrost_alpha=args.permafrost_alpha,

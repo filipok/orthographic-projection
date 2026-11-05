@@ -239,6 +239,17 @@
       </details>
 
       <details>
+        <summary>Bird tracks (Movebank Data Repository)</summary>
+        <label class="check"><input id="birds" type="checkbox"> Tracks of tagged birds, by species (~1.7 GB once)</label>
+        <label class="field" data-show="birds" hidden><span>Only these, separated by commas (blank for every bird)</span>
+          <input id="bird-names" type="text" placeholder="white stork, black kite, Accipitridae" autocomplete="off"></label>
+        <label class="field" data-show="birds" hidden><span>Leave out study files larger than (MB)</span>
+          <input id="bird-max-mb" type="number" step="10"></label>
+        <label class="check" data-show="birds" hidden><input id="bird-geolocators" type="checkbox">
+          And geolocator tracks (~200 km), paler</label>
+      </details>
+
+      <details>
         <summary>Species ranges (IUCN Red List and BirdLife)</summary>
         <label class="field"><span>Species, genus or family, from the IUCN or BirdLife range files you downloaded</span>
           <input id="iucn" type="text" placeholder="Panthera leo, lion, Felidae" autocomplete="off"></label>
@@ -371,6 +382,7 @@
       <div class="actions" id="actions" hidden>
         <a id="download" class="button" href="#">Download PNG</a>
         <a id="open" class="button" href="#" target="_blank" rel="noopener">Open full size</a>
+        <a id="bird-studies" class="button" href="#" target="_blank" rel="noopener" hidden>Bird studies cited</a>
       </div>
       <ul id="warnings" class="warnings" hidden></ul>
       <div class="command" id="command" hidden>

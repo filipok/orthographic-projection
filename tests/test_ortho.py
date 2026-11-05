@@ -836,6 +836,15 @@ class TestCLIParser:
         args = self._parse(["--city", "nyc", "--storms", "2010-2020", "--storm-pressure", "950"])
         assert args.storms == "2010-2020" and args.storm_pressure == 950.0
 
+    def test_bird_flags(self):
+        args = self._parse(["--city", "nyc"])
+        assert args.birds is None and args.bird_max_mb == ortho.DEFAULT_BIRD_MAX_MB and not args.bird_geolocators
+        args = self._parse(["--city", "nyc", "--birds"])
+        assert args.birds == "all"
+        args = self._parse(["--city", "nyc", "--birds", "white stork, Milvus", "--bird-max-mb", "500",
+                            "--bird-geolocators"])
+        assert (args.birds, args.bird_max_mb, args.bird_geolocators) == ("white stork, Milvus", 500.0, True)
+
     def test_malaria_and_aedes_flags(self):
         args = self._parse(["--city", "nyc"])
         assert args.malaria is None and args.malaria_year == 2025 and args.malaria_alpha == 0.75 and args.aedes is None
@@ -1082,7 +1091,8 @@ class TestRunCLIValidation:
             borders=None, borders_source="auto", borders_alpha=0.55, no_borders_names=False, alliance=None,
             ocean_depth=False, ice_age=False, plates=False, earthquakes=None, volcanoes=False, currents=False,
             rivers=False, basins=False, basins_alpha=0.5, cyclones=None, cyclones_et=False, storms=None,
-            storm_pressure=970.0, time_zones=False, permafrost=False,
+            storm_pressure=970.0, birds=None, bird_max_mb=50.0, bird_geolocators=False, time_zones=False,
+            permafrost=False,
             permafrost_alpha=0.7, population=None, population_alpha=0.7, livestock=None, livestock_alpha=0.7,
             malaria=None, malaria_year=2025, malaria_alpha=0.75, aedes=None, species=None, species_years=None,
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
@@ -1556,6 +1566,25 @@ class TestRunCLIValidation:
         kwargs = render.call_args.kwargs
         assert (kwargs["cyclones_et"], kwargs["storms"], kwargs["storm_pressure"]) == (True, "2015-2020", 950.0)
 
+    def test_birds_passed_to_renderer(self):
+        args = self._make_args(city="paris", birds="white stork", bird_max_mb=200.0, bird_geolocators=True)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        kwargs = render.call_args.kwargs
+        assert (kwargs["birds"], kwargs["bird_max_mb"], kwargs["bird_geolocators"]) == ("white stork", 200.0, True)
+
+    @pytest.mark.parametrize("overrides, warning", [
+        ({"bird_max_mb": 100.0}, "--bird-max-mb is ignored"),
+        ({"bird_geolocators": True}, "--bird-geolocators is ignored"),
+    ])
+    def test_bird_options_without_birds_warn(self, caplog, overrides, warning):
+        args = self._make_args(city="paris", **overrides)
+        with mock.patch.object(ortho, "generate_orthographic_map") as render, \
+                mock.patch.object(ortho, "configure_tile_cache"):
+            ortho.run_cli(args)
+        assert warning in caplog.text and not render.call_args.kwargs["bird_geolocators"]
+
     @pytest.mark.parametrize("overrides, warning", [
         ({"cyclones_et": True}, "--cyclones-et is ignored"),
         ({"storm_pressure": 950.0}, "--storm-pressure is ignored"),
@@ -1747,6 +1776,8 @@ class TestRunCLIValidation:
         ({"storms": "1930"}, "storms must be YEAR or FROM-TO"),
         ({"storms": "2020-2010"}, "storms must be YEAR or FROM-TO"),
         ({"storms": "2020", "storm_pressure": 1010.0}, "storm_pressure must be between"),
+        ({"birds": "all, white stork"}, "birds must be 'all'"),
+        ({"birds": "all", "bird_max_mb": 0.1}, "bird_max_mb must be between"),
         ({"basins": True, "basins_alpha": 2.0}, "basins_alpha"),
     ])
     def test_bad_atlas_options_exit_before_render(self, caplog, overrides, message):
@@ -2127,6 +2158,56 @@ class TestGenerateOrthographicMapIntegration:
         assert cyclones_key.call_args.kwargs["extratropical"]
         assert storms.call_args.args == ((2010, 2012), 955)
         assert storms_key.call_args.args[1:] == ((2010, 2012), 955)
+
+    def test_birds_drawn_with_key_credit_and_sources(self, tmp_path):
+        flock, seen = mock.Mock(), mock.Mock()
+        seen.seen.any.return_value = True
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "resolve_taxon", return_value=mock.Mock(key=2481912)) as resolve, \
+                mock.patch.object(ortho, "load_birds", return_value=flock) as load, \
+                mock.patch.object(ortho, "draw_birds", return_value=seen) as draw, \
+                mock.patch.object(ortho, "add_birds_legend") as key, \
+                mock.patch.object(ortho, "birds_attribution", return_value="Bird tracks: …") as credit, \
+                mock.patch.object(ortho, "write_bird_sources") as sources, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(10, 10), birds="white stork",
+                                            bird_max_mb=80, bird_geolocators=True)
+        resolve.assert_called_once_with("white stork")
+        assert load.call_args.args == ([2481912],) and load.call_args.kwargs == {"max_mb": 80, "geolocators": True}
+        assert len(draw.call_args.args[0]) == 2                       # both globes at once, one set of colours
+        assert key.call_args.args[1:] == (flock, seen)
+        sidecar = str(tmp_path / "m_bird_studies.txt")
+        assert credit.call_args.args == (flock, seen, sidecar)
+        assert sources.call_args.args == (sidecar, flock, seen)
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], "Bird tracks: …"]
+
+    def test_every_bird_is_loaded_without_names(self, tmp_path, caplog):
+        empty = mock.Mock()
+        empty.seen.any.return_value = False
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "resolve_taxon") as resolve, \
+                mock.patch.object(ortho, "load_birds", return_value=mock.Mock()) as load, \
+                mock.patch.object(ortho, "draw_birds", return_value=empty), \
+                mock.patch.object(ortho, "add_birds_legend") as key, \
+                mock.patch.object(ortho, "write_bird_sources") as sources:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), birds="all")
+        resolve.assert_not_called()
+        assert load.call_args.args == ([],) and "No tracked bird is on this map" in caplog.text
+        key.assert_not_called()
+        sources.assert_not_called()
+
+    def test_birds_failure_still_saves_map(self, tmp_path, caplog):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_birds", side_effect=ortho.BirdDataError("offline")), \
+                mock.patch.object(ortho, "add_birds_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), birds="all")
+        assert os.path.exists(result) and "Skipping the bird tracks: offline" in caplog.text
+        key.assert_not_called()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
 
     def test_storms_failure_still_saves_map_without_key_or_credit(self, tmp_path, caplog):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
@@ -2655,6 +2736,8 @@ class TestGenerateOrthographicMapIntegration:
         ("ro-admin:UAT", {"ro_admin": "uats"}),
         ("storms", {"storms": str(ortho.LAST_STORM_YEAR)}),
         ("storms:2010-2020, cyclones", {"storms": "2010-2020", "cyclones": 1980}),
+        ("birds", {"birds": "all"}),
+        ("birds:white stork+black kite, storms", {"birds": "white stork, black kite", "storms": "2024"}),
     ])
     def test_extra_layers_for_the_prompt(self, text, expected):
         assert ortho.parse_extra_layers(text) == expected
