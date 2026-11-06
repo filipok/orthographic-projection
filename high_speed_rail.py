@@ -26,9 +26,10 @@ between two neighbouring cities, from the 2025-26 timetables, in round
 minutes) were compiled for this module and are approximate; the intermediate
 stations of towns too small to be an urban centre are left out. The links in
 view are drawn along their track, from OpenStreetMap's high-speed tracks (see
-:mod:`rail_tracks`: downloaded once per region, ODbL); a link OSM has no track
-for, or with the tracks not to be had, is drawn from city to city through a
-few points along its way (:data:`VIA`). A city's population is that of the GHSL urban centre its station
+:mod:`rail_tracks`: downloaded once per region, ODbL), or, an open link with no
+such way, from the railways around it; a link still with no track, or with the
+tracks not to be had, is drawn from city to city through a few points along its
+way (:data:`VIA`). A city's population is that of the GHSL urban centre its station
 is in (GHS-UCDB R2024A, 2025: European Commission, JRC, CC BY 4.0), the
 metropolitan area as it is built, so the Pearl River Delta is one city
 (Guangzhou with Shenzhen) and Tokyo takes in Yokohama: a link within one urban

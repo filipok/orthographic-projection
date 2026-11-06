@@ -1,5 +1,6 @@
 """Tests for rail_tracks.py (no network: small Overpass replies made up here)."""
 
+import json
 import logging
 import os
 import re
@@ -58,9 +59,6 @@ class TestReading:
 
     def test_query_takes_the_channel_tunnel_though_it_is_not_tagged_high_speed(self):
         assert 'way.open["name"~"Channel Tunnel"];' in rt.query((48, 0))
-
-    def test_query_takes_the_rheintalbahn_though_it_is_mostly_slower(self):
-        assert 'way.open["name"~"Rheintalbahn"];' in rt.query((44, 4))
 
     def test_query_scans_the_railways_of_the_square_once(self):
         # Each statement with a box scans the railways in it, which is what made the query slow
@@ -176,6 +174,21 @@ class TestOverpass:
         monkeypatch.setattr(rt.urllib.request, "urlopen", lambda *a, **k: Reply(body))
         with pytest.raises(rt.TrackDataError, match="runtime error"):
             rt.load_region(HOME, str(tmp_path), rt.Overpass(SERVERS))
+        assert os.listdir(tmp_path) == []
+
+    def test_nothing_along_a_line_passes_on_to_the_next_server(self, tmp_path, monkeypatch):
+        # overpass-api.de answered every query along a line so: no ways, no remark, 200 OK
+        railway = _way(1, _arc(0.05, 0.95, 0.15), 1, {"railway": "rail"})
+        replies = {SERVERS[0]: b'{"elements": []}', SERVERS[1]: json.dumps({"elements": [railway]}).encode()}
+        monkeypatch.setattr(rt.urllib.request, "urlopen",
+                            lambda request, timeout, context: Reply(replies[request.full_url]))
+        ways = rt.load_corridor("A", "B", *_straight("A", "B"), str(tmp_path), rt.Overpass(SERVERS))
+        assert ways.ids.tolist() == [1]
+
+    def test_nothing_along_a_line_from_every_server_is_not_cached(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(rt.urllib.request, "urlopen", lambda *a, **k: Reply(b'{"elements": []}'))
+        with pytest.raises(rt.TrackDataError, match="no railways along the line"):
+            rt.load_corridor("A", "B", *_straight("A", "B"), str(tmp_path), rt.Overpass(SERVERS, patience=1))
         assert os.listdir(tmp_path) == []
 
     def test_a_remark_passes_on_to_the_next_server(self, monkeypatch):
@@ -388,7 +401,7 @@ class TestRouting:
 
     def test_tracks_downloaded_later_are_routed_on(self, tmp_path):
         answers = iter([[], [_way(1, _arc(0.05, 0.95, 0.15), 1)]])
-        router = rt.TrackRouter(STATIONS, str(tmp_path), lambda text: next(answers))
+        router = rt.TrackRouter(STATIONS, str(tmp_path), lambda text: [] if "around:" in text else next(answers))
         assert router.route("A", "B", False, *_straight("A", "B")) is None
         router.prepare([(np.linspace(5, 6, 5), np.ones(5))])     # another square: a new graph
         router.routes.clear()
@@ -419,6 +432,92 @@ def _paris_lyon():
     return _way(99, list(zip(lon, lat)), 1)
 
 
+def _by_kind(fast, railways, asked=None):
+    """An Overpass that gives *fast* to a region's query and *railways* to a link's."""
+    def fetch(text):
+        if asked is not None:
+            asked.append(text)
+        return railways if "around:" in text else fast
+    return fetch
+
+
+class TestTheRailwaysAroundALink:
+    BOW = _arc(0.05, 0.95, 0.15)
+
+    def test_query_takes_the_railways_near_the_path_but_not_sidings(self):
+        text = rt.corridor_query(np.array([1.5, 2.25]), np.array([50.0, 51.0]))
+        assert '[!"service"]' in text and '"railway"="rail"' in text
+        assert "(around:15000,50.0000,1.5000,51.0000,2.2500)" in text
+
+    def test_an_open_link_with_no_fast_way_follows_them(self, tmp_path):
+        router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([], [_way(1, self.BOW, 1, {"railway": "rail"})]))
+        lon, lat = router.route("A", "B", False, *_straight("A", "B"))
+        assert lat.max() == pytest.approx(1.17, abs=0.01) and router.used
+
+    def test_they_join_the_fast_tracks_they_meet(self, tmp_path):
+        # Half the link is tagged fast, half is not: neither alone gets from A to B
+        fast = _way(1, self.BOW[:30], 1)
+        slow = _way(2, self.BOW[29:], 30, {"railway": "rail"})
+        router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([fast], [slow]))
+        lon, lat = router.route("A", "B", False, *_straight("A", "B"))
+        assert lat.max() == pytest.approx(1.17, abs=0.01)
+
+    def test_not_asked_for_a_link_with_a_fast_way(self, tmp_path):
+        asked = []
+        router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([_way(1, self.BOW, 1)], [], asked))
+        assert router.route("A", "B", False, *_straight("A", "B")) is not None
+        assert not any("around:" in text for text in asked)
+
+    def test_not_asked_for_a_planned_link(self, tmp_path):
+        # The old line beside a planned one is not the line being built
+        asked = []
+        router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([], [_way(1, self.BOW, 1)], asked))
+        assert router.route("A", "B", True, *_straight("A", "B")) is None
+        assert not any("around:" in text for text in asked)
+
+    def test_tracks_being_built_do_not_serve_an_open_link(self, tmp_path):
+        building = _way(1, self.BOW, 1, {"railway": "construction", "highspeed": "yes"})
+        router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([building], []))
+        assert router.route("A", "B", False, *_straight("A", "B")) is None
+
+    def test_a_long_way_round_is_refused_there_too(self, tmp_path, caplog):
+        far = _way(1, _arc(0.05, 0.95, 0.8), 1, {"railway": "rail"})            # bowed ~90 km north
+        router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([], [far]))
+        with caplog.at_level(logging.INFO, logger="rail_tracks"):
+            assert router.route("A", "B", False, *_straight("A", "B")) is None
+        assert "drawn city to city" in caplog.text
+
+    def test_cached_for_the_next_run(self, tmp_path):
+        asked = []
+        for _ in range(2):
+            router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([], [_way(1, self.BOW, 1)], asked))
+            assert router.route("A", "B", False, *_straight("A", "B")) is not None
+        assert sum("around:" in text for text in asked) == 1
+
+    def test_a_path_changed_in_the_data_is_downloaded_anew(self, tmp_path):
+        asked = []
+        for lat in (1.0, 1.01):
+            router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([], [], asked))
+            router.route("A", "B", False, np.array([1.0, 2.0]), np.array([1.0, lat]))
+        assert sum("around:" in text for text in asked) == 2
+
+    def test_a_failed_download_is_noted_once_and_not_cached(self, tmp_path):
+        calls = []
+
+        def fetch(text):
+            if "around:" in text:
+                calls.append(text)
+                raise rt.TrackDataError("busy")
+            return []
+
+        router = rt.TrackRouter(STATIONS, str(tmp_path), fetch)
+        with incomplete.noting() as noted:
+            assert router.route("A", "B", False, *_straight("A", "B")) is None
+            assert router.route("B", "C", False, *_straight("B", "C")) is None
+        assert len(noted) == 1 and "could not be downloaded" in noted[0] and len(calls) == 2
+        assert not any(name.startswith("corridor_") for name in os.listdir(tmp_path))
+
+
 class TestHighSpeedRail:
     def test_links_in_view_drawn_along_osm_with_its_credit(self, tmp_path):
         asked = []
@@ -430,7 +529,8 @@ class TestHighSpeedRail:
         ax.set_ylim(-half, half)
         hsr.draw_high_speed_rail(ax, rail)
         # Only the squares of the links near the map were asked for: nothing beyond Europe
-        assert 0 < len(asked) <= 40 and not any(re.search(r"\(\d+,1\d\d,", q) for q in asked)
+        squares = [q for q in asked if "around:" not in q]
+        assert 0 < len(squares) <= 40 and not any(re.search(r"\(\d+,1\d\d,", q) for q in squares)
         k = next(k for k in range(len(rail.a)) if {rail.names[rail.a[k]], rail.names[rail.b[k]]} == {"Paris", "Lyon"})
         track = rail.router.routes[("Paris", "Lyon", False)] or rail.router.routes[("Lyon", "Paris", False)]
         assert track is not None and track[0].max() > 4.0               # east of the line drawn city to city

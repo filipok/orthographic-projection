@@ -6,10 +6,8 @@ OpenStreetMap (https://www.openstreetmap.org/copyright), © OpenStreetMap
 contributors, Open Database License (ODbL 1.0), through the Overpass API. The
 tracks are the ways tagged ``railway=rail`` with ``highspeed=yes`` or a
 ``maxspeed`` of 200 km/h (125 mph) or more, the Channel Tunnel, slower but the
-only way from Britain to the continent, the Rheintalbahn, mostly 160 km/h but
-the way Karlsruhe, Freiburg and Basel are joined until the new line beside it is
-finished, and, for the planned lines, those tagged ``railway=construction`` and
-high-speed. They are downloaded once per
+only way from Britain to the continent, and, for the planned lines, those
+tagged ``railway=construction`` and high-speed. They are downloaded once per
 region, a square of a grid :data:`REGION_DEG` degrees a side, for the regions a
 map's links pass through; each is cached as it comes, in
 ``~/.cache/ortho_tiles/high_speed_rail/``, so a run cut short carries on where
@@ -17,8 +15,9 @@ it stopped, and downloaded again after a year.
 
 The Overpass servers are busy and fail often, in several ways: a 502 or 504 in
 under a second, no answer at all, or a 200 with a ``remark`` that the query ran
-out of time and as many ways as it had by then. So a reply with a remark counts
-as a failure, the servers are asked in turn and again after :data:`RETRY_WAIT`,
+out of time and as many ways as it had by then; and one, as of November 2026,
+answers a query along a line with nothing and no remark. So a reply with a
+remark, or with nothing along a line, counts as a failure, the servers are asked in turn and again after :data:`RETRY_WAIT`,
 and only :data:`PATIENCE` seconds of failures in a row end the downloads of a
 run (:class:`Overpass`); a link is then drawn city to city if a region it passes
 through is missing, whatever becomes of the others.
@@ -33,12 +32,18 @@ track within :data:`GAP_KM`; those joins count :data:`JOIN_PENALTY` times their
 length. A link follows the shortest way between its two stations, open track
 only for an open link. It is drawn so only if that way is no more than
 :data:`MAX_STRETCH` times as long as the line drawn city to city (plus
-:data:`SLACK_KM`) and at least :data:`MIN_ON_TRACK` of it is on track; else
-:mod:`high_speed_rail` draws it city to city as before.
+:data:`SLACK_KM`) and at least :data:`MIN_ON_TRACK` of it is on track.
+
+Many open links run partly on slower track, so an open link with no such way
+tries again with every railway but sidings and yards within :data:`CORRIDOR_KM`
+of its path, downloaded and cached for that link alone. A planned link does not:
+the old line beside it is not the one being built. If that fails too,
+:mod:`high_speed_rail` draws the link city to city as before.
 """
 
 from __future__ import annotations
 
+import hashlib
 import http.client
 import json
 import logging
@@ -80,6 +85,8 @@ TIMEOUT = 240             # seconds to wait for its answer: the above, and the q
 RETRY_WAIT = 30           # seconds before asking every server again
 PATIENCE = 600            # seconds of failures in a row before no more is asked in this run
 
+CORRIDOR_KM = 15          # how far from a link's path the ordinary tracks are taken, for a link with no fast way
+
 # Each statement with a box scans the railways in it, so they are scanned once, then filtered
 QUERY = f"""[out:json][timeout:{QUERY_TIMEOUT}];
 way["railway"="rail"]({{box}})->.open;
@@ -89,10 +96,13 @@ way["railway"="construction"]({{box}})->.building;
   way.open["maxspeed"~"^[2-3][0-9][0-9]$"];
   way.open["maxspeed"~"^1[2-9][0-9] mph$"];
   way.open["name"~"Channel Tunnel"];
-  way.open["name"~"Rheintalbahn"];
   way.building["highspeed"="yes"];
   way.building["construction:highspeed"="yes"];
 );
+out geom;"""
+
+CORRIDOR_QUERY = f"""[out:json][timeout:{QUERY_TIMEOUT}];
+way["railway"="rail"][!"service"](around:{CORRIDOR_KM * 1000},{{line}});
 out geom;"""
 
 
@@ -121,6 +131,11 @@ def query(region: tuple[int, int]) -> str:
     return QUERY.replace("{box}", f"{south},{west},{south + REGION_DEG},{west + REGION_DEG}")
 
 
+def corridor_query(lon: np.ndarray, lat: np.ndarray) -> str:
+    """The Overpass query for the railways, sidings and yards apart, within :data:`CORRIDOR_KM` of a link's path."""
+    return CORRIDOR_QUERY.replace("{line}", ",".join(f"{y:.4f},{x:.4f}" for x, y in zip(lon, lat)))
+
+
 class Overpass:
     """The Overpass servers, for one run: called with a query, it gives the elements of the first full answer.
 
@@ -143,6 +158,8 @@ class Overpass:
                 started = time.monotonic()
                 try:
                     elements = self._ask(url, data)
+                    if not elements and "around:" in text:   # a link's stations have railways by them, so a server
+                        raise ValueError("no railways along the line")   # with none could not read the query
                 except (OSError, http.client.HTTPException, ValueError, KeyError) as exc:  # a reply cut short too
                     logger.info("Overpass at %s did not answer: %s", url, exc)
                     self.errors[urllib.parse.urlparse(url).netloc] = str(exc)
@@ -234,33 +251,48 @@ def _read(path: str) -> Ways:
         return Ways(*(saved[f] for f in Ways._fields))
 
 
-def load_region(region: tuple[int, int], cache_dir: str | None,
-                fetch: Callable[[str], list[dict[str, Any]]]) -> Ways:
-    """The tracks of *region* (see :func:`query`): cached, or downloaded (again after :data:`MAX_AGE_DAYS`, the
-    old copy kept if that fails). Raises :class:`TrackDataError`."""
-    south, west = region
-    path = os.path.join(cache_dir or default_cache_dir(), f"{south}_{west}_v{DATA_VERSION}.npz")
+def _cached(path: str, what: str, text: str, fetch: Callable[[str], list[dict[str, Any]]]) -> Ways:
+    """The ways the Overpass query *text* finds: cached at *path*, or downloaded (again after
+    :data:`MAX_AGE_DAYS`, the old copy kept if that fails). Raises :class:`TrackDataError`."""
     stale = None
     if os.path.isfile(path):
         try:
             ways = _read(path)
         except (OSError, ValueError, KeyError) as exc:
-            logger.info("Reading the cached tracks of %s again: %s", region, exc)
+            logger.info("Reading the cached %s again: %s", what, exc)
         else:
             if time.time() - os.path.getmtime(path) < MAX_AGE_DAYS * 86400:
                 return ways
             stale = ways
-    logger.info("Downloading OSM's high-speed tracks of the %d-degree square at %s (one-time) …", REGION_DEG, region)
+    logger.info("Downloading %s from OSM (one-time) …", what)
     try:
-        ways = parse(fetch(query(region)))
+        ways = parse(fetch(text))
     except TrackDataError:
         if stale is not None:
-            logger.info("Keeping last year's tracks of %s: the Overpass API did not answer.", region)
+            logger.info("Keeping last year's %s: the Overpass API did not answer.", what)
             return stale
         raise
     _save(path, ways)
-    logger.info("OSM's high-speed tracks of %s: %d ways.", region, len(ways.ids))
+    logger.info("%s from OSM: %d ways.", what.capitalize(), len(ways.ids))
     return ways
+
+
+def load_region(region: tuple[int, int], cache_dir: str | None,
+                fetch: Callable[[str], list[dict[str, Any]]]) -> Ways:
+    """The high-speed tracks of *region* (see :func:`query`), through :func:`_cached`."""
+    south, west = region
+    path = os.path.join(cache_dir or default_cache_dir(), f"{south}_{west}_v{DATA_VERSION}.npz")
+    return _cached(path, f"the high-speed tracks of the {REGION_DEG}-degree square at {region}", query(region), fetch)
+
+
+def load_corridor(a: str, b: str, lon: np.ndarray, lat: np.ndarray, cache_dir: str | None,
+                  fetch: Callable[[str], list[dict[str, Any]]]) -> Ways:
+    """The railways around the path (lon, lat) of the link from *a* to *b* (see :func:`corridor_query`), through
+    :func:`_cached`, under a name from the query, so that a path changed in the data is downloaded anew."""
+    text = corridor_query(lon, lat)
+    digest = hashlib.sha1(text.encode()).hexdigest()[:16]
+    path = os.path.join(cache_dir or default_cache_dir(), f"corridor_{digest}_v{DATA_VERSION}.npz")
+    return _cached(path, f"the railways along {a}-{b}", text, fetch)
 
 
 # ---------------------------------------------------------------------------
@@ -437,6 +469,7 @@ class TrackRouter:
         self.loaded: dict[tuple[int, int], Ways] = {}
         self.failed: dict[tuple[int, int], str] = {}
         self.noted: set[tuple[int, int]] = set()   # the failures already warned of
+        self.corridor_noted = False                # whether a failed download of a link's railways was
         self.graphs: dict[bool, Graph] = {}        # of the regions loaded, with the tracks being built or without
         self.routes: dict[tuple[str, str, bool], tuple[np.ndarray, np.ndarray] | None] = {}
         self.used = False                          # whether a link was drawn along OSM's tracks
@@ -487,17 +520,41 @@ class TrackRouter:
         found = None
         regions = regions_for(lon, lat)
         if all(self._region(region) for region in regions):
-            schematic = path_km(lon, lat)
-            limit = JOIN_PENALTY * (MAX_STRETCH * schematic + SLACK_KM)
-            way = self._graph(planned).route(a, b, limit)
-            if way is not None:
-                track_lon, track_lat, on_track = way
-                if on_track >= MIN_ON_TRACK and path_km(track_lon, track_lat) <= MAX_STRETCH * schematic + SLACK_KM:
-                    found = (track_lon, track_lat)
-                else:
-                    logger.info("High-speed rail %s-%s drawn city to city: OSM's way is %.0f km, %.0f%% on track.",
-                                a, b, path_km(track_lon, track_lat), 100 * on_track)
+            found = self._follow(self._graph(planned), a, b, lon, lat)
+            if found is None and not planned:
+                found = self._along_the_railways(a, b, lon, lat, regions)
+            if found is None:
+                logger.info("High-speed rail %s-%s drawn city to city.", a, b)
         self._note_failures(len(regions))
         self.routes[key] = found
         self.used |= found is not None
         return found
+
+    def _follow(self, graph: Graph, a: str, b: str, lon: np.ndarray, lat: np.ndarray
+                ) -> tuple[np.ndarray, np.ndarray] | None:
+        """The way from *a* to *b* on *graph* (lon, lat); None if there is none near enough the path (lon, lat)."""
+        longest = MAX_STRETCH * path_km(lon, lat) + SLACK_KM
+        way = graph.route(a, b, JOIN_PENALTY * longest)
+        if way is None:
+            return None
+        track_lon, track_lat, on_track = way
+        if on_track >= MIN_ON_TRACK and path_km(track_lon, track_lat) <= longest:
+            return track_lon, track_lat
+        logger.info("High-speed rail %s-%s: OSM's way is %.0f km, %.0f%% on track.",
+                    a, b, path_km(track_lon, track_lat), 100 * on_track)
+        return None
+
+    def _along_the_railways(self, a: str, b: str, lon: np.ndarray, lat: np.ndarray,
+                            regions: Sequence[tuple[int, int]]) -> tuple[np.ndarray, np.ndarray] | None:
+        """The way of an open link with no fast one, on the fast tracks of its *regions* and the railways around it."""
+        try:
+            corridor = load_corridor(a, b, lon, lat, self.cache_dir, self.fetch)
+        except (TrackDataError, OSError) as exc:
+            if not self.corridor_noted:
+                self.corridor_noted = True
+                incomplete.note(logger, "Drawing some high-speed links from city to city: OSM's railways around "
+                                        "them could not be downloaded (%s)", exc)
+            return None
+        ways = merge([self.loaded[region] for region in regions] + [corridor])
+        stations = {name: self.stations[name] for name in (a, b) if name in self.stations}
+        return self._follow(Graph(select(ways, ~ways.construction), stations), a, b, lon, lat)
