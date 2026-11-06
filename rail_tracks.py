@@ -5,10 +5,21 @@ Data source
 OpenStreetMap (https://www.openstreetmap.org/copyright), © OpenStreetMap
 contributors, Open Database License (ODbL 1.0), through the Overpass API. The
 tracks are the ways tagged ``railway=rail`` with ``highspeed=yes`` or a
-``maxspeed`` of 200 km/h (125 mph) or more, and, for the planned lines, those
+``maxspeed`` of 200 km/h (125 mph) or more, the Channel Tunnel, slower but the
+only way from Britain to the continent, and, for the planned lines, those
 tagged ``railway=construction`` and high-speed. They are downloaded once per
-region of :data:`REGIONS` (the ones a map shows links in), cached in
-``~/.cache/ortho_tiles/high_speed_rail/`` and downloaded again after a year.
+region, a square of a grid :data:`REGION_DEG` degrees a side, for the regions a
+map's links pass through; each is cached as it comes, in
+``~/.cache/ortho_tiles/high_speed_rail/``, so a run cut short carries on where
+it stopped, and downloaded again after a year.
+
+The Overpass servers are busy and fail often, in several ways: a 502 or 504 in
+under a second, no answer at all, or a 200 with a ``remark`` that the query ran
+out of time and as many ways as it had by then. So a reply with a remark counts
+as a failure, the servers are asked in turn and again after :data:`RETRY_WAIT`,
+and only :data:`PATIENCE` seconds of failures in a row end the downloads of a
+run (:class:`Overpass`); a link is then drawn city to city if a region it passes
+through is missing, whatever becomes of the others.
 
 Routing
 -------
@@ -37,7 +48,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any, NamedTuple
 
 import numpy as np
-from scipy.sparse import coo_matrix
+from scipy.sparse import coo_matrix, csr_matrix
 from scipy.sparse.csgraph import connected_components, dijkstra
 from scipy.spatial import cKDTree
 
@@ -61,37 +72,23 @@ MIN_ON_TRACK = 0.5
 
 TRACKS_ATTRIBUTION = "tracks © OpenStreetMap contributors, ODbL"
 
-# The regions downloaded apart (south, west, north, east): together they hold every link of high_speed_rail
-REGIONS: dict[str, tuple[float, float, float, float]] = {
-    "western-europe": (42.0, -5.5, 54.0, 8.5),
-    "iberia": (36.0, -9.5, 44.0, 3.5),
-    "central-europe": (45.5, 8.5, 55.0, 24.0),
-    "alps-italy": (40.0, 6.5, 48.0, 16.5),
-    "baltic-balkans": (44.0, 18.0, 60.0, 26.5),
-    "russia": (55.0, 29.0, 60.5, 38.5),
-    "turkey": (36.5, 28.0, 41.5, 38.0),
-    "morocco": (33.0, -8.5, 36.0, -5.0),
-    "arabia": (21.0, 38.5, 25.0, 40.5),
-    "uzbekistan": (39.0, 64.0, 42.0, 70.0),
-    "india": (18.5, 72.0, 23.5, 73.5),
-    "china-north": (34.0, 100.0, 47.0, 127.0),
-    "china-south": (18.0, 100.0, 34.5, 122.5),
-    "korea": (34.0, 126.0, 38.5, 130.0),
-    "japan": (31.0, 129.5, 42.5, 142.0),
-    "taiwan": (22.0, 119.5, 25.5, 122.0),
-    "java": (-7.5, 106.0, -5.5, 108.5),
-    "us-northeast": (38.5, -78.0, 43.0, -70.5),
-}
+REGION_DEG = 4            # the side of a region, a square of the grid: larger ones keep timing out
+QUERY_TIMEOUT = 180       # seconds a server may spend on a region
+TIMEOUT = 240             # seconds to wait for its answer: the above, and the queue before it
+RETRY_WAIT = 30           # seconds before asking every server again
+PATIENCE = 600            # seconds of failures in a row before no more is asked in this run
 
-TIMEOUT = 300             # seconds a server may take to answer a region
-STATUS_TIMEOUT = 20       # seconds a server may take to say it is there
-QUERY = """[out:json][timeout:300][maxsize:1073741824];
+# Each statement with a box scans the railways in it, so they are scanned once, then filtered
+QUERY = f"""[out:json][timeout:{QUERY_TIMEOUT}];
+way["railway"="rail"]({{box}})->.open;
+way["railway"="construction"]({{box}})->.building;
 (
-  way["railway"="rail"]["highspeed"="yes"]({box});
-  way["railway"="rail"]["maxspeed"~"^[2-3][0-9][0-9]$"]({box});
-  way["railway"="rail"]["maxspeed"~"^1[2-9][0-9] mph$"]({box});
-  way["railway"="construction"]["highspeed"="yes"]({box});
-  way["railway"="construction"]["construction:highspeed"="yes"]({box});
+  way.open["highspeed"="yes"];
+  way.open["maxspeed"~"^[2-3][0-9][0-9]$"];
+  way.open["maxspeed"~"^1[2-9][0-9] mph$"];
+  way.open["name"~"Channel Tunnel"];
+  way.building["highspeed"="yes"];
+  way.building["construction:highspeed"="yes"];
 );
 out geom;"""
 
@@ -115,38 +112,57 @@ def empty_ways() -> Ways:
                 np.zeros(0, bool))
 
 
-def query(box: tuple[float, float, float, float]) -> str:
-    """The Overpass query for the high-speed tracks in *box* (south, west, north, east)."""
-    return QUERY.replace("{box}", ",".join(f"{v:g}" for v in box))
+def query(region: tuple[int, int]) -> str:
+    """The Overpass query for the high-speed tracks in *region*, the square with this (south, west) corner."""
+    south, west = region
+    return QUERY.replace("{box}", f"{south},{west},{south + REGION_DEG},{west + REGION_DEG}")
 
 
-def fetch_overpass(text: str, urls: Sequence[str] = OVERPASS_URLS, timeout: float = TIMEOUT,
-                   dead: set[str] | None = None) -> list[dict[str, Any]]:
-    """The elements Overpass returns for *text*, from the first server that answers; a server that does not is
-    added to *dead* and not asked again. Each server is first asked for its status, so one that is down or
-    does not answer is passed over in seconds. Raises :class:`TrackDataError`."""
-    from shipping import _tls
+class Overpass:
+    """The Overpass servers, for one run: called with a query, it gives the elements of the first full answer.
 
-    data = urllib.parse.urlencode({"data": text}).encode()
-    errors = []
-    dead = set() if dead is None else dead
-    if all(url in dead for url in urls):
-        raise TrackDataError("no Overpass server answered earlier in this run")
-    for url in urls:
-        if url in dead:
-            continue
-        try:
-            status = urllib.request.Request(url.rsplit("/", 1)[0] + "/status", headers={"User-Agent": "ortho/1.0"})
-            with urllib.request.urlopen(status, timeout=STATUS_TIMEOUT, context=_tls()) as resp:
-                resp.read()
-            request = urllib.request.Request(url, data=data, headers={"User-Agent": "ortho/1.0"})
-            with urllib.request.urlopen(request, timeout=timeout, context=_tls()) as resp:
-                return list(json.load(resp)["elements"])
-        except (OSError, http.client.HTTPException, ValueError, KeyError) as exc:  # a reply cut short too
-            logger.info("Overpass at %s did not answer: %s", url, exc)
-            errors.append(f"{urllib.parse.urlparse(url).netloc}: {exc}")
-            dead.add(url)
-    raise TrackDataError("no Overpass server answered (" + "; ".join(errors) + ")")
+    The server that last answered is asked first. One that fails goes to the back of the line, and when all have
+    failed they are asked again after :data:`RETRY_WAIT`. After *patience* seconds of failures with no answer it
+    raises :class:`TrackDataError`, and at once from then on, so that a map does not wait on each region in turn.
+    """
+
+    def __init__(self, urls: Sequence[str] = OVERPASS_URLS, timeout: float = TIMEOUT, patience: float = PATIENCE):
+        self.urls = list(urls)
+        self.timeout = timeout
+        self.patience = patience
+        self.failing = 0.0                   # seconds of failures since the last answer
+        self.errors: dict[str, str] = {}     # each server's last
+
+    def __call__(self, text: str) -> list[dict[str, Any]]:
+        data = urllib.parse.urlencode({"data": text}).encode()
+        while self.failing < self.patience:
+            for url in list(self.urls):
+                started = time.monotonic()
+                try:
+                    elements = self._ask(url, data)
+                except (OSError, http.client.HTTPException, ValueError, KeyError) as exc:  # a reply cut short too
+                    logger.info("Overpass at %s did not answer: %s", url, exc)
+                    self.errors[urllib.parse.urlparse(url).netloc] = str(exc)
+                    self.failing += time.monotonic() - started
+                    self.urls.remove(url)
+                    self.urls.append(url)
+                else:
+                    self.failing = 0.0
+                    return elements
+            time.sleep(RETRY_WAIT)
+            self.failing += RETRY_WAIT
+        raise TrackDataError("no Overpass server answered ("
+                             + "; ".join(f"{server}: {error}" for server, error in self.errors.items()) + ")")
+
+    def _ask(self, url: str, data: bytes) -> list[dict[str, Any]]:
+        from shipping import _tls
+
+        request = urllib.request.Request(url, data=data, headers={"User-Agent": "ortho/1.0"})
+        with urllib.request.urlopen(request, timeout=self.timeout, context=_tls()) as resp:
+            reply = json.load(resp)
+        if reply.get("remark"):              # a timeout comes as 200 OK, with the ways found so far
+            raise ValueError(reply["remark"])
+        return list(reply["elements"])
 
 
 def parse(elements: Iterable[Mapping[str, Any]]) -> Ways:
@@ -215,32 +231,32 @@ def _read(path: str) -> Ways:
         return Ways(*(saved[f] for f in Ways._fields))
 
 
-def load_region(name: str, cache_dir: str | None = None,
-                fetch: Callable[[str], list[dict[str, Any]]] = fetch_overpass,
-                regions: Mapping[str, tuple[float, float, float, float]] = REGIONS) -> Ways:
-    """The tracks of region *name*: cached, or downloaded (again after :data:`MAX_AGE_DAYS`, the old copy kept if
-    that fails). Raises :class:`TrackDataError`."""
-    path = os.path.join(cache_dir or default_cache_dir(), f"{name}_v{DATA_VERSION}.npz")
+def load_region(region: tuple[int, int], cache_dir: str | None,
+                fetch: Callable[[str], list[dict[str, Any]]]) -> Ways:
+    """The tracks of *region* (see :func:`query`): cached, or downloaded (again after :data:`MAX_AGE_DAYS`, the
+    old copy kept if that fails). Raises :class:`TrackDataError`."""
+    south, west = region
+    path = os.path.join(cache_dir or default_cache_dir(), f"{south}_{west}_v{DATA_VERSION}.npz")
     stale = None
     if os.path.isfile(path):
         try:
             ways = _read(path)
         except (OSError, ValueError, KeyError) as exc:
-            logger.info("Reading the cached tracks of %s again: %s", name, exc)
+            logger.info("Reading the cached tracks of %s again: %s", region, exc)
         else:
             if time.time() - os.path.getmtime(path) < MAX_AGE_DAYS * 86400:
                 return ways
             stale = ways
-    logger.info("Downloading OSM's high-speed tracks of %s (one-time) …", name)
+    logger.info("Downloading OSM's high-speed tracks of the %d-degree square at %s (one-time) …", REGION_DEG, region)
     try:
-        ways = parse(fetch(query(regions[name])))
+        ways = parse(fetch(query(region)))
     except TrackDataError:
         if stale is not None:
-            logger.info("Keeping last year's tracks of %s: the Overpass API did not answer.", name)
+            logger.info("Keeping last year's tracks of %s: the Overpass API did not answer.", region)
             return stale
         raise
     _save(path, ways)
-    logger.info("OSM's high-speed tracks of %s: %d ways.", name, len(ways.ids))
+    logger.info("OSM's high-speed tracks of %s: %d ways.", region, len(ways.ids))
     return ways
 
 
@@ -299,24 +315,25 @@ class Graph:
         u, v, w = u[ok], v[ok], np.maximum(w[ok], 1e-6)
         rows, cols, weights = [u], [v], [w]
         if n:
-            _, component = connected_components(coo_matrix((w, (u, v)), shape=(n, n)), directed=False)
+            track = coo_matrix((w, (u, v)), shape=(n, n)).tocsr()
+            track = track + track.T
             tree = cKDTree(_xyz(self.lon, self.lat))
             degree = np.bincount(np.concatenate([u, v]), minlength=n)
-            # A track's loose end, joined to the nearest track of each other piece of the network nearby
+            # A track's loose end, joined to the nearest track of each other piece of the tracks nearby
             ends = np.flatnonzero(degree == 1)
-            gaps = self._joins(tree, component, self.lon[ends], self.lat[ends], GAP_KM, ends, sectors=1)
+            gaps = self._joins(tree, track, self.lon[ends], self.lat[ends], GAP_KM, ends, sectors=1)
             rows.append(gaps[0])
             cols.append(gaps[1])
             weights.append(gaps[2])
         else:
-            tree, component = None, np.zeros(0, int)
+            tree, track = None, None
         # The stations, vertices after the tracks', each joined to the tracks around it
         names = list(stations)
         self.station = {name: n + i for i, name in enumerate(names)}
         self.lon = np.concatenate([self.lon, [stations[s][0] for s in names]])
         self.lat = np.concatenate([self.lat, [stations[s][1] for s in names]])
         if tree is not None and names:
-            joins = self._joins(tree, component, self.lon[n:], self.lat[n:], SNAP_KM, n + np.arange(len(names)),
+            joins = self._joins(tree, track, self.lon[n:], self.lat[n:], SNAP_KM, n + np.arange(len(names)),
                                 sectors=SECTORS)
             rows.append(joins[0])
             cols.append(joins[1])
@@ -332,24 +349,41 @@ class Graph:
         self.matrix = coo_matrix((w[first_of], (u[first_of], v[first_of])), shape=(size, size)).tocsr()
         self.tracks = n
 
-    def _joins(self, tree: cKDTree, component: np.ndarray, lon: np.ndarray, lat: np.ndarray, reach_km: float,
+    def _joins(self, tree: cKDTree, track: csr_matrix, lon: np.ndarray, lat: np.ndarray, reach_km: float,
                sources: np.ndarray, sectors: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Edges from each of *sources* (at *lon*, *lat*) to the nearest track vertex within *reach_km* in each
-        of *sectors* directions on each piece of the network, but the source's own piece."""
+        of *sectors* directions on each piece of the tracks within that reach, but the source's own piece.
+
+        The pieces are those within the reach, not of the whole network: with a country's tracks in one graph
+        nearly all are one piece, joined somewhere far off, and two lines side by side would count as one."""
         rows, cols, weights = [], [], []
         chord = 2 * np.sin(reach_km / EARTH_KM / 2)
-        own = np.where(sources < len(component), component[np.minimum(sources, len(component) - 1)], -1)
-        for k, near in enumerate(tree.query_ball_point(_xyz(lon, lat), chord)):
-            near = np.array([j for j in near if component[j] != own[k]], int)
+        place = np.full(track.shape[0], -1)      # where each vertex is among those near the source
+        for k, found in enumerate(tree.query_ball_point(_xyz(lon, lat), chord)):
+            near = np.array(found, int)
             if not len(near):
                 continue
+            place[near] = np.arange(len(near))
+            edges = track[near].tocoo()
+            within = place[edges.col] >= 0
+            local = coo_matrix((np.ones(int(within.sum())), (edges.row[within], place[edges.col[within]])),
+                               shape=(len(near), len(near)))
+            _, piece = connected_components(local, directed=False)
+            if sources[k] < track.shape[0]:
+                others = piece != piece[place[sources[k]]]
+                place[near] = -1
+                near, piece = near[others], piece[others]
+                if not len(near):
+                    continue
+            else:
+                place[near] = -1
             d = distance_km(lon[k], lat[k], self.lon[near], self.lat[near])
             bearing = np.degrees(np.arctan2(self.lon[near] - lon[k],
                                             (self.lat[near] - lat[k]) / max(np.cos(np.radians(lat[k])), 0.1)))
             sector = np.floor((bearing + 180) / 360 * sectors).astype(int) % sectors
             best: dict[tuple[int, int], int] = {}
             for j in np.argsort(d):
-                best.setdefault((int(component[near[j]]), int(sector[j])), int(j))
+                best.setdefault((int(piece[j]), int(sector[j])), int(j))
             for j in best.values():
                 rows.append(int(sources[k]))
                 cols.append(int(near[j]))
@@ -378,12 +412,14 @@ class Graph:
         return lon, lat, (float(steps[on_track].sum()) / total if total > 0 else 0.0)
 
 
-def regions_for(lon: np.ndarray, lat: np.ndarray, margin: float = 0.5,
-                regions: Mapping[str, tuple[float, float, float, float]] = REGIONS) -> list[str]:
-    """The regions the path (lon, lat) runs through, within *margin* degrees."""
-    s, w, n, e = float(np.min(lat)) - margin, float(np.min(lon)) - margin, float(np.max(lat)) + margin, \
-        float(np.max(lon)) + margin
-    return [name for name, (rs, rw, rn, re) in regions.items() if rs < n and s < rn and rw < e and w < re]
+def regions_for(lon: np.ndarray, lat: np.ndarray, margin: float = 0.5) -> list[tuple[int, int]]:
+    """The regions (south, west) the path (lon, lat) passes through or within *margin* degrees of."""
+    regions: dict[tuple[int, int], None] = {}
+    for dlat, dlon in ((-margin, -margin), (-margin, margin), (margin, -margin), (margin, margin)):
+        south = np.floor((lat + dlat) / REGION_DEG).astype(int) * REGION_DEG
+        west = np.floor((lon + dlon) / REGION_DEG).astype(int) * REGION_DEG
+        regions.update(dict.fromkeys(zip(south.tolist(), west.tolist())))
+    return list(regions)
 
 
 class TrackRouter:
@@ -391,49 +427,52 @@ class TrackRouter:
     the links in view need them."""
 
     def __init__(self, stations: Mapping[str, tuple[float, float]], cache_dir: str | None = None,
-                 fetch: Callable[[str], list[dict[str, Any]]] | None = None,
-                 regions: Mapping[str, tuple[float, float, float, float]] = REGIONS):
+                 fetch: Callable[[str], list[dict[str, Any]]] | None = None):
         self.stations = dict(stations)
         self.cache_dir = cache_dir
-        self.dead: set[str] = set()          # the Overpass servers that did not answer, not asked again
-        self.fetch = fetch or (lambda text: fetch_overpass(text, dead=self.dead))
-        self.regions = regions
-        self.loaded: dict[str, Ways] = {}
-        self.failed: dict[str, str] = {}
-        self.graphs: dict[tuple[frozenset[str], bool], Graph] = {}
+        self.fetch = fetch or Overpass()
+        self.loaded: dict[tuple[int, int], Ways] = {}
+        self.failed: dict[tuple[int, int], str] = {}
+        self.noted: set[tuple[int, int]] = set()   # the failures already warned of
+        self.graphs: dict[bool, Graph] = {}        # of the regions loaded, with the tracks being built or without
         self.routes: dict[tuple[str, str, bool], tuple[np.ndarray, np.ndarray] | None] = {}
-        self.used = False                    # whether a link was drawn along OSM's tracks
+        self.used = False                          # whether a link was drawn along OSM's tracks
 
     def prepare(self, paths: Iterable[tuple[np.ndarray, np.ndarray]]) -> None:
         """Download the regions the *paths* (lon, lat) run through, at once."""
-        for name in dict.fromkeys(r for lon, lat in paths for r in regions_for(lon, lat, regions=self.regions)):
-            self._region(name)
+        regions = list(dict.fromkeys(r for lon, lat in paths for r in regions_for(lon, lat)))
+        for region in regions:
+            self._region(region)
+        self._note_failures(len(regions))
 
-    def _region(self, name: str) -> bool:
-        if name in self.loaded:
+    def _region(self, region: tuple[int, int]) -> bool:
+        if region in self.loaded:
             return True
-        if name in self.failed:
+        if region in self.failed:
             return False
         try:
-            self.loaded[name] = load_region(name, self.cache_dir, self.fetch, self.regions)
+            self.loaded[region] = load_region(region, self.cache_dir, self.fetch)
+            self.graphs.clear()
             return True
         except (TrackDataError, OSError) as exc:
-            self.failed[name] = str(exc)
-            incomplete.note(logger, "Drawing the high-speed lines of %s from city to city: OSM's tracks could not "
-                                    "be downloaded (%s)", name, exc)
+            self.failed[region] = str(exc)
             return False
 
-    def _graph(self, names: list[str], planned: bool) -> Graph:
-        key = (frozenset(names), planned)
-        if key not in self.graphs:
-            ways = merge([self.loaded[n] for n in sorted(names)])
+    def _note_failures(self, wanted: int) -> None:
+        """One warning for the regions that failed since the last, however many they are."""
+        new = [region for region in self.failed if region not in self.noted]
+        if new:
+            self.noted.update(new)
+            incomplete.note(logger, "Drawing the high-speed lines through %d of %d regions from city to city: OSM's "
+                                    "tracks could not be downloaded (%s)", len(new), wanted, self.failed[new[-1]])
+
+    def _graph(self, planned: bool) -> Graph:
+        if planned not in self.graphs:
+            ways = merge([self.loaded[region] for region in sorted(self.loaded)])
             if not planned:
                 ways = select(ways, ~ways.construction)
-            boxes = [self.regions[n] for n in names]
-            stations = {s: p for s, p in self.stations.items()
-                        if any(b[0] - 1 <= p[1] <= b[2] + 1 and b[1] - 1 <= p[0] <= b[3] + 1 for b in boxes)}
-            self.graphs[key] = Graph(ways, stations)
-        return self.graphs[key]
+            self.graphs[planned] = Graph(ways, self.stations)
+        return self.graphs[planned]
 
     def route(self, a: str, b: str, planned: bool, lon: np.ndarray, lat: np.ndarray
               ) -> tuple[np.ndarray, np.ndarray] | None:
@@ -443,11 +482,11 @@ class TrackRouter:
         if key in self.routes:
             return self.routes[key]
         found = None
-        names = regions_for(lon, lat, regions=self.regions)
-        if names and all(self._region(n) for n in names):
+        regions = regions_for(lon, lat)
+        if all(self._region(region) for region in regions):
             schematic = path_km(lon, lat)
             limit = JOIN_PENALTY * (MAX_STRETCH * schematic + SLACK_KM)
-            way = self._graph(names, planned).route(a, b, limit)
+            way = self._graph(planned).route(a, b, limit)
             if way is not None:
                 track_lon, track_lat, on_track = way
                 if on_track >= MIN_ON_TRACK and path_km(track_lon, track_lat) <= MAX_STRETCH * schematic + SLACK_KM:
@@ -455,6 +494,7 @@ class TrackRouter:
                 else:
                     logger.info("High-speed rail %s-%s drawn city to city: OSM's way is %.0f km, %.0f%% on track.",
                                 a, b, path_km(track_lon, track_lat), 100 * on_track)
+        self._note_failures(len(regions))
         self.routes[key] = found
         self.used |= found is not None
         return found

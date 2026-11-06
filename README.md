@@ -2577,11 +2577,13 @@ largest named.
   `PLANNED_LINES`, `VIA`), to be corrected or added to there.
 - **The track** is OpenStreetMap's, through the Overpass API: the ways tagged
   `railway=rail` with `highspeed=yes` or a `maxspeed` of 200 km/h (125 mph)
-  or more, and for the planned links those tagged `railway=construction` and
-  high-speed. They are downloaded once per region a map shows links in (18
-  regions, from Iberia to Java; [rail_tracks.py](rail_tracks.py)'s
-  `REGIONS`), cached in `~/.cache/ortho_tiles/high_speed_rail/` and
-  downloaded again after a year. Each link follows the shortest way along the
+  or more, the Channel Tunnel (slower, but the only way from Britain to the
+  continent), and for the planned links those tagged `railway=construction` and
+  high-speed. They are downloaded by region, a square of a 4-degree grid, for
+  the squares a map's links pass through (36 for Europe, 115 for the world;
+  [rail_tracks.py](rail_tracks.py)'s `REGION_DEG`), each cached as it comes
+  in `~/.cache/ortho_tiles/high_speed_rail/`, so that a run cut short carries
+  on where it stopped, and downloaded again after a year. Each link follows the shortest way along the
   tracks between its two stations, joined to the nearest track in each
   direction within 30 km (the approaches to a terminus are rarely tagged
   high-speed) and across gaps of up to 3 km; an open link keeps to open
@@ -2589,10 +2591,16 @@ largest named.
   the link drawn city to city (plus 20 km), or less than half of it is on
   track, the link is drawn from city to city through a few points along its
   way, as it is when the tracks cannot be downloaded (the map is then noted
-  incomplete, so an atlas draws it again). `--high-speed-rail-schematic`
-  draws every link so and downloads nothing. Each Overpass server is asked
-  for its status first (20 s) and given 5 minutes for a region; one that
-  does not answer is not asked again in that run.
+  incomplete, so an atlas draws it again). In November 2026, 174 of the 207
+  links followed the tracks; the others have long stretches not tagged
+  as fast, such as most of Warsaw-Krakow. `--high-speed-rail-schematic`
+  draws every link so and downloads nothing.
+
+  The first map of a large area is slow, as the Overpass servers are busy and
+  fail often: about a minute a square when they answer, and about two
+  all told (Europe took 70 minutes). A server has 4 minutes to answer, a reply
+  that ran out of time counts as a failure, and the servers are asked in turn
+  until 10 minutes of failures in a row end the downloads of that run.
 
 ```powershell
 python ortho.py --lat 49 --lon 10 --radius 1500 --provider osm_plain --high-speed-rail planned --no-circles

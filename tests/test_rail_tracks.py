@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import time
 
 import numpy as np
@@ -15,8 +16,8 @@ import incomplete
 import rail_tracks as rt
 from rotation import globe_projection
 
-REGIONS = {"test": (-2.0, -1.0, 2.0, 2.0), "east": (-2.0, 1.4, 2.0, 4.0)}
-STATIONS = {"A": (0.0, 0.0), "B": (1.0, 0.0), "C": (3.0, 0.0)}
+STATIONS = {"A": (1.0, 1.0), "B": (2.0, 1.0), "C": (3.0, 1.0)}
+HOME = (0, 0)      # the square of the grid they are all in
 
 
 def _way(way_id, points, first_node, tags=None):
@@ -27,9 +28,9 @@ def _way(way_id, points, first_node, tags=None):
 
 
 def _arc(lon0, lon1, bulge, n=60):
-    """Points from (*lon0*, 0.02) to (*lon1*, 0.02), bowed north by *bulge* degrees in the middle."""
+    """Points from (1 + *lon0*, 1.02) to (1 + *lon1*, 1.02), bowed north by *bulge* degrees in the middle."""
     t = np.linspace(0, 1, n)
-    return list(zip(lon0 + (lon1 - lon0) * t, 0.02 + bulge * np.sin(np.pi * t)))
+    return list(zip(1 + lon0 + (lon1 - lon0) * t, 1.02 + bulge * np.sin(np.pi * t)))
 
 
 def _fetcher(elements, asked=None):
@@ -41,7 +42,7 @@ def _fetcher(elements, asked=None):
 
 
 def _router(elements, tmp_path, asked=None, stations=STATIONS):
-    return rt.TrackRouter(stations, str(tmp_path), _fetcher(elements, asked), REGIONS)
+    return rt.TrackRouter(stations, str(tmp_path), _fetcher(elements, asked))
 
 
 def _straight(a, b):
@@ -50,10 +51,17 @@ def _straight(a, b):
 
 
 class TestReading:
-    def test_query_names_the_box_and_the_tags(self):
-        text = rt.query((36.0, -9.5, 44.0, 3.5))
-        assert "(36,-9.5,44,3.5)" in text and '"highspeed"="yes"' in text and '"railway"="construction"' in text
+    def test_query_names_the_square_and_the_tags(self):
+        text = rt.query((36, -12))
+        assert "(36,-12,40,-8)" in text and '"highspeed"="yes"' in text and '"railway"="construction"' in text
         assert "{box}" not in text and text.rstrip().endswith("out geom;")
+
+    def test_query_takes_the_channel_tunnel_though_it_is_not_tagged_high_speed(self):
+        assert 'way.open["name"~"Channel Tunnel"];' in rt.query((48, 0))
+
+    def test_query_scans_the_railways_of_the_square_once(self):
+        # Each statement with a box scans the railways in it, which is what made the query slow
+        assert rt.query((36, -12)).count("(36,-12,40,-8)") == 2     # the open railways, those being built
 
     def test_parse_keeps_ways_and_drops_what_cannot_be_drawn(self):
         elements = [_way(1, [(0, 0), (1, 0), (2, 0)], 10),
@@ -74,41 +82,67 @@ class TestReading:
         assert open_only.ids.tolist() == [1, 2] and open_only.nodes.tolist() == [10, 11, 20, 21]
         assert rt.merge([]).ids.size == 0
 
-    def test_regions_for(self):
-        lon, lat = np.array([0.0, 1.0]), np.array([0.0, 0.0])
-        assert rt.regions_for(lon, lat, regions=REGIONS) == ["test", "east"]     # within half a degree
-        assert rt.regions_for(lon, lat, margin=0, regions=REGIONS) == ["test"]
-        assert rt.regions_for(lon + 50, lat, regions=REGIONS) == []
+    def test_regions_for_are_the_squares_near_the_path(self):
+        lon, lat = np.array([1.0, 2.0]), np.array([1.0, 1.0])
+        assert rt.regions_for(lon, lat) == [HOME]
+        assert set(rt.regions_for(lon + 1.8, lat)) == {(0, 0), (0, 4)}      # within half a degree of the next
+        assert rt.regions_for(lon + 1.8, lat, margin=0) == [(0, 0)]
+        assert rt.regions_for(np.array([-1.0]), np.array([-1.0]), margin=0) == [(-4, -4)]
 
-    def test_every_link_of_high_speed_rail_lies_in_a_region(self):
-        rail = hsr.load_high_speed_rail("planned", tracks=False)
+    def test_regions_follow_the_path_not_its_bounding_box(self):
+        lon, lat = np.linspace(1, 15, 57), np.linspace(1, 15, 57)           # a diagonal, four squares each way
+        names = rt.regions_for(lon, lat, margin=0)
+        assert (0, 0) in names and (12, 12) in names and (12, 0) not in names and (0, 12) not in names
+
+    def test_taiwans_links_do_not_need_the_rest_of_china(self):
+        rail = hsr.load_high_speed_rail("open", tracks=False)
         for k in range(len(rail.a)):
-            lon, lat = hsr._path(rail, k)
-            for x, y in zip(lon, lat):
-                assert any(s <= y <= n and w <= x <= e for s, w, n, e in rt.REGIONS.values()), \
-                    (rail.names[rail.a[k]], rail.names[rail.b[k]], x, y)
+            if {rail.names[rail.a[k]], rail.names[rail.b[k]]} == {"Taipei", "Hsinchu"}:
+                assert rt.regions_for(*hsr._path(rail, k)) == [(24, 120)]
+                return
+        pytest.fail("no Taipei-Hsinchu link")
+
+
+class Reply:
+    """What urlopen gives: the bytes of an HTTP reply."""
+
+    def __init__(self, body):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self, *args):
+        return self.body
+
+
+OK = b'{"elements": [{"type": "way", "id": 1}]}'
+SERVERS = ("https://one/api/interpreter", "https://two/api/interpreter")
 
 
 class TestCache:
     def test_downloaded_once(self, tmp_path):
         asked = []
         fetch = _fetcher([_way(1, _arc(0.05, 0.95, 0.1), 1)], asked)
-        first = rt.load_region("test", str(tmp_path), fetch, REGIONS)
-        again = rt.load_region("test", str(tmp_path), fetch, REGIONS)
+        first = rt.load_region(HOME, str(tmp_path), fetch)
+        again = rt.load_region(HOME, str(tmp_path), fetch)
         assert len(asked) == 1 and first.ids.tolist() == again.ids.tolist() == [1]
-        assert os.path.isfile(tmp_path / f"test_v{rt.DATA_VERSION}.npz")
+        assert os.path.isfile(tmp_path / f"0_0_v{rt.DATA_VERSION}.npz")
 
     def test_downloaded_again_after_a_year_or_kept_if_that_fails(self, tmp_path):
-        rt.load_region("test", str(tmp_path), _fetcher([_way(1, _arc(0.05, 0.95, 0.1), 1)]), REGIONS)
-        path = tmp_path / f"test_v{rt.DATA_VERSION}.npz"
+        rt.load_region(HOME, str(tmp_path), _fetcher([_way(1, _arc(0.05, 0.95, 0.1), 1)]))
+        path = tmp_path / f"0_0_v{rt.DATA_VERSION}.npz"
         old = time.time() - (rt.MAX_AGE_DAYS + 1) * 86400
         os.utime(path, (old, old))
 
         def offline(text):
             raise rt.TrackDataError("offline")
 
-        assert rt.load_region("test", str(tmp_path), offline, REGIONS).ids.tolist() == [1]
-        newer = rt.load_region("test", str(tmp_path), _fetcher([_way(7, _arc(0.05, 0.95, 0.1), 1)]), REGIONS)
+        assert rt.load_region(HOME, str(tmp_path), offline).ids.tolist() == [1]
+        newer = rt.load_region(HOME, str(tmp_path), _fetcher([_way(7, _arc(0.05, 0.95, 0.1), 1)]))
         assert newer.ids.tolist() == [7]
 
     def test_nothing_to_be_had(self, tmp_path):
@@ -116,55 +150,112 @@ class TestCache:
             raise rt.TrackDataError("offline")
 
         with pytest.raises(rt.TrackDataError, match="offline"):
-            rt.load_region("test", str(tmp_path), offline, REGIONS)
+            rt.load_region(HOME, str(tmp_path), offline)
 
-    def test_overpass_servers_tried_in_turn(self, monkeypatch):
+    def test_a_square_without_tracks_is_kept(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(rt.urllib.request, "urlopen", lambda *a, **k: Reply(b'{"elements": []}'))
+        assert rt.load_region(HOME, str(tmp_path), rt.Overpass(SERVERS)).ids.size == 0
+        assert os.path.isfile(tmp_path / f"0_0_v{rt.DATA_VERSION}.npz")
+
+
+class TestOverpass:
+    @pytest.fixture(autouse=True)
+    def no_waiting(self, monkeypatch):
+        self.waits = []
+        monkeypatch.setattr(rt.time, "sleep", self.waits.append)
+
+    @pytest.mark.parametrize("body", [
+        b'{"elements": [], "remark": "runtime error: Query timed out at line 3 after 91 seconds."}',
+        b'{"elements": [{"type": "way", "id": 1}], "remark": "runtime error: out of memory"}',
+    ])
+    def test_a_reply_with_a_remark_is_a_failure_and_not_cached(self, tmp_path, monkeypatch, body):
+        # Overpass gives its timeouts as 200 OK, with what it had so far
+        monkeypatch.setattr(rt.urllib.request, "urlopen", lambda *a, **k: Reply(body))
+        with pytest.raises(rt.TrackDataError, match="runtime error"):
+            rt.load_region(HOME, str(tmp_path), rt.Overpass(SERVERS))
+        assert os.listdir(tmp_path) == []
+
+    def test_a_remark_passes_on_to_the_next_server(self, monkeypatch):
+        replies = {SERVERS[0]: b'{"elements": [], "remark": "runtime error: timed out"}', SERVERS[1]: OK}
+        monkeypatch.setattr(rt.urllib.request, "urlopen",
+                            lambda request, timeout, context: Reply(replies[request.full_url]))
+        assert rt.Overpass(SERVERS)("[out:json];") == [{"type": "way", "id": 1}]
+
+    def test_no_status_check_before_the_query(self, monkeypatch):
         tried = []
-
-        class Reply:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *exc):
-                return False
-
-            def read(self, *args):
-                return b'{"elements": [{"type": "way", "id": 1}]}'
 
         def urlopen(request, timeout, context):
             tried.append((request.full_url, timeout))
-            if request.full_url.startswith("https://one/"):
-                raise OSError("reset")
-            return Reply()
+            return Reply(OK)
 
         monkeypatch.setattr(rt.urllib.request, "urlopen", urlopen)
-        assert rt.fetch_overpass("[out:json];", urls=("https://one/api/interpreter", "https://two/api/interpreter")
-                                 ) == [{"type": "way", "id": 1}]
-        # Each asked for its status first, briefly
-        assert tried == [("https://one/api/status", rt.STATUS_TIMEOUT), ("https://two/api/status", rt.STATUS_TIMEOUT),
-                         ("https://two/api/interpreter", rt.TIMEOUT)]
-        monkeypatch.setattr(rt.urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(OSError("down")))
-        dead = set()
-        with pytest.raises(rt.TrackDataError, match="one: down; two: down"):
-            rt.fetch_overpass("[out:json];", urls=("https://one/api", "https://two/api"), dead=dead)
-        assert dead == {"https://one/api", "https://two/api"}
-        # Not asked again in the same run
-        with pytest.raises(rt.TrackDataError, match="earlier in this run"):
-            rt.fetch_overpass("[out:json];", urls=("https://one/api", "https://two/api"), dead=dead)
+        rt.Overpass(SERVERS)("[out:json];")
+        assert tried == [(SERVERS[0], rt.TIMEOUT)]
 
-    def test_a_router_asks_no_dead_server_twice(self, monkeypatch, tmp_path):
+    def test_a_server_that_failed_is_asked_again(self, monkeypatch):
         tried = []
 
         def urlopen(request, timeout, context):
             tried.append(request.full_url)
-            raise TimeoutError("timed out")
+            if len(tried) <= 2:                      # both fail at first
+                raise OSError("502 Bad Gateway")
+            return Reply(OK)
 
         monkeypatch.setattr(rt.urllib.request, "urlopen", urlopen)
-        router = rt.TrackRouter(STATIONS, str(tmp_path), regions=REGIONS)
-        with incomplete.noting() as noted:
-            router.prepare([_straight("A", "C")])                 # both regions
-        assert tried == [url.rsplit("/", 1)[0] + "/status" for url in rt.OVERPASS_URLS]
-        assert set(router.failed) == {"test", "east"} and len(noted) == 2
+        assert rt.Overpass(SERVERS)("[out:json];") == [{"type": "way", "id": 1}]
+        assert tried == [SERVERS[0], SERVERS[1], SERVERS[0]] and self.waits == [rt.RETRY_WAIT]
+
+    def test_the_server_that_answered_is_asked_first_next_time(self, monkeypatch):
+        tried = []
+
+        def urlopen(request, timeout, context):
+            tried.append(request.full_url)
+            if request.full_url == SERVERS[0]:
+                raise OSError("down")
+            return Reply(OK)
+
+        monkeypatch.setattr(rt.urllib.request, "urlopen", urlopen)
+        servers = rt.Overpass(SERVERS)
+        servers("[out:json];")
+        tried.clear()
+        servers("[out:json];")
+        assert tried == [SERVERS[1]]
+
+    def test_it_gives_up_after_its_patience_and_stays_given_up(self, monkeypatch):
+        tried = []
+
+        def urlopen(request, timeout, context):
+            tried.append(request.full_url)
+            raise OSError("down")
+
+        monkeypatch.setattr(rt.urllib.request, "urlopen", urlopen)
+        servers = rt.Overpass(SERVERS, patience=3 * rt.RETRY_WAIT)
+        with pytest.raises(rt.TrackDataError, match="one: down.*two: down|two: down.*one: down"):
+            servers("[out:json];")
+        assert sum(self.waits) == 3 * rt.RETRY_WAIT and len(tried) == 2 * 3
+        tried.clear()
+        with pytest.raises(rt.TrackDataError, match="down"):
+            servers("[out:json];")               # the next square asks nobody
+        assert tried == []
+
+    def test_an_answer_renews_its_patience(self, monkeypatch):
+        answers = iter([OSError("down"), OSError("down"), OK, OSError("down"), OSError("down"), OK])
+
+        def urlopen(request, timeout, context):
+            answer = next(answers)
+            if isinstance(answer, Exception):
+                raise answer
+            return Reply(answer)
+
+        monkeypatch.setattr(rt.urllib.request, "urlopen", urlopen)
+        servers = rt.Overpass(SERVERS, patience=2 * rt.RETRY_WAIT)
+        assert servers("[out:json];") and servers("[out:json];")
+
+    @pytest.mark.parametrize("body", [b"<html>busy</html>", b'{"elements": [', b'{"version": 0.6}'])
+    def test_a_reply_it_cannot_read_is_a_failure(self, monkeypatch, body):
+        monkeypatch.setattr(rt.urllib.request, "urlopen", lambda *a, **k: Reply(body))
+        with pytest.raises(rt.TrackDataError):
+            rt.Overpass(SERVERS, patience=rt.RETRY_WAIT)("[out:json];")
 
 
 class TestRouting:
@@ -172,8 +263,8 @@ class TestRouting:
         router = _router([_way(1, _arc(0.05, 0.95, 0.15), 1)], tmp_path)
         lon, lat = router.route("A", "B", False, *_straight("A", "B"))
         assert (lon[0], lat[0]) == STATIONS["A"] and (lon[-1], lat[-1]) == STATIONS["B"]
-        assert lat.max() == pytest.approx(0.17, abs=0.01)             # along the bow, not straight
-        assert router.used and list(router.loaded) == ["test", "east"]
+        assert lat.max() == pytest.approx(1.17, abs=0.01)             # along the bow, not straight
+        assert router.used and list(router.loaded) == [HOME]
 
     def test_both_ways_round(self, tmp_path):
         router = _router([_way(1, _arc(0.05, 0.95, 0.15), 1)], tmp_path)
@@ -185,6 +276,32 @@ class TestRouting:
         points = _arc(0.05, 0.95, 0.15, n=200)
         router = _router([_way(1, points[:100], 1), _way(2, points[101:], 500)], tmp_path)   # ~1 km apart
         assert router.route("A", "B", False, *_straight("A", "B")) is not None
+
+    def test_a_gap_is_bridged_though_the_tracks_meet_far_off(self, tmp_path):
+        # With a whole country's tracks loaded, the two sides of a gap are nearly always joined somewhere else
+        west = [(1.0 + 0.5 * t, 1.01) for t in np.linspace(0, 1, 40)]
+        east = [(1.51 + 0.49 * t, 1.01) for t in np.linspace(0, 1, 40)]
+        round_by = {"type": "way", "id": 3, "nodes": [1, 900, 901, 539],        # the far ends, ~90 km to the south
+                    "geometry": [{"lon": lon, "lat": lat} for lon, lat in
+                                 [west[0], (1.0, 0.2), (2.0, 0.2), east[-1]]],
+                    "tags": {"railway": "rail", "highspeed": "yes"}}
+        router = _router([_way(1, west, 1), _way(2, east, 500), round_by], tmp_path)
+        lon, lat = router.route("A", "B", False, *_straight("A", "B"))
+        assert lat.min() > 0.99                                                 # straight on, not round by the south
+
+    def test_a_station_joins_a_line_behind_a_nearer_one(self, tmp_path):
+        # A's nearest track curves round its north-east, so the main line behind it lies in the same directions,
+        # and the two meet only ~100 km off: that they are one network must not hide the main line from A
+        radius = 0.005
+        curve = [(1 + radius * np.sin(np.radians(b)), 1 + radius * np.cos(np.radians(b))) for b in (5, 25, 50, 70, 88)]
+        main = [(1.0 + t, 1.03) for t in np.linspace(0.002, 1, 60)]
+        branch = curve + [(1.3, 0.3), (2.0, 0.3), main[-1]]
+        side = {"type": "way", "id": 2, "nodes": [*range(700, 700 + len(branch) - 1), 59],
+                "geometry": [{"lon": lon, "lat": lat} for lon, lat in branch],
+                "tags": {"railway": "rail", "highspeed": "yes"}}
+        router = _router([_way(1, main, 0), side], tmp_path)
+        lon, lat = router.route("A", "B", False, *_straight("A", "B"))
+        assert lat.min() > 0.99 and rt.path_km(lon, lat) < 125
 
     def test_a_track_far_from_the_stations_is_not_used(self, tmp_path):
         far = [(lon, lat + 0.6) for lon, lat in _arc(0.05, 0.95, 0.1)]         # ~65 km north of both
@@ -199,10 +316,10 @@ class TestRouting:
         assert "drawn city to city" in caplog.text
 
     def test_a_link_mostly_off_track_is_drawn_city_to_city(self, tmp_path):
-        stations = {"A": (0.0, 0.0), "B": (0.5, 0.0)}
-        short = _way(1, [(0.2, 0.01), (0.25, 0.01), (0.3, 0.01)], 1)            # 11 km of 55 km on track
+        stations = {"A": (1.0, 1.0), "B": (1.5, 1.0)}
+        short = _way(1, [(1.2, 1.01), (1.25, 1.01), (1.3, 1.01)], 1)            # 11 km of 55 km on track
         router = _router([short], tmp_path, stations=stations)
-        lon, lat = np.linspace(0, 0.5, 10), np.zeros(10)
+        lon, lat = np.linspace(1, 1.5, 10), np.ones(10)
         assert router.route("A", "B", False, lon, lat) is None
 
     def test_open_links_keep_off_the_tracks_being_built(self, tmp_path):
@@ -218,12 +335,61 @@ class TestRouting:
             asked.append(text)
             raise rt.TrackDataError("offline")
 
-        router = rt.TrackRouter(STATIONS, str(tmp_path), offline, REGIONS)
+        router = rt.TrackRouter(STATIONS, str(tmp_path), offline)
         with incomplete.noting() as noted:
             assert router.route("A", "B", False, *_straight("A", "B")) is None
             assert router.route("B", "C", False, *_straight("B", "C")) is None
-        assert len(asked) == 1 and set(router.failed) == {"test"}
-        assert len(noted) == 1 and "test from city to city" in noted[0] and "offline" in noted[0]
+        assert len(asked) == 1 and set(router.failed) == {HOME}
+        assert len(noted) == 1 and "city to city" in noted[0] and "offline" in noted[0]
+
+    def test_a_failed_square_stops_only_the_links_that_need_it(self, tmp_path):
+        stations = {**STATIONS, "D": (21.0, 1.0), "E": (22.0, 1.0)}
+        far_track = [(lon + 20, lat) for lon, lat in _arc(0.05, 0.95, 0.15)]
+        far_link = np.linspace(21, 22, 20), np.ones(20)
+
+        def fetch(text):
+            if "(0,0,4,4)" in text:
+                raise rt.TrackDataError("504")
+            return [_way(2, far_track, 500)]
+
+        router = rt.TrackRouter(stations, str(tmp_path), fetch)
+        with incomplete.noting() as noted:
+            router.prepare([_straight("A", "B"), far_link])
+            assert router.route("A", "B", False, *_straight("A", "B")) is None
+            assert router.route("D", "E", False, *far_link) is not None
+        assert set(router.failed) == {HOME} and router.used
+        assert len(noted) == 1 and "1 of 2" in noted[0]
+
+    def test_a_map_is_noted_once_however_many_squares_fail(self, tmp_path):
+        def offline(text):
+            raise rt.TrackDataError("offline")
+
+        router = rt.TrackRouter(STATIONS, str(tmp_path), offline)
+        with incomplete.noting() as noted:
+            router.prepare([(np.linspace(1, 30, 120), np.ones(120))])
+        assert len(router.failed) >= 7 and len(noted) == 1
+
+    def test_squares_downloaded_before_a_failure_are_kept_for_the_next_run(self, tmp_path):
+        path = np.linspace(1, 6, 20), np.ones(20)                # two squares, (0, 0) and (0, 4)
+
+        def only_the_first(text):
+            if "(0,4,4,8)" in text:
+                raise rt.TrackDataError("504")
+            return [_way(1, _arc(0.05, 0.95, 0.15), 1)]
+
+        with incomplete.noting():
+            rt.TrackRouter(STATIONS, str(tmp_path), only_the_first).prepare([path])
+        asked = []
+        rt.TrackRouter(STATIONS, str(tmp_path), _fetcher([], asked)).prepare([path])
+        assert len(asked) == 1 and "(0,4,4,8)" in asked[0]
+
+    def test_tracks_downloaded_later_are_routed_on(self, tmp_path):
+        answers = iter([[], [_way(1, _arc(0.05, 0.95, 0.15), 1)]])
+        router = rt.TrackRouter(STATIONS, str(tmp_path), lambda text: next(answers))
+        assert router.route("A", "B", False, *_straight("A", "B")) is None
+        router.prepare([(np.linspace(5, 6, 5), np.ones(5))])     # another square: a new graph
+        router.routes.clear()
+        assert router.route("A", "B", False, *_straight("A", "B")) is not None
 
     def test_routes_are_remembered(self, tmp_path):
         router = _router([_way(1, _arc(0.05, 0.95, 0.15), 1)], tmp_path)
@@ -260,8 +426,8 @@ class TestHighSpeedRail:
         ax.set_xlim(-half, half)
         ax.set_ylim(-half, half)
         hsr.draw_high_speed_rail(ax, rail)
-        # Only the regions of the links near the map were asked for
-        assert 0 < len(asked) <= 4 and not any("(18,100" in q for q in asked)
+        # Only the squares of the links near the map were asked for: nothing beyond Europe
+        assert 0 < len(asked) <= 40 and not any(re.search(r"\(\d+,1\d\d,", q) for q in asked)
         k = next(k for k in range(len(rail.a)) if {rail.names[rail.a[k]], rail.names[rail.b[k]]} == {"Paris", "Lyon"})
         track = rail.router.routes[("Paris", "Lyon", False)] or rail.router.routes[("Lyon", "Paris", False)]
         assert track is not None and track[0].max() > 4.0               # east of the line drawn city to city
