@@ -249,7 +249,7 @@ The main script is [ortho.py](ortho.py).
 *Right: Every route out of London Heathrow (plain OSM, zoom 3, OpenFlights 2014).*
 
 <p align="center">
-  <img src="sample_europe_high_speed_rail.png" alt="A disc 1,500 km around Germany with Europe's high-speed lines from city to city, wider and darker the higher each link's gravity score, the score written along it: London-Lille 576k, Lille-Paris 682k and Rome-Naples 510k the strongest, Paris-Lyon 480k, the German, Italian and Spanish lines in between, and small scores on the branches to Spain's smaller towns; Rail Baltica from Warsaw through Kaunas and Riga to Tallinn, HS2 and Budapest-Belgrade dashed" width="48%">
+  <img src="sample_europe_high_speed_rail.png" alt="A disc 1,500 km around Germany with Europe's high-speed lines along their tracks, wider and darker the higher each link's gravity score, the score written along it: London-Lille 576k, Lille-Paris 682k and Rome-Naples 510k the strongest, Paris-Lyon 480k, the German, Italian and Spanish lines in between, and small scores on the branches to Spain's smaller towns; Rail Baltica from Warsaw through Kaunas and Riga to Tallinn, HS2, Budapest-Belgrade and Brescia-Verona-Padua dashed" width="48%">
   <img src="sample_east_asia_high_speed_rail.png" alt="A disc 2,100 km around the East China Sea with East Asia's high-speed lines by gravity score: China's network from Harbin to Kunming and Hong Kong, darkest and widest between Shanghai and the Yangtze delta's cities, Beijing and Tianjin, and the Pearl River Delta and Shantou (23M), with the Shinkansen from Kagoshima to Hokkaido, Korea's KTX from Seoul to Busan and Mokpo, and Taiwan's line from Taipei to Kaohsiung" width="48%">
 </p>
 
@@ -2560,7 +2560,8 @@ largest named.
   cities. `--high-speed-rail planned` adds, dashed, the lines planned or under
   construction with their promised times: Rail Baltica (Warsaw–Białystok–
   Kaunas–Riga–Tallinn and Kaunas–Vilnius), HS2, the Chūō Shinkansen,
-  Budapest–Belgrade, Lisbon–Porto and Mumbai–Ahmedabad.
+  Budapest–Belgrade, Lisbon–Porto, Brescia–Verona–Padua (today's times on the
+  old line) and Mumbai–Ahmedabad.
 - **The people**: those in the GHSL urban centre each station is in
   (GHS-UCDB R2024A, 2025), the metropolitan area as it is built, the same as
   `--cities` draws; a town too small or sparse to be one (Toledo, Cuenca,
@@ -2578,7 +2579,9 @@ largest named.
 - **The track** is OpenStreetMap's, through the Overpass API: the ways tagged
   `railway=rail` with `highspeed=yes` or a `maxspeed` of 200 km/h (125 mph)
   or more, the Channel Tunnel (slower, but the only way from Britain to the
-  continent), and for the planned links those tagged `railway=construction` and
+  continent), the Rheintalbahn (mostly 160 km/h, but the way Karlsruhe, Freiburg
+  and Basel are joined until the new line beside it is finished), and for the
+  planned links those tagged `railway=construction` and
   high-speed. They are downloaded by region, a square of a 4-degree grid, for
   the squares a map's links pass through (36 for Europe, 115 for the world;
   [rail_tracks.py](rail_tracks.py)'s `REGION_DEG`), each cached as it comes
@@ -2591,7 +2594,7 @@ largest named.
   the link drawn city to city (plus 20 km), or less than half of it is on
   track, the link is drawn from city to city through a few points along its
   way, as it is when the tracks cannot be downloaded (the map is then noted
-  incomplete, so an atlas draws it again). In November 2026, 174 of the 207
+  incomplete, so an atlas draws it again). In November 2026, 177 of the 207
   links followed the tracks; the others have long stretches not tagged
   as fast, such as most of Warsaw-Krakow. `--high-speed-rail-schematic`
   draws every link so and downloads nothing.
@@ -2610,8 +2613,7 @@ python ortho.py --lat 49 --lon 10 --radius 1500 --high-speed-rail --high-speed-r
 ```
 
 The samples above are `python ortho.py --config recipes/europe_high_speed_rail.toml`
-and `recipes/east_asia_high_speed_rail.toml`, drawn city to city (before the
-tracks were taken from OSM).
+and `recipes/east_asia_high_speed_rail.toml`.
 
 ## Polar Ice
 

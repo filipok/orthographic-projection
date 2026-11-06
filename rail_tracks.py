@@ -6,8 +6,10 @@ OpenStreetMap (https://www.openstreetmap.org/copyright), © OpenStreetMap
 contributors, Open Database License (ODbL 1.0), through the Overpass API. The
 tracks are the ways tagged ``railway=rail`` with ``highspeed=yes`` or a
 ``maxspeed`` of 200 km/h (125 mph) or more, the Channel Tunnel, slower but the
-only way from Britain to the continent, and, for the planned lines, those
-tagged ``railway=construction`` and high-speed. They are downloaded once per
+only way from Britain to the continent, the Rheintalbahn, mostly 160 km/h but
+the way Karlsruhe, Freiburg and Basel are joined until the new line beside it is
+finished, and, for the planned lines, those tagged ``railway=construction`` and
+high-speed. They are downloaded once per
 region, a square of a grid :data:`REGION_DEG` degrees a side, for the regions a
 map's links pass through; each is cached as it comes, in
 ``~/.cache/ortho_tiles/high_speed_rail/``, so a run cut short carries on where
@@ -87,6 +89,7 @@ way["railway"="construction"]({{box}})->.building;
   way.open["maxspeed"~"^[2-3][0-9][0-9]$"];
   way.open["maxspeed"~"^1[2-9][0-9] mph$"];
   way.open["name"~"Channel Tunnel"];
+  way.open["name"~"Rheintalbahn"];
   way.building["highspeed"="yes"];
   way.building["construction:highspeed"="yes"];
 );

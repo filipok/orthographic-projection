@@ -59,6 +59,9 @@ class TestReading:
     def test_query_takes_the_channel_tunnel_though_it_is_not_tagged_high_speed(self):
         assert 'way.open["name"~"Channel Tunnel"];' in rt.query((48, 0))
 
+    def test_query_takes_the_rheintalbahn_though_it_is_mostly_slower(self):
+        assert 'way.open["name"~"Rheintalbahn"];' in rt.query((44, 4))
+
     def test_query_scans_the_railways_of_the_square_once(self):
         # Each statement with a box scans the railways in it, which is what made the query slow
         assert rt.query((36, -12)).count("(36,-12,40,-8)") == 2     # the open railways, those being built

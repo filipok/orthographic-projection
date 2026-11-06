@@ -18,7 +18,8 @@ Europe, East Asia (China, Japan, South Korea and Taiwan) and, fewer, Turkey,
 Russia, Morocco, Saudi Arabia, Uzbekistan, Indonesia and the United States'
 Northeast Corridor. ``planned`` adds lines under construction or planned, with
 their promised journey times: Rail Baltica, HS2, the Chūō Shinkansen,
-Budapest-Belgrade, Lisbon-Porto and Mumbai-Ahmedabad.
+Budapest-Belgrade, Lisbon-Porto, Brescia-Verona-Padua (today's times on the old
+line, as a guide) and Mumbai-Ahmedabad.
 
 The cities, the stations' places and the journey times (the fastest train
 between two neighbouring cities, from the 2025-26 timetables, in round
@@ -332,7 +333,8 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "Atlantic Axis": ["Santiago de Compostela", 55, "Vigo"],
     "Turin-Milan-Naples-Salerno": ["Turin", 50, "Milan", 62, "Bologna", 37, "Florence", 90, "Rome", 70, "Naples",
                                    37, "Salerno"],
-    "Milan-Venice": ["Milan", 36, "Brescia", 38, "Verona", 45, "Padua", 25, "Venice"],
+    "Milan-Brescia": ["Milan", 36, "Brescia"],
+    "Padua-Venice": ["Padua", 25, "Venice"],
     "Cologne-Frankfurt": ["Cologne", 62, "Frankfurt"],
     "Frankfurt-Stuttgart-Munich": ["Frankfurt", 38, "Mannheim", 38, "Stuttgart", 42, "Ulm", 40, "Augsburg", 30,
                                    "Munich"],
@@ -399,6 +401,7 @@ PLANNED_LINES: dict[str, list[str | int]] = {
     "Chūō Shinkansen": ["Tokyo", 40, "Nagoya"],
     "Budapest-Belgrade": ["Budapest", 100, "Subotica"],
     "Lisbon-Porto": ["Lisbon", 75, "Porto"],
+    "Brescia-Verona-Padua": ["Brescia", 38, "Verona", 45, "Padua"],   # today's times, on the old line
     "Mumbai-Ahmedabad": ["Mumbai", 127, "Ahmedabad"],
 }
 

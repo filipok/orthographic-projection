@@ -110,6 +110,13 @@ class TestData:
         assert rail.score[k] == pytest.approx(people / 100_000 / 232)
         assert "Riga" not in {rail.names[i] for i in (*rail.a, *rail.b)}
 
+    def test_brescia_verona_padua_is_not_open_yet(self):
+        rail = _load()
+        assert "Verona" not in {rail.names[i] for i in (*rail.a, *rail.b)}
+        assert not rail.planned[_link(rail, "Milan", "Brescia")] and not rail.planned[_link(rail, "Padua", "Venice")]
+        rail = _load("planned")
+        assert rail.planned[_link(rail, "Brescia", "Verona")] and rail.planned[_link(rail, "Verona", "Padua")]
+
     def test_planned_adds_dashed_links(self):
         rail = _load("planned")
         assert rail.with_planned
