@@ -9,7 +9,13 @@ from matplotlib.text import Text
 
 import frame
 import high_speed_rail as hsr
+from high_speed_rail_china import CHINA_LINES, CHINA_STATIONS, CHINA_VIA
+from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
+from rail_tracks import distance_km
 from rotation import globe_projection
+
+TRUNK_STATIONS = 205       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 195
 
 
 def _load(choice="open"):
@@ -42,15 +48,15 @@ def _link(rail, a, b):
 
 @pytest.mark.parametrize("text, choice", [
     (None, "open"), ("", "open"), (True, "open"), ("Open", "open"), ("all", "open"), ("high_speed_rail", "open"),
-    ("planned", "planned"), ("Future", "planned"), ("all-planned", "planned"),
 ])
 def test_choices(text, choice):
     assert hsr.resolve_high_speed_rail(text) == choice
 
 
-def test_unknown_choice():
-    with pytest.raises(ValueError, match="Unknown high-speed rail choice 'maglev'"):
-        hsr.resolve_high_speed_rail("maglev")
+@pytest.mark.parametrize("text", ["maglev", "planned"])
+def test_unknown_choice(text):
+    with pytest.raises(ValueError, match=f"Unknown high-speed rail choice '{text}'"):
+        hsr.resolve_high_speed_rail(text)
 
 
 def test_gravity_is_the_formula_in_the_map_it_follows():
@@ -74,9 +80,8 @@ def test_classes_are_powers_of_ten():
 
 class TestData:
     def test_every_line_alternates_known_cities_and_minutes(self):
-        for table in (hsr.OPEN_LINES, hsr.PLANNED_LINES):
-            for name, items in table.items():
-                assert hsr._sequence(name, items)
+        for name, items in hsr.OPEN_LINES.items():
+            assert hsr._sequence(name, items)
 
     def test_bad_lines_are_refused(self):
         with pytest.raises(ValueError, match="alternate"):
@@ -87,42 +92,68 @@ class TestData:
             hsr._sequence("x", ["Paris", 60, "Atlantis"])
 
     def test_every_station_is_used_and_peopled(self):
-        named = {c for t in (hsr.OPEN_LINES, hsr.PLANNED_LINES) for items in t.values() for c in items[::2]}
+        named = {c for items in hsr.OPEN_LINES.values() for c in items[::2]}
         assert named == set(hsr.STATIONS)
         for name, (lat, lon, people, _) in hsr.STATIONS.items():
             assert -90 <= lat <= 90 and -180 <= lon <= 180, name
             assert people >= 40_000, name
 
     def test_points_along_the_way_join_linked_cities(self):
-        pairs = {frozenset(l[:2]) for t in (hsr.OPEN_LINES, hsr.PLANNED_LINES) for n, items in t.items()
-                 for l in hsr._sequence(n, items)}
+        pairs = {frozenset(l[:2]) for n, items in hsr.OPEN_LINES.items() for l in hsr._sequence(n, items)}
         for a, b in hsr.VIA:
             assert frozenset((a, b)) in pairs, (a, b)
 
     def test_open_network(self):
         rail = _load("open")
-        assert not rail.planned.any() and not rail.with_planned
         assert len(rail.a) == len({frozenset((int(a), int(b))) for a, b in zip(rail.a, rail.b)})
         assert np.all(np.diff(rail.score) >= 0)                           # the strongest drawn last
         k = _link(rail, "Paris", "Lyon")
         assert rail.minutes[k] == 116
         people = hsr.STATIONS["Paris"][2] * hsr.STATIONS["Lyon"][2]
         assert rail.score[k] == pytest.approx(people / 100_000 / 232)
-        assert "Riga" not in {rail.names[i] for i in (*rail.a, *rail.b)}
 
-    def test_brescia_verona_padua_is_not_open_yet(self):
+    def test_the_generated_tables_only_add_to_the_hand_compiled_lines(self):
+        # A name or a line of the same name in two tables would silently replace the hand-compiled line's
+        assert len(hsr.STATIONS) == TRUNK_STATIONS + len(CHINA_STATIONS) + len(WORLD_STATIONS)
+        added = sum(len(items) // 2 for table in (CHINA_LINES, WORLD_LINES) for items in table.values())
+        assert len(_load("open").a) == TRUNK_OPEN_LINKS + added
+        assert all(name.startswith("China ") for name in CHINA_LINES)
+        assert all(name.startswith("OSM ") for name in WORLD_LINES)
+        assert set(CHINA_VIA) | set(WORLD_VIA) <= set(hsr.VIA)
         rail = _load()
-        assert "Verona" not in {rail.names[i] for i in (*rail.a, *rail.b)}
-        assert not rail.planned[_link(rail, "Milan", "Brescia")] and not rail.planned[_link(rail, "Padua", "Venice")]
-        rail = _load("planned")
-        assert rail.planned[_link(rail, "Brescia", "Verona")] and rail.planned[_link(rail, "Verona", "Padua")]
+        assert rail.minutes[_link(rail, "Shenyang", "Dalian")] == 105      # a trunk link keeps its timetable time
+        assert rail.minutes[_link(rail, "Paris", "Lyon")] == 116
 
-    def test_planned_adds_dashed_links(self):
-        rail = _load("planned")
-        assert rail.with_planned
-        assert rail.planned[_link(rail, "Tallinn", "Riga")]
-        assert not rail.planned[_link(rail, "Paris", "Lyon")]
-        assert rail.planned.sum() == sum(len(items) // 2 for items in hsr.PLANNED_LINES.values())
+    @pytest.mark.parametrize("lines", [CHINA_LINES, WORLD_LINES], ids=["china", "world"])
+    def test_the_generated_tables_have_estimated_times(self, lines):
+        for name, items in lines.items():
+            for a, b, minutes in hsr._sequence(name, items):
+                assert minutes % 5 == 0, (a, b)
+                lat_a, lon_a = hsr.STATIONS[a][:2]
+                lat_b, lon_b = hsr.STATIONS[b][:2]
+                km = float(distance_km(lon_a, lat_a, lon_b, lat_b))
+                assert km / (minutes / 60) < 400, (a, b, minutes)          # no train is that fast
+
+    def test_the_world_table_has_real_names_and_no_line_no_train_runs(self):
+        for name in WORLD_STATIONS:
+            assert "#" not in name and not name.endswith("-si"), name
+        # GHSL's names for these places are a province, an industrial estate, or spelt without accents
+        for wrong, right in (("Kocaeli", "İzmit"), ("ICAD I", "Musaffah"), ("Malmo", "Malmö")):
+            assert wrong not in WORLD_STATIONS and WORLD_STATIONS[right][3] == wrong
+        pairs = {frozenset(l[:2]) for n, items in WORLD_LINES.items() for l in hsr._sequence(n, items)}
+        for a, b in (("Luton", "Peterborough"), ("Luton", "Northampton"), ("Helsingborg", "Västerås")):
+            assert frozenset((a, b)) not in pairs                          # main lines joined across a gap
+
+    def test_the_china_table_has_real_names(self):
+        for name in CHINA_STATIONS:
+            assert "#" not in name and "[" not in name, name
+        # GHSL's names for these places are a town, a district, or another city's
+        for wrong, right in (("Fushan", "Yantai"), ("Yingkou", "Huaihua"), ("Haizhou District", "Lianyungang")):
+            assert wrong not in CHINA_STATIONS and CHINA_STATIONS[right][3] == wrong
+
+    def test_no_planned_lines_are_left(self):
+        assert not hasattr(hsr, "PLANNED_LINES") and list(hsr.CHOICES) == ["open"]
+        assert "Milan-Brescia" in hsr.OPEN_LINES and "Padua-Venice" in hsr.OPEN_LINES
 
     def test_links_within_one_urban_centre_are_not_scored(self):
         rail = _load()
@@ -179,12 +210,11 @@ class TestDrawing:
 class TestLegend:
     def test_classes_and_only_what_shows(self):
         ax = _radius(50, 5, 12)
-        rail = _load("planned")
+        rail = _load("open")
         shown = hsr.draw_high_speed_rail(ax, rail)
         legend = hsr.add_high_speed_rail_legend(ax, rail, shown)
         labels = [t.get_text() for t in legend.get_texts()]
         assert labels[:6] == ["under 1k", "1k-10k", "10k-100k", "100k-1M", "1M-10M", "10M or more"]
-        assert "planned" in labels                                        # HS2 and Rail Baltica
         assert "within one urban area" not in labels                      # none in Europe
         assert f"{len(shown):,} links in view" in legend.get_title().get_text()
 
@@ -193,4 +223,4 @@ class TestLegend:
         rail = _load("open")
         labels = [t.get_text() for t in hsr.add_high_speed_rail_legend(ax, rail, hsr.draw_high_speed_rail(ax, rail))
                   .get_texts()]
-        assert "within one urban area" in labels and "planned" not in labels
+        assert "within one urban area" in labels

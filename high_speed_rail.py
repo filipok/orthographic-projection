@@ -16,14 +16,16 @@ The lines are those built for 250 km/h or more, and the lines upgraded for
 about 200 km/h that join them, with high-speed trains on them in 2026: in
 Europe, East Asia (China, Japan, South Korea and Taiwan) and, fewer, Turkey,
 Russia, Morocco, Saudi Arabia, Uzbekistan, Indonesia and the United States'
-Northeast Corridor. ``planned`` adds lines under construction or planned, with
-their promised journey times: Rail Baltica, HS2, the Chūō Shinkansen,
-Budapest-Belgrade, Lisbon-Porto, Brescia-Verona-Padua (today's times on the old
-line, as a guide) and Mumbai-Ahmedabad.
+Northeast Corridor. Beyond these lines are all those OpenStreetMap tags as
+fast, upgraded conventional lines among them, with their estimated times:
+China's in :mod:`high_speed_rail_china`, the rest of the world's in
+:mod:`high_speed_rail_world`.
 
 The cities, the stations' places and the journey times (the fastest train
 between two neighbouring cities, from the 2025-26 timetables, in round
-minutes) were compiled for this module and are approximate; the intermediate
+minutes) were compiled for this module and are approximate, except those of
+:mod:`high_speed_rail_china` and :mod:`high_speed_rail_world`, generated from
+OpenStreetMap; the intermediate
 stations of towns too small to be an urban centre are left out. The links in
 view are drawn along their track, from OpenStreetMap's high-speed tracks (see
 :mod:`rail_tracks`: downloaded once per region, ODbL), or, an open link with no
@@ -54,13 +56,15 @@ from matplotlib.lines import Line2D
 
 import frame
 from air_routes import great_circle, near_side
+from high_speed_rail_china import CHINA_LINES, CHINA_STATIONS, CHINA_VIA
+from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import TRACKS_ATTRIBUTION, TrackRouter
 from biomes import on_globe
 from cities import label_space
 
 logger = logging.getLogger(__name__)
 
-CHOICES = {"open": "the lines open in 2026", "planned": "and those planned or under construction, dashed"}
+CHOICES = {"open": "the lines open in 2026"}
 DIVISOR = 100_000
 # The classes of gravity score, a power of ten apart, each a width and a colour (ColorBrewer RdPu)
 BREAKS = (1_000, 10_000, 100_000, 1_000_000, 10_000_000)
@@ -72,7 +76,7 @@ LABEL_MAX = 60
 SCORE_LABEL_MAX = 80
 
 HIGH_SPEED_RAIL_ATTRIBUTION = ("High-speed rail: lines and fastest scheduled times compiled for ortho (2025-26, "
-                               "approximate); populations GHS-UCDB R2024A 2025 (European Commission, JRC) and "
+                               "approximate; lesser lines estimated from OSM); populations GHS-UCDB R2024A 2025 (European Commission, JRC) and "
                                "GeoNames, CC BY 4.0")
 
 # The cities: where their high-speed station is (lat, lon), the people in the GHSL urban centre it is in in 2025,
@@ -100,7 +104,6 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Perpignan": (42.6960, 2.8796, 124596, "Perpignan"),
     # Britain, Belgium and the Netherlands
     "London": (51.5317, -0.1263, 10408332, "London"),
-    "Birmingham": (52.4797, -1.8850, 2617211, "Birmingham"),
     "Brussels": (50.8357, 4.3360, 1468754, "Brussels"),
     "Antwerp": (51.2172, 4.4211, 767652, "Antwerp"),
     "Liège": (50.6245, 5.5667, 373662, "Liège"),
@@ -141,7 +144,6 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Turin": (45.0718, 7.6655, 1243448, "Turin"),
     "Milan": (45.4864, 9.2045, 3135553, "Milan"),
     "Brescia": (45.5329, 10.2127, 243287, "Brescia"),
-    "Verona": (45.4292, 10.9822, 216582, "Verona"),
     "Padua": (45.4176, 11.8800, 244498, "Padua"),
     "Venice": (45.4410, 12.3210, 61951, "Venice"),
     "Bologna": (44.5058, 11.3431, 456780, "Bologna"),
@@ -176,19 +178,11 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Santiago de Compostela": (42.8710, -8.5440, 99536, ""),
     "A Coruña": (43.3540, -8.4080, 271212, "A Coruña"),
     "Vigo": (42.2340, -8.7130, 291792, "Vigo"),
-    "Lisbon": (38.7678, -9.0990, 1974574, "Lisbon"),
-    "Porto": (41.1490, -8.5856, 1060250, "Porto"),
     # Central and eastern Europe
     "Warsaw": (52.2287, 21.0039, 1999986, "Warsaw"),
     "Kraków": (50.0676, 19.9475, 723413, "Kraków"),
     "Katowice": (50.2575, 19.0170, 879406, "Katowice"),
     "Gdańsk": (54.3557, 18.6439, 398019, "Gdańsk"),
-    "Białystok": (53.1350, 23.1390, 299386, "Białystok"),
-    "Kaunas": (54.8865, 23.9104, 236910, "Kaunas"),
-    "Vilnius": (54.6700, 25.2840, 339420, "Vilnius"),
-    "Riga": (56.9470, 24.1200, 516897, "Riga"),
-    "Tallinn": (59.4330, 24.7360, 449861, "Tallinn"),
-    "Budapest": (47.5003, 19.0838, 1743875, "Budapest"),
     "Subotica": (46.0990, 19.6750, 79457, "Subotica"),
     "Novi Sad": (45.2650, 19.8300, 286753, "Novi Sad"),
     "Belgrade": (44.7952, 20.4569, 1200547, "Belgrade"),
@@ -211,8 +205,6 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Tashkent": (41.2920, 69.2860, 3874653, "Tashkent"),
     "Samarkand": (39.6760, 66.9230, 892554, "Samarqand"),
     "Bukhara": (39.7700, 64.4200, 243753, "Bukhara"),
-    "Mumbai": (19.0670, 72.8670, 20453270, "Mumbai"),
-    "Ahmedabad": (23.0225, 72.5970, 7898650, "Ahmedabad"),
     # China
     "Beijing": (39.8652, 116.3786, 18150576, "Beijing"),
     "Tianjin": (39.1366, 117.2050, 7330648, "Tianjin"),
@@ -394,18 +386,6 @@ OPEN_LINES: dict[str, list[str | int]] = {
                                    62, "Baltimore", 32, "Washington"],
 }
 
-# Under construction or planned, with the journey times promised
-PLANNED_LINES: dict[str, list[str | int]] = {
-    "Rail Baltica": ["Tallinn", 102, "Riga", 95, "Kaunas", 105, "Białystok", 100, "Warsaw"],
-    "Rail Baltica to Vilnius": ["Kaunas", 52, "Vilnius"],
-    "HS2": ["London", 49, "Birmingham"],
-    "Chūō Shinkansen": ["Tokyo", 40, "Nagoya"],
-    "Budapest-Belgrade": ["Budapest", 100, "Subotica"],
-    "Lisbon-Porto": ["Lisbon", 75, "Porto"],
-    "Brescia-Verona-Padua": ["Brescia", 38, "Verona", 45, "Padua"],   # today's times, on the old line
-    "Mumbai-Ahmedabad": ["Mumbai", 127, "Ahmedabad"],
-}
-
 # Points along the way (lat, lon) for the links that bend, from the first city named to the second
 VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Paris", "Lyon"): [(47.6, 3.5), (46.77, 4.50)],
@@ -441,7 +421,6 @@ VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Florence", "Rome"): [(43.45, 11.85), (42.72, 12.11)],
     ("Rome", "Naples"): [(41.55, 13.45)],
     ("Milan", "Brescia"): [(45.52, 9.59)],
-    ("Verona", "Padua"): [(45.54, 11.54)],
     ("Padua", "Venice"): [(45.48, 12.23)],
     ("Cologne", "Frankfurt"): [(50.79, 7.20), (50.44, 7.83), (50.38, 8.10)],
     ("Mannheim", "Stuttgart"): [(48.93, 8.96)],
@@ -514,14 +493,16 @@ VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Boston", "Providence"): [(42.10, -71.20)],
     ("Providence", "New Haven"): [(41.35, -71.90), (41.30, -72.40)],
     ("New Haven", "New York"): [(41.05, -73.55), (40.85, -73.85)],
-    ("Tallinn", "Riga"): [(58.37, 24.52)],
-    ("Riga", "Kaunas"): [(55.73, 24.37)],
-    ("Kaunas", "Białystok"): [(54.56, 23.35), (53.82, 22.36)],
-    ("London", "Birmingham"): [(51.53, -0.25), (51.90, -1.00), (52.45, -1.72)],
-    ("Tokyo", "Nagoya"): [(35.63, 139.74), (35.57, 139.35), (35.60, 138.60), (35.50, 137.80)],
-    ("Budapest", "Subotica"): [(46.91, 19.69)],
-    ("Lisbon", "Porto"): [(39.75, -8.80), (40.22, -8.43), (40.64, -8.64)],
 }
+
+
+# Beyond the hand-compiled lines, all OSM tags as fast: generated tables, China's a long one
+STATIONS.update(CHINA_STATIONS)
+OPEN_LINES.update(CHINA_LINES)
+VIA.update(CHINA_VIA)
+STATIONS.update(WORLD_STATIONS)
+OPEN_LINES.update(WORLD_LINES)
+VIA.update(WORLD_VIA)
 
 
 class HighSpeedRail(NamedTuple):
@@ -534,23 +515,19 @@ class HighSpeedRail(NamedTuple):
     b: np.ndarray
     minutes: np.ndarray
     score: np.ndarray
-    planned: np.ndarray        # True for a link not yet open
     within: np.ndarray         # True for a link within one urban centre (Guangzhou-Shenzhen), not scored
     lines: list[str]           # the line each link is on
-    with_planned: bool
     router: TrackRouter | None = None    # draws the links along OSM's tracks; None draws them city to city
 
 
 def resolve_high_speed_rail(text: str | bool | None) -> str:
-    """``"open"`` (blank or ``"all"`` too) or ``"planned"`` (also ``"all-planned"``). Raises ``ValueError``."""
+    """``"open"``, the one choice (blank or ``"all"`` too). Raises ``ValueError``."""
     if text is True:
         return "open"
     key = str(text or "").strip().lower().replace("_", "-")
     if key in ("", "open", "all", "high-speed-rail", "hsr"):
         return "open"
-    if key in ("planned", "all-planned", "proposed", "future"):
-        return "planned"
-    raise ValueError(f"Unknown high-speed rail choice {text!r}; choose open or planned.")
+    raise ValueError(f"Unknown high-speed rail choice {text!r}; only the open lines are drawn.")
 
 
 def gravity(p1: float | np.ndarray, p2: float | np.ndarray, minutes: float | np.ndarray) -> np.ndarray:
@@ -593,25 +570,20 @@ def _sequence(name: str, items: list[str | int]) -> list[tuple[str, str, int]]:
 
 def load_high_speed_rail(choice: str | bool | None = "open", tracks: bool = True, cache_dir: str | None = None,
                          fetch: Any = None) -> HighSpeedRail:
-    """The links of the high-speed lines, open or (``"planned"``) open and planned, each scored. A pair of cities
-    on two lines is one link, the faster.
+    """The links of the high-speed lines, each scored. A pair of cities on two lines is one link, the faster.
 
     With *tracks* the links in view are drawn along OSM's tracks, downloaded as they are needed into
     *cache_dir* (see :mod:`rail_tracks`; *fetch* stands in for the Overpass API); without, city to city.
     """
-    with_planned = resolve_high_speed_rail(choice) == "planned"
+    resolve_high_speed_rail(choice)
     names = list(STATIONS)
     index = {n: i for i, n in enumerate(names)}
-    best: dict[frozenset[str], tuple[str, str, int, bool, str]] = {}
-    tables = [(OPEN_LINES, False)] + ([(PLANNED_LINES, True)] if with_planned else [])
-    for table, planned in tables:
-        for line, items in table.items():
-            for a, b, minutes in _sequence(line, items):
-                key = frozenset((a, b))
-                known = best.get(key)
-                # An open link stands for the pair; a planned one only where none is open, or faster
-                if known is None or (known[3] == planned and minutes < known[2]):
-                    best[key] = (a, b, minutes, planned, line)
+    best: dict[frozenset[str], tuple[str, str, int, str]] = {}
+    for line, items in OPEN_LINES.items():
+        for a, b, minutes in _sequence(line, items):
+            key = frozenset((a, b))
+            if key not in best or minutes < best[key][2]:
+                best[key] = (a, b, minutes, line)
     links = list(best.values())
     lat = np.array([STATIONS[n][0] for n in names])
     lon = np.array([STATIONS[n][1] for n in names])
@@ -625,11 +597,10 @@ def load_high_speed_rail(choice: str | bool | None = "open", tracks: bool = True
     score[within] = 0.0
     # The lowest first, so the strongest links are drawn on top
     order = np.argsort(score, kind="stable")
-    logger.info("High-speed rail: %d links between %d cities%s.", len(links), len({*a, *b}),
-                ", with those planned" if with_planned else "")
+    logger.info("High-speed rail: %d links between %d cities.", len(links), len({*a, *b}))
     return HighSpeedRail(names, lon, lat, population, a[order], b[order], minutes[order], score[order],
-                         np.array([l[3] for l in links], bool)[order], within[order], [links[i][4] for i in order],
-                         with_planned, _router(names, cache_dir, fetch) if tracks else None)
+                         within[order], [links[i][3] for i in order],
+                         _router(names, cache_dir, fetch) if tracks else None)
 
 
 def _router(names: list[str], cache_dir: str | None, fetch: Any) -> TrackRouter:
@@ -695,7 +666,7 @@ def _middle(piece: np.ndarray) -> tuple[float, float, float, int]:
 
 def draw_high_speed_rail(ax: GeoAxes, rail: HighSpeedRail, labels: bool = True,
                          limit: int = LABEL_MAX, score_limit: int = SCORE_LABEL_MAX) -> set[int]:
-    """Draw the links of *rail* on *ax*, wider and darker the higher their gravity score (planned ones dashed),
+    """Draw the links of *rail* on *ax*, wider and darker the higher their gravity score,
     the cities on them dotted, the largest named and the highest scores written along their links. Returns the
     links that show (indices into *rail*)."""
     scale = _width_scale(ax)
@@ -707,8 +678,7 @@ def draw_high_speed_rail(ax: GeoAxes, rail: HighSpeedRail, labels: bool = True,
                 if any(frame.inside(ax, p[:, 0], p[:, 1], margin=1.2).any() for p in _pieces(ax, *path))]
         rail.router.prepare(paths[k] for k in near)
         for k in near:
-            track = rail.router.route(rail.names[rail.a[k]], rail.names[rail.b[k]], bool(rail.planned[k]),
-                                      *paths[k])
+            track = rail.router.route(rail.names[rail.a[k]], rail.names[rail.b[k]], *paths[k])
             if track is not None:
                 paths[k] = track
     shown: list[tuple[int, np.ndarray]] = []         # the parts on the near side, drawn (the map clips them)
@@ -722,22 +692,14 @@ def draw_high_speed_rail(ax: GeoAxes, rail: HighSpeedRail, labels: bool = True,
     if not shown:
         logger.info("High-speed rail drawn: none of %d links in view.", len(rail.a))
         return set()
-    for planned in (False, True):
-        group = [(k, p) for k, p in shown if bool(rail.planned[k]) == planned]
-        if not group:
-            continue
-        widths = [(WIDTHS[0] if rail.within[k] else WIDTHS[classes[k]]) * scale for k, _ in group]
-        style = (0, (2.2, 1.4)) if planned else "solid"
-        # A pale casing under the open lines, so they stand out on any map
-        if not planned:
-            ax.add_collection(LineCollection([p for _, p in group], linewidths=[w + 1.2 * scale for w in widths],
-                                             colors="white", alpha=0.7, capstyle="round", joinstyle="round",
-                                             zorder=7.55))
-        ax.add_collection(LineCollection([p for _, p in group], linewidths=widths,
-                                         colors=[WITHIN_COLOUR if rail.within[k] else COLOURS[classes[k]]
-                                                 for k, _ in group], linestyles=style,
-                                         capstyle="butt" if planned else "round", joinstyle="round",
-                                         zorder=7.6 + (0.01 if not planned else 0)))
+    widths = [(WIDTHS[0] if rail.within[k] else WIDTHS[classes[k]]) * scale for k, _ in shown]
+    # A pale casing under the lines, so they stand out on any map
+    ax.add_collection(LineCollection([p for _, p in shown], linewidths=[w + 1.2 * scale for w in widths],
+                                     colors="white", alpha=0.7, capstyle="round", joinstyle="round", zorder=7.55))
+    ax.add_collection(LineCollection([p for _, p in shown], linewidths=widths,
+                                     colors=[WITHIN_COLOUR if rail.within[k] else COLOURS[classes[k]]
+                                             for k, _ in shown],
+                                     capstyle="round", joinstyle="round", zorder=7.61))
     links = sorted({k for k, _ in seen})
     _draw_stations(ax, rail, sorted({k for k, _ in shown}), scale, labels, limit)
     if labels:
@@ -831,8 +793,7 @@ def _draw_scores(ax: GeoAxes, rail: HighSpeedRail, shown: list[tuple[int, np.nda
 
 def add_high_speed_rail_legend(ax: GeoAxes, rail: HighSpeedRail, shown: set[int], y: float = -0.01,
                                x: float = 0.5) -> Legend:
-    """A key to the gravity-score classes and, of the links *shown*, those within one city and the planned ones'
-    dashes."""
+    """A key to the gravity-score classes and, of the links *shown*, those within one city."""
     scale = _width_scale(ax)
     handles, labels = [], []
     bounds = (0,) + BREAKS + (None,)
@@ -845,9 +806,6 @@ def add_high_speed_rail_legend(ax: GeoAxes, rail: HighSpeedRail, shown: set[int]
     if any(rail.within[k] for k in shown):
         handles.append(Line2D([], [], color=WITHIN_COLOUR, linewidth=WIDTHS[0] * scale))
         labels.append("within one urban area")
-    if any(rail.planned[k] for k in shown):
-        handles.append(Line2D([], [], color=COLOURS[3], linewidth=WIDTHS[3] * scale, linestyle=(0, (2.2, 1.4))))
-        labels.append("planned")
     title = (f"High-speed rail: {len(shown):,} links in view, by gravity score = (P₁ × P₂ / 100,000) / "
              "(2 × minutes): people in the two cities (GHSL 2025), fastest train")
     legend = Legend(ax, handles, labels, loc="upper center", bbox_to_anchor=(x, y), ncol=min(len(handles), 8),

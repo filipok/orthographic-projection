@@ -249,11 +249,11 @@ The main script is [ortho.py](ortho.py).
 *Right: Every route out of London Heathrow (plain OSM, zoom 3, OpenFlights 2014).*
 
 <p align="center">
-  <img src="sample_europe_high_speed_rail.png" alt="A disc 1,500 km around Germany with Europe's high-speed lines along their tracks, wider and darker the higher each link's gravity score, the score written along it: London-Lille 576k, Lille-Paris 682k and Rome-Naples 510k the strongest, Paris-Lyon 480k, the German, Italian and Spanish lines in between, and small scores on the branches to Spain's smaller towns; Rail Baltica from Warsaw through Kaunas and Riga to Tallinn, HS2, Budapest-Belgrade and Brescia-Verona-Padua dashed" width="48%">
-  <img src="sample_east_asia_high_speed_rail.png" alt="A disc 2,100 km around the East China Sea with East Asia's high-speed lines by gravity score: China's network from Harbin to Kunming and Hong Kong, darkest and widest between Shanghai and the Yangtze delta's cities, Beijing and Tianjin, and the Pearl River Delta and Shantou (23M), with the Shinkansen from Kagoshima to Hokkaido, Korea's KTX from Seoul to Busan and Mokpo, and Taiwan's line from Taipei to Kaohsiung" width="48%">
+  <img src="sample_europe_high_speed_rail.png" alt="A disc 1,500 km around Germany with Europe's high-speed lines along their tracks, wider and darker the higher each link's gravity score, the score written along it: London-Lille 576k, Lille-Paris 682k and Rome-Naples 510k the strongest, Paris-Lyon 480k, the German, Italian and Spanish lines in between, small scores on the branches to Spain's smaller towns, and the British and Swedish main lines upgraded to 200 km/h: London-Reading-Bristol, Peterborough-York-Darlington, Lund-Gothenburg, Lund-Linköping and Stockholm's" width="48%">
+  <img src="sample_east_asia_high_speed_rail.png" alt="A disc 2,100 km around the East China Sea with East Asia's high-speed lines by gravity score: China's dense network from Harbin to Hainan, Kunming and Hong Kong, darkest and widest between Shanghai and the Yangtze delta's cities, Beijing and Tianjin, and the Pearl River Delta and Shantou (23M), with the Shinkansen from Kagoshima to Hokkaido, Korea's KTX from Seoul to Busan and Mokpo, and Taiwan's line from Taipei to Kaohsiung" width="48%">
 </p>
 
-*Left: Europe's high-speed lines by gravity score, the planned ones dashed (plain OSM, radius 1,500 km).*<br>
+*Left: Europe's high-speed lines by gravity score (plain OSM, radius 1,500 km).*<br>
 *Right: East Asia's high-speed lines by gravity score (plain OSM, radius 2,100 km).*
 
 <p align="center">
@@ -528,7 +528,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `storms`, `storms:2010-2020`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `birds`, `birds:white stork+black kite`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `high-speed-rail`, `high-speed-rail:planned`, `relief-units`, `relief-units:regions`, `ro-admin`, `ro-admin:uats` … (blank for none)
+14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `storms`, `storms:2010-2020`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `birds`, `birds:white stork+black kite`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `high-speed-rail`, `relief-units`, `relief-units:regions`, `ro-admin`, `ro-admin:uats` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -799,7 +799,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--shipping-alpha ALPHA` | Opacity of the ship traffic (0–1) | `0.85` |
 | `--ports [KIND]` | Draw the ports as dots sized by the ships calling a year (2019–2025), the busiest named: `all` (default), `container`, `tanker`, `dry-bulk`, `general-cargo` or `roro` | — |
 | `--air-routes AIRPORTS` | Draw air routes as great-circle arcs: `all`, or airports by code or city (`LHR`, `EGLL`, `London`) and airlines (`airline:BA`), comma-separated | — |
-| `--high-speed-rail [WHICH]` | Draw the high-speed lines, each link between two cities by its gravity score, (P1 × P2 / 100,000) / (2 × minutes), along OSM's tracks: `open` (default), or `planned` to add the lines planned or under construction, dashed | — |
+| `--high-speed-rail` | Draw the high-speed lines open in 2026, each link between two cities by its gravity score, (P1 × P2 / 100,000) / (2 × minutes), along OSM's tracks | — |
 | `--high-speed-rail-schematic` | Draw the high-speed links from city to city, downloading no tracks | off |
 | `--crop NAME[:COLOUR]` | Shade where a crop is grown; repeat for several crops | — |
 | `--list-crops` | List the 173 crop names `--crop` accepts, then exit | — |
@@ -892,7 +892,7 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `bering_storms.toml` | The storms of 2020 between Sakhalin, the Bering Strait and the Aleutians |
 | `americas_birds.toml` | The tracks of tagged birds across the Americas, by species |
 | `europe_africa_birds.toml` | The tracks of tagged birds between Europe and Africa, by species |
-| `europe_high_speed_rail.toml` | Europe's high-speed lines by gravity score, with the planned ones (Rail Baltica, HS2) dashed |
+| `europe_high_speed_rail.toml` | Europe's high-speed lines by gravity score |
 | `east_asia_high_speed_rail.toml` | East Asia's high-speed lines by gravity score: China, Japan, Korea and Taiwan |
 | `pacific_typhoons_extratropical.toml` | The typhoons since 2015 and their extratropical stage |
 | `africa_river_basins.toml` | Africa's river basins and rivers |
@@ -2554,14 +2554,21 @@ largest named.
 - **The lines**: those built for 250 km/h or more, and the lines upgraded for
   about 200 km/h that join them, with high-speed trains on them in 2026: in
   Europe (France, Spain, Italy, Germany, Benelux and HS1, Switzerland,
-  Austria, Poland, Serbia), East Asia (China's trunk lines, the Shinkansen,
-  Korea's KTX, Taiwan) and, fewer, Turkey, Russia, Morocco, Saudi Arabia,
-  Uzbekistan, Indonesia and the Northeast Corridor: 197 links between 206
-  cities. `--high-speed-rail planned` adds, dashed, the lines planned or under
-  construction with their promised times: Rail Baltica (Warsaw–Białystok–
-  Kaunas–Riga–Tallinn and Kaunas–Vilnius), HS2, the Chūō Shinkansen,
-  Budapest–Belgrade, Lisbon–Porto, Brescia–Verona–Padua (today's times on the
-  old line) and Mumbai–Ahmedabad.
+  Austria, Poland, Serbia), East Asia (China, the Shinkansen, Korea's KTX,
+  Taiwan) and, fewer, Turkey, Russia, Morocco, Saudi Arabia, Uzbekistan,
+  Indonesia and the Northeast Corridor, and beyond them everything
+  OpenStreetMap tags as fast, conventional lines upgraded to 200 km/h among
+  them: 606 links between 578 cities. 348 of those links and 290 of the cities
+  are China's, beyond its trunk lines; about 2,000 of its 38,000 km of line lie
+  over 10 km from any link, chiefly Mianzhu to Huanglong, with no urban centre
+  to end a link at. 63 links and 83 cities are the rest of the world's, most
+  in Britain, Sweden, Germany, Korea, Turkey and Uzbekistan. Outside China OSM
+  tags lines as fast only in stretches (200 km/h, then 160, then 200), and
+  about 9,000 km of its fast ways (a double line often counts twice) are still
+  on no link, 70% of them with no town of 50,000 within 20 km to end one at,
+  such as Oslo's airport line. The longest is Saudi Arabia's line north of
+  Riyadh, as its stations lie further out of town than a station may (below).
+  Lines planned or under construction are not drawn.
 - **The people**: those in the GHSL urban centre each station is in
   (GHS-UCDB R2024A, 2025), the metropolitan area as it is built, the same as
   `--cities` draws; a town too small or sparse to be one (Toledo, Cuenca,
@@ -2574,45 +2581,56 @@ largest named.
   timetables, in round minutes, and are approximate. Stations of towns too
   small to be an urban centre are left out, so a link runs between the two
   cities they lie between. All of it is bundled in
-  [high_speed_rail.py](high_speed_rail.py) (`STATIONS`, `OPEN_LINES`,
-  `PLANNED_LINES`, `VIA`), to be corrected or added to there.
+  [high_speed_rail.py](high_speed_rail.py) (`STATIONS`, `OPEN_LINES`, `VIA`),
+  to be corrected or added to there. The lines beyond them are generated
+  instead, China's in [high_speed_rail_china.py](high_speed_rail_china.py) and
+  the rest of the world's in [high_speed_rail_world.py](high_speed_rail_world.py).
+  Their minutes are estimates, not timetable times: the track's length over its
+  `maxspeed`, fitted on the hand-compiled lines' times (China: median error 8%,
+  one link in ten over 24%; elsewhere 12% and 31%, as upgraded lines vary
+  more). Their stations are the point on the fast track nearest each urban
+  centre, or, outside China, OSM's station of the city's name where there is
+  one on the track; a city more than 10 km from the track (more for a large
+  one) is left out. Outside China, a gap between two stretches of fast track
+  is bridged where the track runs on ahead (up to 25 km) or two loose ends
+  point at each other (up to 80 km), and a few links found so that no train
+  runs were left out by hand (Luton–Peterborough, which joins two main lines
+  across a gap).
 - **The track** is OpenStreetMap's, through the Overpass API: the ways tagged
   `railway=rail` with `highspeed=yes` or a `maxspeed` of 200 km/h (125 mph)
   or more, the Channel Tunnel (slower, but the only way from Britain to the
-  continent), and for the planned links those tagged `railway=construction` and
-  high-speed. They are downloaded by region, a square of a 4-degree grid, for
-  the squares a map's links pass through (36 for Europe, 115 for the world;
+  continent). They are downloaded by region, a square of a 4-degree grid, for
+  the squares a map's links pass through (37 for Europe, 143 for the world;
   [rail_tracks.py](rail_tracks.py)'s `REGION_DEG`), each cached as it comes
   in `~/.cache/ortho_tiles/high_speed_rail/`, so that a run cut short carries
   on where it stopped, and downloaded again after a year. Each link follows the shortest way along the
   tracks between its two stations, joined to the nearest track in each
   direction within 30 km (the approaches to a terminus are rarely tagged
-  high-speed) and across gaps of up to 3 km; an open link keeps to open
-  track. A way must be no more than 1.5 times as long as the link drawn city
+  high-speed) and across gaps of up to 3 km. A way must be no more than 1.5 times as long as the link drawn city
   to city (plus 20 km), and at least half of it on track.
 
-  Many open links run partly on slower track, so an open link with no such way
+  Many links run partly on slower track, so a link with no such way
   tries again with every railway but sidings and yards within 15 km of its
   path, downloaded and cached for that link alone. Those stretches are drawn
-  like the rest, though their trains are slower. A planned link does not, as
-  the old line beside it is not the one being built. A link still with no way
+  like the rest, though their trains are slower. A link still with no way
   is drawn from city to city through a few points along it, as it is when the
   tracks cannot be downloaded (the map is then noted incomplete, so an atlas
-  draws it again). In November 2026, 199 of the 207 links followed the tracks;
-  the others are Tashkent-Samarkand, Istanbul-Eskisehir and six planned links.
+  draws it again). In November 2026, 597 of the 606 links followed the tracks;
+  the others are Tashkent-Samarkand, Istanbul-Eskisehir and seven of China's
+  lesser ones.
   `--high-speed-rail-schematic` draws every link so and downloads nothing.
 
   The first map of a large area is slow, as the Overpass servers are busy and
   fail often: about a minute a square when they answer, and about two
-  all told (Europe took 70 minutes), and a few minutes more for each link that
-  needs its own railways. A server has 4 minutes to answer, a reply that ran
+  all told (Europe took 70 minutes, China's 58 squares about 2.5 hours), and a
+  few minutes more for each link that needs its own railways. A server has 4 minutes to answer, a reply that ran
   out of time counts as a failure, and the servers are asked in turn until 10
   minutes of failures in a row end the downloads of that run.
 
 ```powershell
-python ortho.py --lat 49 --lon 10 --radius 1500 --provider osm_plain --high-speed-rail planned --no-circles
+python ortho.py --lat 49 --lon 10 --radius 1500 --provider osm_plain --high-speed-rail --no-circles
 python ortho.py --lat 32 --lon 121 --radius 2100 --provider osm_plain --high-speed-rail --no-circles
-python ortho.py --lat 57 --lon 23 --radius 600 --high-speed-rail planned
+python ortho.py --lat 57 --lon 15 --radius 700 --high-speed-rail
 python ortho.py --lat 49 --lon 10 --radius 1500 --high-speed-rail --high-speed-rail-schematic
 ```
 
@@ -3281,6 +3299,8 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [ports.py](ports.py): the IMF PortWatch ports as dots sized by the ships calling, the busiest named
 - [air_routes.py](air_routes.py): the OpenFlights airline network as great-circle arcs
 - [high_speed_rail.py](high_speed_rail.py): the high-speed lines, each link between two cities by gravity score, from the bundled lines, journey times and GHSL populations
+- [high_speed_rail_china.py](high_speed_rail_china.py): China's high-speed lines beyond its trunk lines, generated from OpenStreetMap, with estimated journey times
+- [high_speed_rail_world.py](high_speed_rail_world.py): the rest of the world's lines beyond the hand-compiled ones, generated from OpenStreetMap, with estimated journey times
 - [rail_tracks.py](rail_tracks.py): OpenStreetMap's high-speed tracks from the Overpass API, cached per region, and the links routed along them
 - [borders.py](borders.py): historical borders from Cliopatria and CShapes 2.0: dates, colours apart from neighbours, names and key; Crimea kept in Ukraine
 - [alliances.py](alliances.py): today's European Union (a line) and NATO (a shade) (Natural Earth countries) and their key

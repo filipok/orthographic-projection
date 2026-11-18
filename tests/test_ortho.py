@@ -1722,16 +1722,16 @@ class TestRunCLIValidation:
     def test_cli_parses_high_speed_rail(self):
         parse = ortho.build_cli_parser().parse_args
         assert parse(["--city", "paris", "--high-speed-rail"]).high_speed_rail == "open"
-        assert parse(["--high-speed-rail", "planned"]).high_speed_rail == "planned"
+        assert parse(["--high-speed-rail", "open"]).high_speed_rail == "open"
         assert parse(["--city", "paris"]).high_speed_rail is None
         assert parse(["--high-speed-rail", "--high-speed-rail-schematic"]).high_speed_rail_schematic is True
 
     def test_high_speed_rail_passed_to_renderer(self):
-        args = self._make_args(city="paris", high_speed_rail="planned")
+        args = self._make_args(city="paris", high_speed_rail="open")
         with mock.patch.object(ortho, "generate_orthographic_map") as render, \
                 mock.patch.object(ortho, "configure_tile_cache"):
             ortho.run_cli(args)
-        assert render.call_args.kwargs["high_speed_rail"] == "planned"
+        assert render.call_args.kwargs["high_speed_rail"] == "open"
         assert render.call_args.kwargs["high_speed_rail_schematic"] is False
     def test_unknown_high_speed_rail_choice_exits(self, caplog):
         with pytest.raises(SystemExit):
@@ -2614,8 +2614,8 @@ class TestGenerateOrthographicMapIntegration:
                 mock.patch.object(ortho, "add_high_speed_rail_legend") as key, \
                 mock.patch.object(ortho, "_add_attribution") as attribution:
             ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
-                                            output_dir=str(tmp_path), beside=(10, 10), high_speed_rail="planned")
-        assert loaded.call_args.args[0] == "planned" and loaded.call_args.kwargs == {"tracks": True}
+                                            output_dir=str(tmp_path), beside=(10, 10), high_speed_rail="open")
+        assert loaded.call_args.args[0] == "open" and loaded.call_args.kwargs == {"tracks": True}
         assert draw.call_count == 2
         assert key.call_args.args[1:] == (rail, {1, 2, 3})        # the links on either globe
         assert ortho.HIGH_SPEED_RAIL_ATTRIBUTION in attribution.call_args.args[1]
@@ -2782,7 +2782,7 @@ class TestGenerateOrthographicMapIntegration:
         ("ports, shipping", {"ports": "all", "shipping": "commercial"}),
         ("ports:Tankers", {"ports": "tanker"}),
         ("high-speed-rail, ports", {"high_speed_rail": "open", "ports": "all"}),
-        ("high-speed-rail:Planned", {"high_speed_rail": "planned"}),
+        ("high-speed-rail:Open", {"high_speed_rail": "open"}),
         ("relief-units", {"relief_units": "units"}),
         ("relief-units:Regions", {"relief_units": "regions"}),
         ("ro-admin", {"ro_admin": "counties"}),

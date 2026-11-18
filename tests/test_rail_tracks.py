@@ -54,7 +54,7 @@ def _straight(a, b):
 class TestReading:
     def test_query_names_the_square_and_the_tags(self):
         text = rt.query((36, -12))
-        assert "(36,-12,40,-8)" in text and '"highspeed"="yes"' in text and '"railway"="construction"' in text
+        assert "(36,-12,40,-8)" in text and '"highspeed"="yes"' in text and "construction" not in text
         assert "{box}" not in text and text.rstrip().endswith("out geom;")
 
     def test_query_takes_the_channel_tunnel_though_it_is_not_tagged_high_speed(self):
@@ -62,26 +62,33 @@ class TestReading:
 
     def test_query_scans_the_railways_of_the_square_once(self):
         # Each statement with a box scans the railways in it, which is what made the query slow
-        assert rt.query((36, -12)).count("(36,-12,40,-8)") == 2     # the open railways, those being built
+        assert rt.query((36, -12)).count("(36,-12,40,-8)") == 1
 
     def test_parse_keeps_ways_and_drops_what_cannot_be_drawn(self):
         elements = [_way(1, [(0, 0), (1, 0), (2, 0)], 10),
-                    _way(2, [(0, 1), (1, 1)], 20, {"railway": "construction", "construction:highspeed": "yes"}),
+                    _way(2, [(0, 1), (1, 1)], 20),
                     {"type": "node", "id": 5, "lat": 0, "lon": 0},
                     {"type": "way", "id": 3, "nodes": [1, 2, 3], "geometry": [None, {"lon": 0, "lat": 0}, None]}]
         ways = rt.parse(elements)
         assert ways.ids.tolist() == [1, 2] and ways.starts.tolist() == [0, 3, 5]
-        assert ways.nodes.tolist() == [10, 11, 12, 20, 21] and ways.construction.tolist() == [False, True]
+        assert ways.nodes.tolist() == [10, 11, 12, 20, 21]
 
     def test_merge_and_select(self):
         one = rt.parse([_way(1, [(0, 0), (1, 0)], 10), _way(2, [(0, 1), (1, 1)], 20)])
-        two = rt.parse([_way(2, [(0, 1), (1, 1)], 20), _way(3, [(5, 5), (6, 6), (7, 7)], 30,
-                                                           {"railway": "construction", "highspeed": "yes"})])
+        two = rt.parse([_way(2, [(0, 1), (1, 1)], 20), _way(3, [(5, 5), (6, 6), (7, 7)], 30)])
         both = rt.merge([one, two])
         assert both.ids.tolist() == [1, 2, 3] and both.starts.tolist() == [0, 2, 4, 7]
-        open_only = rt.select(both, ~both.construction)
-        assert open_only.ids.tolist() == [1, 2] and open_only.nodes.tolist() == [10, 11, 20, 21]
+        some = rt.select(both, both.ids < 3)
+        assert some.ids.tolist() == [1, 2] and some.nodes.tolist() == [10, 11, 20, 21]
         assert rt.merge([]).ids.size == 0
+
+    def test_a_copy_cached_with_the_ways_being_built_gives_the_open_ones(self, tmp_path):
+        ways = rt.parse([_way(1, [(0, 0), (1, 0)], 10), _way(2, [(0, 1), (1, 1)], 20)])
+        path = tmp_path / "old.npz"
+        np.savez_compressed(path, **ways._asdict(), construction=np.array([False, True]))
+        assert rt._read(str(path)).ids.tolist() == [1]
+        rt._save(str(path), ways)
+        assert rt._read(str(path)).ids.tolist() == [1, 2]
 
     def test_regions_for_are_the_squares_near_the_path(self):
         lon, lat = np.array([1.0, 2.0]), np.array([1.0, 1.0])
@@ -277,21 +284,21 @@ class TestOverpass:
 class TestRouting:
     def test_a_link_follows_the_track(self, tmp_path):
         router = _router([_way(1, _arc(0.05, 0.95, 0.15), 1)], tmp_path)
-        lon, lat = router.route("A", "B", False, *_straight("A", "B"))
+        lon, lat = router.route("A", "B", *_straight("A", "B"))
         assert (lon[0], lat[0]) == STATIONS["A"] and (lon[-1], lat[-1]) == STATIONS["B"]
         assert lat.max() == pytest.approx(1.17, abs=0.01)             # along the bow, not straight
         assert router.used and list(router.loaded) == [HOME]
 
     def test_both_ways_round(self, tmp_path):
         router = _router([_way(1, _arc(0.05, 0.95, 0.15), 1)], tmp_path)
-        there = router.route("A", "B", False, *_straight("A", "B"))
-        back = router.route("B", "A", False, *_straight("B", "A"))
+        there = router.route("A", "B", *_straight("A", "B"))
+        back = router.route("B", "A", *_straight("B", "A"))
         assert np.allclose(there[0][::-1], back[0])
 
     def test_gaps_in_the_track_are_bridged(self, tmp_path):
         points = _arc(0.05, 0.95, 0.15, n=200)
         router = _router([_way(1, points[:100], 1), _way(2, points[101:], 500)], tmp_path)   # ~1 km apart
-        assert router.route("A", "B", False, *_straight("A", "B")) is not None
+        assert router.route("A", "B", *_straight("A", "B")) is not None
 
     def test_a_gap_is_bridged_though_the_tracks_meet_far_off(self, tmp_path):
         # With a whole country's tracks loaded, the two sides of a gap are nearly always joined somewhere else
@@ -302,7 +309,7 @@ class TestRouting:
                                  [west[0], (1.0, 0.2), (2.0, 0.2), east[-1]]],
                     "tags": {"railway": "rail", "highspeed": "yes"}}
         router = _router([_way(1, west, 1), _way(2, east, 500), round_by], tmp_path)
-        lon, lat = router.route("A", "B", False, *_straight("A", "B"))
+        lon, lat = router.route("A", "B", *_straight("A", "B"))
         assert lat.min() > 0.99                                                 # straight on, not round by the south
 
     def test_a_station_joins_a_line_behind_a_nearer_one(self, tmp_path):
@@ -316,19 +323,19 @@ class TestRouting:
                 "geometry": [{"lon": lon, "lat": lat} for lon, lat in branch],
                 "tags": {"railway": "rail", "highspeed": "yes"}}
         router = _router([_way(1, main, 0), side], tmp_path)
-        lon, lat = router.route("A", "B", False, *_straight("A", "B"))
+        lon, lat = router.route("A", "B", *_straight("A", "B"))
         assert lat.min() > 0.99 and rt.path_km(lon, lat) < 125
 
     def test_a_track_far_from_the_stations_is_not_used(self, tmp_path):
         far = [(lon, lat + 0.6) for lon, lat in _arc(0.05, 0.95, 0.1)]         # ~65 km north of both
         router = _router([_way(1, far, 1)], tmp_path)
-        assert router.route("A", "B", False, *_straight("A", "B")) is None
+        assert router.route("A", "B", *_straight("A", "B")) is None
         assert not router.used
 
     def test_a_long_detour_is_refused(self, tmp_path, caplog):
         router = _router([_way(1, _arc(0.05, 0.95, 0.8), 1)], tmp_path)        # bowed ~90 km north
         with caplog.at_level(logging.INFO, logger="rail_tracks"):
-            assert router.route("A", "B", False, *_straight("A", "B")) is None
+            assert router.route("A", "B", *_straight("A", "B")) is None
         assert "drawn city to city" in caplog.text
 
     def test_a_link_mostly_off_track_is_drawn_city_to_city(self, tmp_path):
@@ -336,13 +343,7 @@ class TestRouting:
         short = _way(1, [(1.2, 1.01), (1.25, 1.01), (1.3, 1.01)], 1)            # 11 km of 55 km on track
         router = _router([short], tmp_path, stations=stations)
         lon, lat = np.linspace(1, 1.5, 10), np.ones(10)
-        assert router.route("A", "B", False, lon, lat) is None
-
-    def test_open_links_keep_off_the_tracks_being_built(self, tmp_path):
-        building = _way(1, _arc(0.05, 0.95, 0.15), 1, {"railway": "construction", "highspeed": "yes"})
-        router = _router([building], tmp_path)
-        assert router.route("A", "B", False, *_straight("A", "B")) is None
-        assert router.route("A", "B", True, *_straight("A", "B")) is not None
+        assert router.route("A", "B", lon, lat) is None
 
     def test_tracks_not_to_be_had_are_noted_once(self, tmp_path):
         asked = []
@@ -353,8 +354,8 @@ class TestRouting:
 
         router = rt.TrackRouter(STATIONS, str(tmp_path), offline)
         with incomplete.noting() as noted:
-            assert router.route("A", "B", False, *_straight("A", "B")) is None
-            assert router.route("B", "C", False, *_straight("B", "C")) is None
+            assert router.route("A", "B", *_straight("A", "B")) is None
+            assert router.route("B", "C", *_straight("B", "C")) is None
         assert len(asked) == 1 and set(router.failed) == {HOME}
         assert len(noted) == 1 and "city to city" in noted[0] and "offline" in noted[0]
 
@@ -371,8 +372,8 @@ class TestRouting:
         router = rt.TrackRouter(stations, str(tmp_path), fetch)
         with incomplete.noting() as noted:
             router.prepare([_straight("A", "B"), far_link])
-            assert router.route("A", "B", False, *_straight("A", "B")) is None
-            assert router.route("D", "E", False, *far_link) is not None
+            assert router.route("A", "B", *_straight("A", "B")) is None
+            assert router.route("D", "E", *far_link) is not None
         assert set(router.failed) == {HOME} and router.used
         assert len(noted) == 1 and "1 of 2" in noted[0]
 
@@ -402,19 +403,19 @@ class TestRouting:
     def test_tracks_downloaded_later_are_routed_on(self, tmp_path):
         answers = iter([[], [_way(1, _arc(0.05, 0.95, 0.15), 1)]])
         router = rt.TrackRouter(STATIONS, str(tmp_path), lambda text: [] if "around:" in text else next(answers))
-        assert router.route("A", "B", False, *_straight("A", "B")) is None
+        assert router.route("A", "B", *_straight("A", "B")) is None
         router.prepare([(np.linspace(5, 6, 5), np.ones(5))])     # another square: a new graph
         router.routes.clear()
-        assert router.route("A", "B", False, *_straight("A", "B")) is not None
+        assert router.route("A", "B", *_straight("A", "B")) is not None
 
     def test_routes_are_remembered(self, tmp_path):
         router = _router([_way(1, _arc(0.05, 0.95, 0.15), 1)], tmp_path)
-        first = router.route("A", "B", False, *_straight("A", "B"))
-        assert router.route("A", "B", False, *_straight("A", "B")) is first
+        first = router.route("A", "B", *_straight("A", "B"))
+        assert router.route("A", "B", *_straight("A", "B")) is first
 
     def test_an_empty_region(self, tmp_path):
         router = _router([], tmp_path)
-        assert router.route("A", "B", False, *_straight("A", "B")) is None
+        assert router.route("A", "B", *_straight("A", "B")) is None
 
     def test_stations_join_the_tracks_in_each_direction(self):
         # Two lines leave the station, one west and one east, each a piece of its own
@@ -451,7 +452,7 @@ class TestTheRailwaysAroundALink:
 
     def test_an_open_link_with_no_fast_way_follows_them(self, tmp_path):
         router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([], [_way(1, self.BOW, 1, {"railway": "rail"})]))
-        lon, lat = router.route("A", "B", False, *_straight("A", "B"))
+        lon, lat = router.route("A", "B", *_straight("A", "B"))
         assert lat.max() == pytest.approx(1.17, abs=0.01) and router.used
 
     def test_they_join_the_fast_tracks_they_meet(self, tmp_path):
@@ -459,46 +460,34 @@ class TestTheRailwaysAroundALink:
         fast = _way(1, self.BOW[:30], 1)
         slow = _way(2, self.BOW[29:], 30, {"railway": "rail"})
         router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([fast], [slow]))
-        lon, lat = router.route("A", "B", False, *_straight("A", "B"))
+        lon, lat = router.route("A", "B", *_straight("A", "B"))
         assert lat.max() == pytest.approx(1.17, abs=0.01)
 
     def test_not_asked_for_a_link_with_a_fast_way(self, tmp_path):
         asked = []
         router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([_way(1, self.BOW, 1)], [], asked))
-        assert router.route("A", "B", False, *_straight("A", "B")) is not None
+        assert router.route("A", "B", *_straight("A", "B")) is not None
         assert not any("around:" in text for text in asked)
-
-    def test_not_asked_for_a_planned_link(self, tmp_path):
-        # The old line beside a planned one is not the line being built
-        asked = []
-        router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([], [_way(1, self.BOW, 1)], asked))
-        assert router.route("A", "B", True, *_straight("A", "B")) is None
-        assert not any("around:" in text for text in asked)
-
-    def test_tracks_being_built_do_not_serve_an_open_link(self, tmp_path):
-        building = _way(1, self.BOW, 1, {"railway": "construction", "highspeed": "yes"})
-        router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([building], []))
-        assert router.route("A", "B", False, *_straight("A", "B")) is None
 
     def test_a_long_way_round_is_refused_there_too(self, tmp_path, caplog):
         far = _way(1, _arc(0.05, 0.95, 0.8), 1, {"railway": "rail"})            # bowed ~90 km north
         router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([], [far]))
         with caplog.at_level(logging.INFO, logger="rail_tracks"):
-            assert router.route("A", "B", False, *_straight("A", "B")) is None
+            assert router.route("A", "B", *_straight("A", "B")) is None
         assert "drawn city to city" in caplog.text
 
     def test_cached_for_the_next_run(self, tmp_path):
         asked = []
         for _ in range(2):
             router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([], [_way(1, self.BOW, 1)], asked))
-            assert router.route("A", "B", False, *_straight("A", "B")) is not None
+            assert router.route("A", "B", *_straight("A", "B")) is not None
         assert sum("around:" in text for text in asked) == 1
 
     def test_a_path_changed_in_the_data_is_downloaded_anew(self, tmp_path):
         asked = []
         for lat in (1.0, 1.01):
             router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([], [], asked))
-            router.route("A", "B", False, np.array([1.0, 2.0]), np.array([1.0, lat]))
+            router.route("A", "B", np.array([1.0, 2.0]), np.array([1.0, lat]))
         assert sum("around:" in text for text in asked) == 2
 
     def test_a_failed_download_is_noted_once_and_not_cached(self, tmp_path):
@@ -512,8 +501,8 @@ class TestTheRailwaysAroundALink:
 
         router = rt.TrackRouter(STATIONS, str(tmp_path), fetch)
         with incomplete.noting() as noted:
-            assert router.route("A", "B", False, *_straight("A", "B")) is None
-            assert router.route("B", "C", False, *_straight("B", "C")) is None
+            assert router.route("A", "B", *_straight("A", "B")) is None
+            assert router.route("B", "C", *_straight("B", "C")) is None
         assert len(noted) == 1 and "could not be downloaded" in noted[0] and len(calls) == 2
         assert not any(name.startswith("corridor_") for name in os.listdir(tmp_path))
 
@@ -532,7 +521,7 @@ class TestHighSpeedRail:
         squares = [q for q in asked if "around:" not in q]
         assert 0 < len(squares) <= 40 and not any(re.search(r"\(\d+,1\d\d,", q) for q in squares)
         k = next(k for k in range(len(rail.a)) if {rail.names[rail.a[k]], rail.names[rail.b[k]]} == {"Paris", "Lyon"})
-        track = rail.router.routes[("Paris", "Lyon", False)] or rail.router.routes[("Lyon", "Paris", False)]
+        track = rail.router.routes[("Paris", "Lyon")] or rail.router.routes[("Lyon", "Paris")]
         assert track is not None and track[0].max() > 4.0               # east of the line drawn city to city
         assert rail.lines[k]
         drawn = np.concatenate([np.concatenate(c.get_segments()) for c in ax.collections

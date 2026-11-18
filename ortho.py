@@ -1244,8 +1244,7 @@ def generate_orthographic_map(
         Draw the high-speed rail lines, each link between two cities on them
         wider and darker the higher its gravity score, (P1 × P2 / 100,000) /
         (2 × minutes), from the people in the cities (GHSL 2025) and the
-        fastest train between them: ``"open"`` for the lines open in 2026, or
-        ``"planned"`` for those planned or under construction too, dashed (see
+        fastest train between them: ``"open"``, the lines open in 2026 (see
         :mod:`high_speed_rail`). The links in view follow OpenStreetMap's
         tracks, downloaded once per region (see :mod:`rail_tracks`).
     high_speed_rail_schematic : bool
@@ -2902,7 +2901,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
         else:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
                              "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, storms:YEARS, birds:NAMES, indicator:NAME, industry:SECTORS, "
-                             "shipping:KIND, ports:KIND, air-routes:AIRPORTS, high-speed-rail:planned, relief-units:regions, "
+                             "shipping:KIND, ports:KIND, air-routes:AIRPORTS, relief-units:regions, "
                              "ro-admin:uats.")
     return chosen
 
@@ -2911,7 +2910,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, storms:2010-2020, birds:white stork+black kite, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, high-speed-rail:planned, relief-units:regions, ro-admin:uats …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, storms:2010-2020, birds:white stork+black kite, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, relief-units:regions, ro-admin:uats …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -3526,11 +3525,10 @@ def build_cli_parser() -> argparse.ArgumentParser:
                          help="Draw air routes as great-circle arcs, wider the more airlines fly them (OpenFlights, "
                               "2014): 'all' for the whole network, or comma-separated airports by code or city "
                               "(LHR, EGLL, London) and airlines (airline:BA, airline:Lufthansa).")
-    traffic.add_argument("--high-speed-rail", nargs="?", const="open", metavar="WHICH",
+    traffic.add_argument("--high-speed-rail", nargs="?", const="open", metavar="open",
                          help="Draw the high-speed rail lines, each link between two cities wider and darker the "
                               "higher its gravity score, (P1 x P2 / 100,000) / (2 x minutes), from the people in "
-                              "the cities (GHSL 2025) and the fastest train between them: open (the default), or "
-                              "planned to add the lines planned or under construction, dashed. The links follow "
+                              "the cities (GHSL 2025) and the fastest train between them. The links follow "
                               "OpenStreetMap's tracks, downloaded once per region.")
     traffic.add_argument("--high-speed-rail-schematic", action="store_true",
                          help="Draw the high-speed links from city to city instead of along OSM's tracks, "

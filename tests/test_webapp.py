@@ -274,10 +274,10 @@ class TestMaps:
 
     def test_high_speed_rail(self, client, renders):
         options = client.get("/api/options").json()
-        assert list(options["high_speed_rail"]) == ["open", "planned"]
-        _, status = _render(client, city="Paris", high_speed_rail="planned", high_speed_rail_schematic=True)
-        assert (renders[0]["high_speed_rail"], renders[0]["high_speed_rail_schematic"]) == ("planned", True)
-        assert "--high-speed-rail planned --high-speed-rail-schematic" in status["command"]
+        assert list(options["high_speed_rail"]) == ["open"]
+        _, status = _render(client, city="Paris", high_speed_rail="open", high_speed_rail_schematic=True)
+        assert (renders[0]["high_speed_rail"], renders[0]["high_speed_rail_schematic"]) == ("open", True)
+        assert "--high-speed-rail open --high-speed-rail-schematic" in status["command"]
 
     def test_industry(self, client, renders):
         _, status = _render(client, city="Lisbon", industry="petrochemical,steel")

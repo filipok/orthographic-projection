@@ -5,9 +5,8 @@ Data source
 OpenStreetMap (https://www.openstreetmap.org/copyright), © OpenStreetMap
 contributors, Open Database License (ODbL 1.0), through the Overpass API. The
 tracks are the ways tagged ``railway=rail`` with ``highspeed=yes`` or a
-``maxspeed`` of 200 km/h (125 mph) or more, the Channel Tunnel, slower but the
-only way from Britain to the continent, and, for the planned lines, those
-tagged ``railway=construction`` and high-speed. They are downloaded once per
+``maxspeed`` of 200 km/h (125 mph) or more, and the Channel Tunnel, slower but
+the only way from Britain to the continent. They are downloaded once per
 region, a square of a grid :data:`REGION_DEG` degrees a side, for the regions a
 map's links pass through; each is cached as it comes, in
 ``~/.cache/ortho_tiles/high_speed_rail/``, so a run cut short carries on where
@@ -29,15 +28,14 @@ node every ~200 m. As the tracks into a city's terminus are rarely tagged
 high-speed, each station is joined to the nearest track in each direction
 within :data:`SNAP_KM`, and the loose end of a track to the nearest other
 track within :data:`GAP_KM`; those joins count :data:`JOIN_PENALTY` times their
-length. A link follows the shortest way between its two stations, open track
-only for an open link. It is drawn so only if that way is no more than
+length. A link follows the shortest way between its two stations. It is drawn
+so only if that way is no more than
 :data:`MAX_STRETCH` times as long as the line drawn city to city (plus
 :data:`SLACK_KM`) and at least :data:`MIN_ON_TRACK` of it is on track.
 
-Many open links run partly on slower track, so an open link with no such way
-tries again with every railway but sidings and yards within :data:`CORRIDOR_KM`
-of its path, downloaded and cached for that link alone. A planned link does not:
-the old line beside it is not the one being built. If that fails too,
+Many links run partly on slower track, so a link with no such way tries again
+with every railway but sidings and yards within :data:`CORRIDOR_KM` of its path,
+downloaded and cached for that link alone. If that fails too,
 :mod:`high_speed_rail` draws the link city to city as before.
 """
 
@@ -90,14 +88,11 @@ CORRIDOR_KM = 15          # how far from a link's path the ordinary tracks are t
 # Each statement with a box scans the railways in it, so they are scanned once, then filtered
 QUERY = f"""[out:json][timeout:{QUERY_TIMEOUT}];
 way["railway"="rail"]({{box}})->.open;
-way["railway"="construction"]({{box}})->.building;
 (
   way.open["highspeed"="yes"];
   way.open["maxspeed"~"^[2-3][0-9][0-9]$"];
   way.open["maxspeed"~"^1[2-9][0-9] mph$"];
   way.open["name"~"Channel Tunnel"];
-  way.building["highspeed"="yes"];
-  way.building["construction:highspeed"="yes"];
 );
 out geom;"""
 
@@ -117,12 +112,10 @@ class Ways(NamedTuple):
     nodes: np.ndarray          # node ids
     lon: np.ndarray
     lat: np.ndarray
-    construction: np.ndarray   # True for a way being built
 
 
 def empty_ways() -> Ways:
-    return Ways(np.zeros(0, np.int64), np.zeros(1, np.int64), np.zeros(0, np.int64), np.zeros(0), np.zeros(0),
-                np.zeros(0, bool))
+    return Ways(np.zeros(0, np.int64), np.zeros(1, np.int64), np.zeros(0, np.int64), np.zeros(0), np.zeros(0))
 
 
 def query(region: tuple[int, int]) -> str:
@@ -187,7 +180,7 @@ class Overpass:
 
 def parse(elements: Iterable[Mapping[str, Any]]) -> Ways:
     """The ways in Overpass's *elements* (``out geom``), each with its nodes' ids and places."""
-    ids, starts, nodes, lon, lat, building = [], [0], [], [], [], []
+    ids, starts, nodes, lon, lat = [], [0], [], [], []
     for e in elements:
         if e.get("type") != "way":
             continue
@@ -200,15 +193,14 @@ def parse(elements: Iterable[Mapping[str, Any]]) -> Ways:
         lon += [float(p["lon"]) for _, p in pairs]
         lat += [float(p["lat"]) for _, p in pairs]
         starts.append(len(nodes))
-        building.append((e.get("tags") or {}).get("railway") == "construction")
     return Ways(np.array(ids, np.int64), np.array(starts, np.int64), np.array(nodes, np.int64), np.array(lon),
-                np.array(lat), np.array(building, bool))
+                np.array(lat))
 
 
 def merge(parts: Sequence[Ways]) -> Ways:
     """The ways of *parts*, each once (a way across two regions is in both)."""
     seen: set[int] = set()
-    ids, starts, nodes, lon, lat, building = [], [0], [], [], [], []
+    ids, starts, nodes, lon, lat = [], [0], [], [], []
     for ways in parts:
         for k, way in enumerate(ways.ids.tolist()):
             if way in seen:
@@ -220,11 +212,10 @@ def merge(parts: Sequence[Ways]) -> Ways:
             lon.append(ways.lon[s:e])
             lat.append(ways.lat[s:e])
             starts.append(starts[-1] + e - s)
-            building.append(bool(ways.construction[k]))
     if not ids:
         return empty_ways()
     return Ways(np.array(ids, np.int64), np.array(starts, np.int64), np.concatenate(nodes), np.concatenate(lon),
-                np.concatenate(lat), np.array(building, bool))
+                np.concatenate(lat))
 
 
 def select(ways: Ways, keep: np.ndarray) -> Ways:
@@ -232,7 +223,7 @@ def select(ways: Ways, keep: np.ndarray) -> Ways:
     lengths = np.diff(ways.starts)
     nodes = np.repeat(keep, lengths)
     return Ways(ways.ids[keep], np.concatenate([[0], np.cumsum(lengths[keep])]).astype(np.int64),
-                ways.nodes[nodes], ways.lon[nodes], ways.lat[nodes], ways.construction[keep])
+                ways.nodes[nodes], ways.lon[nodes], ways.lat[nodes])
 
 
 def default_cache_dir() -> str:
@@ -248,7 +239,9 @@ def _save(path: str, ways: Ways) -> None:
 
 def _read(path: str) -> Ways:
     with np.load(path) as saved:
-        return Ways(*(saved[f] for f in Ways._fields))
+        ways = Ways(*(saved[f] for f in Ways._fields))
+        # A copy saved when the planned lines were still drawn has the ways being built as well
+        return select(ways, ~saved["construction"]) if "construction" in saved.files else ways
 
 
 def _cached(path: str, what: str, text: str, fetch: Callable[[str], list[dict[str, Any]]]) -> Ways:
@@ -470,8 +463,8 @@ class TrackRouter:
         self.failed: dict[tuple[int, int], str] = {}
         self.noted: set[tuple[int, int]] = set()   # the failures already warned of
         self.corridor_noted = False                # whether a failed download of a link's railways was
-        self.graphs: dict[bool, Graph] = {}        # of the regions loaded, with the tracks being built or without
-        self.routes: dict[tuple[str, str, bool], tuple[np.ndarray, np.ndarray] | None] = {}
+        self.graph: Graph | None = None            # of the regions loaded
+        self.routes: dict[tuple[str, str], tuple[np.ndarray, np.ndarray] | None] = {}
         self.used = False                          # whether a link was drawn along OSM's tracks
 
     def prepare(self, paths: Iterable[tuple[np.ndarray, np.ndarray]]) -> None:
@@ -488,7 +481,7 @@ class TrackRouter:
             return False
         try:
             self.loaded[region] = load_region(region, self.cache_dir, self.fetch)
-            self.graphs.clear()
+            self.graph = None
             return True
         except (TrackDataError, OSError) as exc:
             self.failed[region] = str(exc)
@@ -502,26 +495,22 @@ class TrackRouter:
             incomplete.note(logger, "Drawing the high-speed lines through %d of %d regions from city to city: OSM's "
                                     "tracks could not be downloaded (%s)", len(new), wanted, self.failed[new[-1]])
 
-    def _graph(self, planned: bool) -> Graph:
-        if planned not in self.graphs:
-            ways = merge([self.loaded[region] for region in sorted(self.loaded)])
-            if not planned:
-                ways = select(ways, ~ways.construction)
-            self.graphs[planned] = Graph(ways, self.stations)
-        return self.graphs[planned]
+    def _graph(self) -> Graph:
+        if self.graph is None:
+            self.graph = Graph(merge([self.loaded[region] for region in sorted(self.loaded)]), self.stations)
+        return self.graph
 
-    def route(self, a: str, b: str, planned: bool, lon: np.ndarray, lat: np.ndarray
-              ) -> tuple[np.ndarray, np.ndarray] | None:
+    def route(self, a: str, b: str, lon: np.ndarray, lat: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
         """The way along the tracks (lon, lat) from station *a* to *b*, a link drawn city to city along *lon*,
         *lat*; None to keep that (no tracks there, or a way too long or too little on track)."""
-        key = (a, b, planned)
+        key = (a, b)
         if key in self.routes:
             return self.routes[key]
         found = None
         regions = regions_for(lon, lat)
         if all(self._region(region) for region in regions):
-            found = self._follow(self._graph(planned), a, b, lon, lat)
-            if found is None and not planned:
+            found = self._follow(self._graph(), a, b, lon, lat)
+            if found is None:
                 found = self._along_the_railways(a, b, lon, lat, regions)
             if found is None:
                 logger.info("High-speed rail %s-%s drawn city to city.", a, b)
@@ -546,7 +535,7 @@ class TrackRouter:
 
     def _along_the_railways(self, a: str, b: str, lon: np.ndarray, lat: np.ndarray,
                             regions: Sequence[tuple[int, int]]) -> tuple[np.ndarray, np.ndarray] | None:
-        """The way of an open link with no fast one, on the fast tracks of its *regions* and the railways around it."""
+        """The way of a link with no fast one, on the fast tracks of its *regions* and the railways around it."""
         try:
             corridor = load_corridor(a, b, lon, lat, self.cache_dir, self.fetch)
         except (TrackDataError, OSError) as exc:
@@ -557,4 +546,4 @@ class TrackRouter:
             return None
         ways = merge([self.loaded[region] for region in regions] + [corridor])
         stations = {name: self.stations[name] for name in (a, b) if name in self.stations}
-        return self._follow(Graph(select(ways, ~ways.construction), stations), a, b, lon, lat)
+        return self._follow(Graph(ways, stations), a, b, lon, lat)
