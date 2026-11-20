@@ -249,7 +249,7 @@ The main script is [ortho.py](ortho.py).
 *Right: Every route out of London Heathrow (plain OSM, zoom 3, OpenFlights 2014).*
 
 <p align="center">
-  <img src="sample_europe_high_speed_rail.png" alt="A disc 1,500 km around Germany with Europe's high-speed lines along their tracks, wider and darker the higher each link's gravity score, the score written along it: London-Lille 576k, Lille-Paris 682k and Rome-Naples 510k the strongest, Paris-Lyon 480k, the German, Italian and Spanish lines in between, small scores on the branches to Spain's smaller towns, and the British and Swedish main lines upgraded to 200 km/h: London-Reading-Bristol, Peterborough-York-Darlington, Lund-Gothenburg, Lund-Linköping and Stockholm's" width="48%">
+  <img src="sample_europe_high_speed_rail.png" alt="A disc 1,500 km around Germany with Europe's high-speed lines along their tracks, wider and darker the higher each link's gravity score, the score written along it: London-Lille 576k, Lille-Paris 682k and Rome-Naples 510k the strongest, Paris-Lyon 480k, the German, Italian and Spanish lines in between, small scores on the branches to Spain's smaller towns, and the British and Swedish main lines upgraded to 200 km/h: London-Reading-Bristol, London-Stevenage-Peterborough-York-Darlington, Stockholm-Gothenburg 23k, Lund-Gothenburg, Lund-Linköping and Stockholm's" width="48%">
   <img src="sample_east_asia_high_speed_rail.png" alt="A disc 2,100 km around the East China Sea with East Asia's high-speed lines by gravity score: China's dense network from Harbin to Hainan, Kunming and Hong Kong, darkest and widest between Shanghai and the Yangtze delta's cities, Beijing and Tianjin, and the Pearl River Delta and Shantou (23M), with the Shinkansen from Kagoshima to Hokkaido, Korea's KTX from Seoul to Busan and Mokpo, and Taiwan's line from Taipei to Kaohsiung" width="48%">
 </p>
 
@@ -2554,21 +2554,22 @@ largest named.
 - **The lines**: those built for 250 km/h or more, and the lines upgraded for
   about 200 km/h that join them, with high-speed trains on them in 2026: in
   Europe (France, Spain, Italy, Germany, Benelux and HS1, Switzerland,
-  Austria, Poland, Serbia), East Asia (China, the Shinkansen, Korea's KTX,
-  Taiwan) and, fewer, Turkey, Russia, Morocco, Saudi Arabia, Uzbekistan,
-  Indonesia and the Northeast Corridor, and beyond them everything
-  OpenStreetMap tags as fast, conventional lines upgraded to 200 km/h among
-  them: 606 links between 578 cities. 348 of those links and 290 of the cities
-  are China's, beyond its trunk lines; about 2,000 of its 38,000 km of line lie
-  over 10 km from any link, chiefly Mianzhu to Huanglong, with no urban centre
-  to end a link at. 63 links and 83 cities are the rest of the world's, most
-  in Britain, Sweden, Germany, Korea, Turkey and Uzbekistan. Outside China OSM
-  tags lines as fast only in stretches (200 km/h, then 160, then 200), and
-  about 9,000 km of its fast ways (a double line often counts twice) are still
-  on no link, 70% of them with no town of 50,000 within 20 km to end one at,
-  such as Oslo's airport line. The longest is Saudi Arabia's line north of
-  Riyadh, as its stations lie further out of town than a station may (below).
-  Lines planned or under construction are not drawn.
+  Austria, Poland, Serbia, and the main lines upgraded for 200 km/h from
+  London to Peterborough, Stockholm to Gothenburg, Lisbon to Porto and Athens
+  to Thessaloniki), East Asia (China, the Shinkansen, Korea's KTX, Taiwan)
+  and, fewer, Turkey, Russia, Morocco, Saudi Arabia (Haramain and Riyadh to
+  Qurayyat), Uzbekistan, Indonesia and the Northeast Corridor, and beyond them
+  everything OpenStreetMap tags as fast, conventional lines upgraded to
+  200 km/h among them: 618 links between 591 cities. 348 of those links and
+  290 of the cities are China's, beyond its trunk lines; about 2,700 km of its
+  fast line (a double line counted once) lie over 10 km from any link, chiefly
+  the Beijing–Shenyang line through Chengde and Mianzhu to Huanglong. 63 links
+  and 80 cities are the rest of the world's, most in Britain, Sweden, Germany,
+  Korea, Turkey and Uzbekistan. Outside China OSM tags lines as fast only in
+  stretches (200 km/h, then 160, then 200), and about 4,300 km of fast line is
+  still on no link, three quarters of it with no town of 50,000 within 20 km
+  to end one at, such as Oslo's airport line. Lines planned or under
+  construction are not drawn.
 - **The people**: those in the GHSL urban centre each station is in
   (GHS-UCDB R2024A, 2025), the metropolitan area as it is built, the same as
   `--cities` draws; a town too small or sparse to be one (Toledo, Cuenca,
@@ -2587,14 +2588,14 @@ largest named.
   the rest of the world's in [high_speed_rail_world.py](high_speed_rail_world.py).
   Their minutes are estimates, not timetable times: the track's length over its
   `maxspeed`, fitted on the hand-compiled lines' times (China: median error 8%,
-  one link in ten over 24%; elsewhere 12% and 31%, as upgraded lines vary
+  one link in ten over 24%; elsewhere 13% and 31%, as upgraded lines vary
   more). Their stations are the point on the fast track nearest each urban
   centre, or, outside China, OSM's station of the city's name where there is
   one on the track; a city more than 10 km from the track (more for a large
   one) is left out. Outside China, a gap between two stretches of fast track
   is bridged where the track runs on ahead (up to 25 km) or two loose ends
   point at each other (up to 80 km), and a few links found so that no train
-  runs were left out by hand (Luton–Peterborough, which joins two main lines
+  runs were left out by hand (Luton–Northampton, which joins two main lines
   across a gap).
 - **The track** is OpenStreetMap's, through the Overpass API: the ways tagged
   `railway=rail` with `highspeed=yes` or a `maxspeed` of 200 km/h (125 mph)
@@ -2615,7 +2616,7 @@ largest named.
   like the rest, though their trains are slower. A link still with no way
   is drawn from city to city through a few points along it, as it is when the
   tracks cannot be downloaded (the map is then noted incomplete, so an atlas
-  draws it again). In November 2026, 597 of the 606 links followed the tracks;
+  draws it again). In November 2026, 609 of the 618 links followed the tracks;
   the others are Tashkent-Samarkand, Istanbul-Eskisehir and seven of China's
   lesser ones.
   `--high-speed-rail-schematic` draws every link so and downloads nothing.

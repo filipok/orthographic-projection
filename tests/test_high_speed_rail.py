@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 205       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 195
+TRUNK_STATIONS = 221       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 207
 
 
 def _load(choice="open"):
@@ -154,6 +154,17 @@ class TestData:
     def test_no_planned_lines_are_left(self):
         assert not hasattr(hsr, "PLANNED_LINES") and list(hsr.CHOICES) == ["open"]
         assert "Milan-Brescia" in hsr.OPEN_LINES and "Padua-Venice" in hsr.OPEN_LINES
+
+    def test_the_main_lines_osm_left_on_no_link_have_timetable_times(self):
+        # Fast track no link drew in 2026, added by hand with the operators' times (SAR, SJ, National Rail, CP,
+        # Hellenic Train); Lisbon and Porto are back, on today's line
+        rail = _load()
+        for a, b, minutes in (("Riyadh", "Buraydah", 147), ("Sakaka", "Qurayyat", 176), ("Stockholm", "Gothenburg", 205),
+                              ("London", "Stevenage", 21), ("Stevenage", "Peterborough", 29), ("Lisbon", "Coimbra", 96),
+                              ("Aveiro", "Porto", 33), ("Athens", "Larissa", 218), ("Larissa", "Thessaloniki", 91)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        assert not {"Stockholm", "Gothenburg", "Peterborough"} & set(WORLD_STATIONS)
+        assert hsr.STATIONS["Coimbra"][3] == "" and hsr.STATIONS["Aveiro"][3] == ""     # people from GeoNames
 
     def test_links_within_one_urban_centre_are_not_scored(self):
         rail = _load()

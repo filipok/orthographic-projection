@@ -16,7 +16,10 @@ The lines are those built for 250 km/h or more, and the lines upgraded for
 about 200 km/h that join them, with high-speed trains on them in 2026: in
 Europe, East Asia (China, Japan, South Korea and Taiwan) and, fewer, Turkey,
 Russia, Morocco, Saudi Arabia, Uzbekistan, Indonesia and the United States'
-Northeast Corridor. Beyond these lines are all those OpenStreetMap tags as
+Northeast Corridor; and the main lines OpenStreetMap shows as fast that no link
+drew in November 2026 (Riyadh to Qurayyat, Stockholm to Gothenburg, London to
+Peterborough, Lisbon to Porto, Athens to Thessaloniki), with their operators'
+times. Beyond these lines are all those OpenStreetMap tags as
 fast, upgraded conventional lines among them, with their estimated times:
 China's in :mod:`high_speed_rail_china`, the rest of the world's in
 :mod:`high_speed_rail_world`.
@@ -109,6 +112,11 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Liège": (50.6245, 5.5667, 373662, "Liège"),
     "Rotterdam": (51.9244, 4.4690, 2173754, "Rotterdam [The Hague]"),
     "Amsterdam": (52.3791, 4.9003, 1223407, "Amsterdam"),
+    "Stevenage": (51.9018, -0.2071, 92864, "Stevenage"),
+    "Peterborough": (52.5746, -0.2503, 189937, "Peterborough"),
+    # Sweden
+    "Stockholm": (59.3299, 18.0575, 1543892, "Stockholm"),
+    "Gothenburg": (57.7093, 11.9732, 599675, "Gothenburg"),
     # Germany
     "Aachen": (50.7678, 6.0912, 218507, "Aachen"),
     "Cologne": (50.9430, 6.9589, 1156303, "Cologne"),
@@ -178,6 +186,10 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Santiago de Compostela": (42.8710, -8.5440, 99536, ""),
     "A Coruña": (43.3540, -8.4080, 271212, "A Coruña"),
     "Vigo": (42.2340, -8.7130, 291792, "Vigo"),
+    "Lisbon": (38.7678, -9.0991, 1974574, "Lisbon"),
+    "Coimbra": (40.2247, -8.4405, 140796, ""),
+    "Aveiro": (40.6434, -8.6405, 80880, ""),
+    "Porto": (41.1492, -8.5847, 1060250, "Porto"),
     # Central and eastern Europe
     "Warsaw": (52.2287, 21.0039, 1999986, "Warsaw"),
     "Kraków": (50.0676, 19.9475, 723413, "Kraków"),
@@ -194,6 +206,9 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Ankara": (39.9365, 32.8440, 3695989, "Ankara"),
     "Konya": (37.8720, 32.4910, 1017329, "Konya"),
     "Sivas": (39.7400, 37.0150, 401054, "Sivas"),
+    "Athens": (37.9923, 23.7207, 3166757, "Athens"),
+    "Larissa": (39.6294, 22.4229, 118892, "Larissa"),
+    "Thessaloniki": (40.6451, 22.9292, 783450, "Thessaloniki"),
     # Africa, the Middle East and India
     "Tangier": (35.7680, -5.7900, 1300223, "Tangier"),
     "Kenitra": (34.2560, -6.5850, 588772, "Kenitra"),
@@ -202,6 +217,11 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Mecca": (21.3880, 39.8040, 1876451, "Mecca"),
     "Jeddah": (21.5370, 39.2300, 4842257, "Jeddah"),
     "Medina": (24.5540, 39.6880, 1565146, "Medina"),
+    "Riyadh": (24.8556, 46.7631, 7970319, "Riyadh"),
+    "Buraydah": (26.4923, 44.0916, 217480, "Buraydah"),
+    "Ha'il": (27.6836, 41.7554, 243303, "Ha'il"),
+    "Sakaka": (29.6485, 39.8377, 117237, "Sakaka"),
+    "Qurayyat": (31.4203, 37.2890, 112385, "Al Qurayyat"),
     "Tashkent": (41.2920, 69.2860, 3874653, "Tashkent"),
     "Samarkand": (39.6760, 66.9230, 892554, "Samarqand"),
     "Bukhara": (39.7700, 64.4200, 243753, "Bukhara"),
@@ -305,6 +325,10 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "LGV Sud-Est and Méditerranée": ["Paris", 116, "Lyon", 62, "Avignon", 32, "Marseille"],
     "LGV Méditerranée to Montpellier": ["Lyon", 80, "Nîmes", 25, "Montpellier"],
     "LGV Nord and HS1": ["London", 82, "Lille", 62, "Paris"],
+    "East Coast Main Line": ["London", 21, "Stevenage", 29, "Peterborough"],
+    "Västra stambanan": ["Stockholm", 205, "Gothenburg"],
+    "Linha do Norte": ["Lisbon", 96, "Coimbra", 28, "Aveiro", 33, "Porto"],
+    "Athens-Thessaloniki": ["Athens", 218, "Larissa", 91, "Thessaloniki"],
     "LGV Nord to Brussels": ["Lille", 35, "Brussels"],
     "HSL 4 and HSL-Zuid": ["Brussels", 35, "Antwerp", 33, "Rotterdam", 41, "Amsterdam"],
     "HSL 2 and 3": ["Brussels", 40, "Liège", 22, "Aachen", 38, "Cologne"],
@@ -350,6 +374,7 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "Ankara-Sivas": ["Ankara", 125, "Sivas"],
     "Al Boraq": ["Tangier", 50, "Kenitra", 25, "Rabat", 50, "Casablanca"],
     "Haramain": ["Mecca", 50, "Jeddah", 115, "Medina"],
+    "Riyadh-Qurayyat": ["Riyadh", 147, "Buraydah", 110, "Ha'il", 140, "Sakaka", 176, "Qurayyat"],
     "Afrosiyob": ["Tashkent", 130, "Samarkand", 100, "Bukhara"],
     "Beijing-Shanghai": ["Beijing", 33, "Tianjin", 60, "Jinan", 70, "Xuzhou", 70, "Nanjing", 33, "Changzhou", 14,
                          "Wuxi", 12, "Suzhou", 23, "Shanghai"],
@@ -449,6 +474,19 @@ VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Ankara", "Konya"): [(39.58, 32.14)],
     ("Ankara", "Sivas"): [(39.84, 33.51), (39.82, 34.80)],
     ("Jeddah", "Medina"): [(22.40, 39.10), (23.50, 39.30)],
+    ("Riyadh", "Buraydah"): [(24.97, 46.75), (25.08, 46.53), (25.45, 46.27), (25.59, 45.90), (26.02, 45.23),
+        (26.48, 44.78), (26.43, 44.30)],
+    ("Buraydah", "Ha'il"): [(26.76, 43.26)],
+    ("Ha'il", "Sakaka"): [(28.03, 41.25), (28.11, 40.94), (28.41, 40.58), (28.71, 40.32)],
+    ("Sakaka", "Qurayyat"): [(30.89, 38.23)],
+    ("Stockholm", "Gothenburg"): [(59.09, 17.57), (59.06, 16.59), (59.00, 16.21), (59.07, 15.11), (58.99, 14.62),
+        (58.71, 14.13), (58.24, 13.66), (58.21, 13.60), (58.08, 13.02), (57.93, 12.53)],
+    ("Lisbon", "Coimbra"): [(38.96, -8.99), (39.24, -8.68), (39.46, -8.47), (39.92, -8.63)],
+    ("Coimbra", "Aveiro"): [(40.38, -8.45)],
+    ("Aveiro", "Porto"): [(40.86, -8.62), (41.01, -8.64)],
+    ("Athens", "Larissa"): [(38.32, 23.61), (38.33, 23.32), (38.61, 22.72), (38.89, 22.37), (39.07, 22.20),
+        (39.16, 22.28)],
+    ("Larissa", "Thessaloniki"): [(40.27, 22.53), (40.49, 22.57), (40.69, 22.74)],
     ("Tianjin", "Jinan"): [(38.3, 116.85), (37.45, 116.3)],
     ("Jinan", "Xuzhou"): [(35.60, 116.98), (34.86, 117.30)],
     ("Xuzhou", "Nanjing"): [(32.90, 117.38), (32.30, 118.20)],
