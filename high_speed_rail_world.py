@@ -13,8 +13,8 @@ has the name it goes by, checked against GeoNames where GHSL's differs; the cent
 it.
 
 The minutes are ESTIMATES, not timetable times, unlike those of the hand-compiled lines: the track's length over
-its ``maxspeed`` (a join at 140 km/h), as ``4.9 + 1.373 × km / maxspeed`` in minutes, fitted on 159 hand-compiled
-links' timetable times outside China (median error 13%, 90th percentile 31%), and rounded to 5 minutes.
+its ``maxspeed`` (a join at 140 km/h), as ``4.5 + 1.398 × km / maxspeed`` in minutes, fitted on 172 hand-compiled
+links' timetable times outside China (median error 13%, 90th percentile 30%), and rounded to 5 minutes.
 """
 
 from __future__ import annotations
@@ -49,14 +49,12 @@ WORLD_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Echizen": (35.8955, 136.1989, 58148, "Echizen"),
     "Edirne": (41.6601, 26.5723, 143148, "Edirne"),
     "Ereğli": (37.5041, 34.0535, 74753, "Ereğli"),
-    "Eskilstuna": (59.3641, 16.5256, 51933, "Eskilstuna"),
     "Essen": (51.4239, 6.7767, 2718996, "Essen"),
     "Granada": (37.1989, -3.6540, 362800, "Granada"),
     "Greve": (55.6173, 12.3137, 80685, "Greve Strand"),
     "Gyeongju": (35.8802, 129.1769, 60567, "Gyeongju-si"),
     "Hazorasp": (41.3106, 61.0834, 96653, "Hazorasp"),
     "Helsingborg": (56.0210, 12.7313, 106339, "Helsingborg"),
-    "Helsinki": (60.3030, 25.0489, 1001125, "Helsinki"),
     "Isahaya": (32.8401, 130.0350, 72189, "Isahaya"),
     "Jecheon": (37.1273, 128.2061, 71244, "Jecheon-si"),
     "Jerez de la Frontera": (36.6882, -6.1273, 194301, "Jerez"),
@@ -67,7 +65,6 @@ WORLD_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Khiva": (41.3813, 60.3778, 136853, "Khiva"),
     "Kokshetau": (53.2807, 69.4378, 142171, "Kokshetau"),
     "Laghouat": (33.8028, 2.8201, 235439, "Laghouat"),
-    "Lahti": (60.9748, 25.6268, 57174, "Lahti"),
     "Lancaster": (54.0835, -2.8206, 94359, "Lancaster"),
     "Lecce": (40.3739, 18.1243, 82977, "Lecce"),
     "Lelystad": (52.5487, 5.5108, 69985, "Lelystad"),
@@ -93,7 +90,6 @@ WORLD_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Suncheon": (34.9568, 127.4915, 134691, "Suncheon-si"),
     "Södertälje": (59.1642, 17.6510, 68810, "Södertälje"),
     "Tsuruga": (35.6400, 136.0740, 50373, "Tsuruga"),
-    "Uppsala": (59.8656, 17.6360, 133611, "Uppsala"),
     "Urgench": (41.5374, 60.6164, 261276, "Urgench"),
     "Västerås": (59.6138, 16.5613, 104147, "Västerås"),
     "Warrington": (53.3475, -2.6467, 146242, "Warrington"),
@@ -106,7 +102,7 @@ WORLD_STATIONS: dict[str, tuple[float, float, int, str]] = {
 
 # As high_speed_rail.OPEN_LINES
 WORLD_LINES: dict[str, list[str | int]] = {
-    "OSM Andong-Daegu": ["Andong", 40, "Daegu"],
+    "OSM Andong-Daegu": ["Andong", 45, "Daegu"],
     "OSM Andong-Pohang": ["Andong", 40, "Gyeongju", 15, "Pohang"],
     "OSM Andong-Wonju": ["Andong", 35, "Jecheon", 15, "Wonju"],
     "OSM Birmingham-Derby": ["Birmingham", 25, "Derby"],
@@ -115,7 +111,7 @@ WORLD_LINES: dict[str, list[str | int]] = {
     "OSM Lund-Gothenburg": ["Lund", 25, "Helsingborg", 105, "Gothenburg"],
     "OSM Lund-Linköping": ["Lund", 170, "Linköping"],
     "OSM Lund-Malmö": ["Lund", 10, "Malmö"],
-    "OSM Ar Ruways-Musaffah": ["Ar Ruways", 100, "Musaffah"],
+    "OSM Ar Ruways-Musaffah": ["Ar Ruways", 105, "Musaffah"],
     "OSM Astana-Kokshetau": ["Astana", 110, "Kokshetau"],
     "OSM Aïn Oussera-Laghouat": ["Aïn Oussera", 45, "Djelfa", 45, "Laghouat"],
     "OSM Barreiro-Setúbal": ["Barreiro", 15, "Setúbal"],
@@ -131,14 +127,12 @@ WORLD_LINES: dict[str, list[str | int]] = {
     "OSM Copenhagen-Greve": ["Copenhagen", 10, "Greve"],
     "OSM Cádiz-Jerez de la Frontera": ["Cádiz", 15, "Jerez de la Frontera"],
     "OSM Darlington-Peterborough": ["Darlington", 30, "York", 70, "Peterborough"],
-    "OSM Dortmund-Hamburg": ["Dortmund", 45, "Bielefeld", 65, "Bremen", 55, "Hamburg"],
+    "OSM Dortmund-Hamburg": ["Dortmund", 45, "Bielefeld", 70, "Bremen", 55, "Hamburg"],
     "OSM Dresden-Leipzig": ["Dresden", 60, "Leipzig"],
     "OSM Echizen-Tsuruga": ["Echizen", 15, "Tsuruga"],
     "OSM Edirne-Çerkezköy": ["Edirne", 60, "Çerkezköy"],
     "OSM Ereğli-Konya": ["Ereğli", 40, "Karaman", 45, "Konya"],
-    "OSM Eskilstuna-Södertälje": ["Eskilstuna", 35, "Södertälje"],
     "OSM Granada-Seville": ["Granada", 115, "Seville"],
-    "OSM Helsinki-Lahti": ["Helsinki", 40, "Lahti"],
     "OSM Jinju-Mokpo": ["Jinju", 30, "Suncheon", 65, "Mokpo"],
     "OSM Jizzakh-Sirdaryo": ["Jizzakh", 55, "Sirdaryo"],
     "OSM Johannesburg-Pretoria": ["Johannesburg", 30, "Pretoria"],
@@ -148,8 +142,8 @@ WORLD_LINES: dict[str, list[str | int]] = {
     "OSM Nagasaki-Omura": ["Nagasaki", 10, "Isahaya", 10, "Omura"],
     "OSM Paris-Tours": ["Paris", 55, "Orléans", 50, "Tours"],
     "OSM Qarshi-Samarkand": ["Qarshi", 75, "Samarkand"],
+    "OSM Södertälje-Uppsala": ["Södertälje", 55, "Västerås", 50, "Stockholm", 35, "Uppsala"],
     "OSM Tarragona-Valencia": ["Tarragona", 80, "Castelló de la Plana", 30, "Valencia"],
-    "OSM Uppsala-Västerås": ["Uppsala", 35, "Stockholm", 45, "Västerås"],
 }
 
 # As high_speed_rail.VIA: points along the way, to draw a link from city to city where its tracks are not to be had
@@ -180,8 +174,8 @@ WORLD_VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Tarragona", "Castelló de la Plana"): [(40.69, 0.52), (40.57, 0.43), (40.48, 0.46)],
     ("Musaffah", "Ar Ruways"): [(24.03, 54.06)],
     ("Bukhara", "Hazorasp"): [(39.82, 64.18), (40.17, 64.06), (40.50, 63.65), (41.29, 61.74), (41.36, 61.41)],
+    ("Västerås", "Södertälje"): [(59.39, 16.45), (59.33, 16.69), (59.37, 17.02), (59.23, 17.20)],
     ("Jecheon", "Andong"): [(36.93, 128.36), (36.85, 128.61)],
-    ("Södertälje", "Eskilstuna"): [(59.23, 17.20), (59.37, 17.02)],
     ("Andong", "Gyeongju"): [(36.19, 128.72)],
     ("Linköping", "Lund"): [(57.92, 14.81), (56.89, 14.55), (56.07, 13.73)],
 }

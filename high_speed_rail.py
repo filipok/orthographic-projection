@@ -18,8 +18,9 @@ Europe, East Asia (China, Japan, South Korea and Taiwan) and, fewer, Turkey,
 Russia, Morocco, Saudi Arabia, Uzbekistan, Indonesia and the United States'
 Northeast Corridor; and the main lines OpenStreetMap shows as fast that no link
 drew in November 2026 (Riyadh to Qurayyat, Stockholm to Gothenburg, London to
-Peterborough, Lisbon to Porto, Athens to Thessaloniki), with their operators'
-times. Beyond these lines are all those OpenStreetMap tags as
+Peterborough, Lisbon to Porto, Athens to Thessaloniki, Uppsala to Umeå,
+Helsinki to Seinäjoki and Lahti, Madrid to Badajoz, Rome to Pisa), with their
+operators' times. Beyond these lines are all those OpenStreetMap tags as
 fast, upgraded conventional lines among them, with their estimated times:
 China's in :mod:`high_speed_rail_china`, the rest of the world's in
 :mod:`high_speed_rail_world`.
@@ -39,7 +40,8 @@ is in (GHS-UCDB R2024A, 2025: European Commission, JRC, CC BY 4.0), the
 metropolitan area as it is built, so the Pearl River Delta is one city
 (Guangzhou with Shenzhen) and Tokyo takes in Yokohama: a link within one urban
 centre is drawn but not scored. The few towns too small or sparse to be an
-urban centre (Toledo, Cuenca, Segovia, Zamora, Santiago de Compostela) have
+urban centre (Toledo, Cuenca, Segovia, Zamora, Santiago de Compostela, Coimbra,
+Aveiro, Gävle, Sundsvall, Seinäjoki, Cáceres, Mérida) have
 their people in GeoNames (cities5000, CC BY 4.0).
 """
 
@@ -114,9 +116,17 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Amsterdam": (52.3791, 4.9003, 1223407, "Amsterdam"),
     "Stevenage": (51.9018, -0.2071, 92864, "Stevenage"),
     "Peterborough": (52.5746, -0.2503, 189937, "Peterborough"),
-    # Sweden
+    # Sweden and Finland
     "Stockholm": (59.3299, 18.0575, 1543892, "Stockholm"),
     "Gothenburg": (57.7093, 11.9732, 599675, "Gothenburg"),
+    "Uppsala": (59.8582, 17.6466, 133611, "Uppsala"),
+    "Gävle": (60.6759, 17.1509, 74884, ""),
+    "Sundsvall": (62.3868, 17.3154, 57606, ""),
+    "Umeå": (63.8300, 20.2669, 64854, "Umeå"),
+    "Helsinki": (60.1714, 24.9414, 1001125, "Helsinki"),
+    "Lahti": (60.9765, 25.6574, 57174, "Lahti"),
+    "Tampere": (61.4982, 23.7735, 153567, "Tampere"),
+    "Seinäjoki": (62.7920, 22.8442, 66848, ""),
     # Germany
     "Aachen": (50.7678, 6.0912, 218507, "Aachen"),
     "Cologne": (50.9430, 6.9589, 1156303, "Cologne"),
@@ -159,9 +169,16 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Rome": (41.9010, 12.5016, 2476089, "Rome"),
     "Naples": (40.8530, 14.2730, 2885079, "Naples"),
     "Salerno": (40.6748, 14.7724, 128967, "Salerno"),
+    "Grosseto": (42.7673, 11.1067, 52134, "Grosseto"),
+    "Livorno": (43.5542, 10.3361, 149983, "Livorno"),
+    "Pisa": (43.7079, 10.3984, 65764, "Pisa"),
     # Spain and Portugal
     "Madrid": (40.4066, -3.6900, 5680137, "Madrid"),
     "Toledo": (39.8620, -4.0160, 86526, ""),
+    "Talavera": (39.9706, -4.8265, 57079, "Talavera de la Reina"),
+    "Cáceres": (39.4612, -6.3857, 96068, ""),
+    "Mérida": (38.9216, -6.3431, 59857, ""),
+    "Badajoz": (38.8907, -6.9816, 105442, "Badajoz"),
     "Ciudad Real": (38.9845, -3.9180, 54362, "Ciudad Real"),
     "Córdoba": (37.8885, -4.7895, 239916, "Córdoba"),
     "Seville": (37.3920, -5.9752, 696193, "Seville"),
@@ -329,6 +346,11 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "Västra stambanan": ["Stockholm", 205, "Gothenburg"],
     "Linha do Norte": ["Lisbon", 96, "Coimbra", 28, "Aveiro", 33, "Porto"],
     "Athens-Thessaloniki": ["Athens", 218, "Larissa", 91, "Thessaloniki"],
+    "Ostkustbanan and Botniabanan": ["Uppsala", 42, "Gävle", 123, "Sundsvall", 156, "Umeå"],
+    "Helsinki-Tampere-Seinäjoki": ["Helsinki", 95, "Tampere", 63, "Seinäjoki"],
+    "Kerava-Lahti": ["Helsinki", 49, "Lahti"],
+    "Madrid-Badajoz": ["Madrid", 82, "Talavera", 109, "Cáceres", 35, "Mérida", 30, "Badajoz"],
+    "Tirrenica": ["Rome", 94, "Grosseto", 58, "Livorno", 12, "Pisa"],
     "LGV Nord to Brussels": ["Lille", 35, "Brussels"],
     "HSL 4 and HSL-Zuid": ["Brussels", 35, "Antwerp", 33, "Rotterdam", 41, "Amsterdam"],
     "HSL 2 and 3": ["Brussels", 40, "Liège", 22, "Aachen", 38, "Cologne"],
@@ -487,6 +509,16 @@ VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Athens", "Larissa"): [(38.32, 23.61), (38.33, 23.32), (38.61, 22.72), (38.89, 22.37), (39.07, 22.20),
         (39.16, 22.28)],
     ("Larissa", "Thessaloniki"): [(40.27, 22.53), (40.49, 22.57), (40.69, 22.74)],
+    ("Uppsala", "Gävle"): [(60.34, 17.51)],
+    ("Gävle", "Sundsvall"): [(61.30, 17.06), (61.73, 17.10), (62.27, 17.37)],
+    ("Sundsvall", "Umeå"): [(62.48, 17.33), (62.63, 17.94), (62.93, 17.78), (63.29, 18.72), (63.57, 19.50)],
+    ("Helsinki", "Tampere"): [(60.29, 25.04), (60.74, 24.77), (60.99, 24.47), (61.17, 23.87)],
+    ("Tampere", "Seinäjoki"): [(61.55, 23.60), (62.02, 23.02), (62.40, 22.88)],
+    ("Helsinki", "Lahti"): [(60.29, 25.04), (60.40, 25.10), (60.63, 25.32)],
+    ("Madrid", "Talavera"): [(40.33, -3.77), (40.28, -3.80), (40.12, -3.84), (40.04, -3.90), (39.98, -4.28)],
+    ("Talavera", "Cáceres"): [(39.92, -5.17), (39.89, -5.54), (40.03, -6.08)],
+    ("Rome", "Grosseto"): [(41.95, 12.10), (42.09, 11.80), (42.45, 11.22)],
+    ("Grosseto", "Livorno"): [(42.92, 10.76), (43.06, 10.61), (43.31, 10.52)],
     ("Tianjin", "Jinan"): [(38.3, 116.85), (37.45, 116.3)],
     ("Jinan", "Xuzhou"): [(35.60, 116.98), (34.86, 117.30)],
     ("Xuzhou", "Nanjing"): [(32.90, 117.38), (32.30, 118.20)],

@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 221       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 207
+TRUNK_STATIONS = 236       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 220
 
 
 def _load(choice="open"):
@@ -165,6 +165,19 @@ class TestData:
             assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
         assert not {"Stockholm", "Gothenburg", "Peterborough"} & set(WORLD_STATIONS)
         assert hsr.STATIONS["Coimbra"][3] == "" and hsr.STATIONS["Aveiro"][3] == ""     # people from GeoNames
+
+    def test_the_second_batch_of_main_lines_has_timetable_times(self):
+        # Fintraffic's timetables (VR), SJ, Renfe's and Trenitalia's, for 24 November 2026
+        rail = _load()
+        for a, b, minutes in (("Helsinki", "Tampere", 95), ("Tampere", "Seinäjoki", 63), ("Helsinki", "Lahti", 49),
+                              ("Uppsala", "Gävle", 42), ("Gävle", "Sundsvall", 123), ("Sundsvall", "Umeå", 156),
+                              ("Madrid", "Talavera", 82), ("Talavera", "Cáceres", 109), ("Cáceres", "Mérida", 35),
+                              ("Mérida", "Badajoz", 30), ("Rome", "Grosseto", 94), ("Grosseto", "Livorno", 58),
+                              ("Livorno", "Pisa", 12)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        # Helsinki at its central station, not where the fast track begins; the world table no longer has them
+        assert not {"Helsinki", "Lahti", "Uppsala"} & set(WORLD_STATIONS)
+        assert hsr.STATIONS["Helsinki"][:2] == (60.1714, 24.9414)
 
     def test_links_within_one_urban_centre_are_not_scored(self):
         rail = _load()
