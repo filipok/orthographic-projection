@@ -326,6 +326,24 @@ class TestRouting:
         lon, lat = router.route("A", "B", *_straight("A", "B"))
         assert lat.min() > 0.99 and rt.path_km(lon, lat) < 125
 
+    def test_a_link_through_its_via_points_keeps_to_their_line(self, tmp_path):
+        # Two lines between A and C: straight on, and bowed ~110 km north, the way its VIA point goes (Beijing to
+        # Shenyang by Chengde, not by the coast): the shorter one, ~75 km from that line, is not the link's
+        north = _way(2, _arc(0.05, 1.95, 1.0), 500)
+        router = _router([_way(1, _arc(0.05, 1.95, 0.0), 1), north], tmp_path)
+        via = np.array([1.0, 2.0, 3.0]), np.array([1.0, 2.0, 1.0])
+        lon, lat = router.route("A", "C", *via)
+        assert lat.max() > 1.95
+        # A link with no VIA points takes the shortest way as before
+        lon, lat = _router([_way(1, _arc(0.05, 1.95, 0.0), 1), north], tmp_path).route("A", "C", *_straight("A", "C"))
+        assert lat.max() < 1.05
+
+    def test_a_link_near_its_via_points_takes_the_shortest_way(self, tmp_path):
+        # A way that strays less than STRAY_KM from the path is kept, though another lies nearer it
+        router = _router([_way(1, _arc(0.05, 0.95, 0.0), 1), _way(2, _arc(0.05, 0.95, 0.3), 500)], tmp_path)
+        lon, lat = router.route("A", "B", np.array([1.0, 1.5, 2.0]), np.array([1.0, 1.3, 1.0]))
+        assert lat.max() < 1.05
+
     def test_a_track_far_from_the_stations_is_not_used(self, tmp_path):
         far = [(lon, lat + 0.6) for lon, lat in _arc(0.05, 0.95, 0.1)]         # ~65 km north of both
         router = _router([_way(1, far, 1)], tmp_path)

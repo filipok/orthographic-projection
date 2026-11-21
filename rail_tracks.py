@@ -31,7 +31,10 @@ track within :data:`GAP_KM`; those joins count :data:`JOIN_PENALTY` times their
 length. A link follows the shortest way between its two stations. It is drawn
 so only if that way is no more than
 :data:`MAX_STRETCH` times as long as the line drawn city to city (plus
-:data:`SLACK_KM`) and at least :data:`MIN_ON_TRACK` of it is on track.
+:data:`SLACK_KM`) and at least :data:`MIN_ON_TRACK` of it is on track. A link
+drawn through points along its way (:data:`high_speed_rail.VIA`) whose shortest
+way strays more than :data:`STRAY_KM` from them takes another line: it keeps to
+the tracks within :data:`NEAR_PATH_KM` of them, if that way passes the same tests.
 
 Many links run partly on slower track, so a link with no such way tries again
 with every railway but sidings and yards within :data:`CORRIDOR_KM` of its path,
@@ -74,6 +77,8 @@ SECTORS = 8               # the directions a station is joined to the tracks in
 MAX_STRETCH = 1.5
 SLACK_KM = 20.0
 MIN_ON_TRACK = 0.5
+STRAY_KM = 60.0           # a way this far from a link's points along it runs on another line (Beijing to Shenyang
+NEAR_PATH_KM = 30.0       # by the coast, not Chengde): the link then keeps to the tracks this near them
 
 TRACKS_ATTRIBUTION = "tracks © OpenStreetMap contributors, ODbL"
 
@@ -418,13 +423,22 @@ class Graph:
                 weights.append(JOIN_PENALTY * max(float(d[j]), 1e-3))
         return np.array(rows, int), np.array(cols, int), np.array(weights, float)
 
-    def route(self, a: str, b: str, limit_km: float) -> tuple[np.ndarray, np.ndarray, float] | None:
+    def route(self, a: str, b: str, limit_km: float, near: tuple[np.ndarray, np.ndarray] | None = None
+              ) -> tuple[np.ndarray, np.ndarray, float] | None:
         """The shortest way from station *a* to *b* (lon, lat) and the share of it on track; None if there is
-        none within *limit_km* (counting joins at their penalty)."""
+        none within *limit_km* (counting joins at their penalty). With *near*, a path (lon, lat), only the
+        tracks within :data:`NEAR_PATH_KM` of it are taken."""
         if a not in self.station or b not in self.station:
             return None
         src, dst = self.station[a], self.station[b]
-        dist, previous = dijkstra(self.matrix, indices=src, return_predecessors=True, limit=limit_km)
+        matrix = self.matrix
+        if near is not None:
+            keep = off_path_km(self.lon, self.lat, *near) <= NEAR_PATH_KM
+            keep[self.tracks:] = True                                  # the stations
+            edges = matrix.tocoo()
+            ok = keep[edges.row] & keep[edges.col]
+            matrix = coo_matrix((edges.data[ok], (edges.row[ok], edges.col[ok])), shape=matrix.shape).tocsr()
+        dist, previous = dijkstra(matrix, indices=src, return_predecessors=True, limit=limit_km)
         if not np.isfinite(dist[dst]):
             return None
         path = [dst]
@@ -438,6 +452,14 @@ class Graph:
         on_track = (p[:-1] < self.tracks) & (p[1:] < self.tracks) & (weights < 1.25 * steps + 1e-3)
         total = float(steps.sum())
         return lon, lat, (float(steps[on_track].sum()) / total if total > 0 else 0.0)
+
+
+def off_path_km(lon: np.ndarray, lat: np.ndarray, path_lon: np.ndarray, path_lat: np.ndarray) -> np.ndarray:
+    """How far each point (*lon*, *lat*) is from the path (*path_lon*, *path_lat*), in km, to about a km."""
+    along = np.r_[0, np.cumsum(distance_km(path_lon[:-1], path_lat[:-1], path_lon[1:], path_lat[1:]))]
+    t = np.linspace(0, along[-1], max(int(along[-1]) + 2, 2))
+    tree = cKDTree(_xyz(np.interp(t, along, path_lon), np.interp(t, along, path_lat)))
+    return tree.query(_xyz(np.asarray(lon, float), np.asarray(lat, float)))[0] * EARTH_KM
 
 
 def regions_for(lon: np.ndarray, lat: np.ndarray, margin: float = 0.5) -> list[tuple[int, int]]:
@@ -526,6 +548,11 @@ class TrackRouter:
         way = graph.route(a, b, JOIN_PENALTY * longest)
         if way is None:
             return None
+        if len(lon) > 2 and off_path_km(way[0], way[1], lon, lat).max() > STRAY_KM:
+            # Another line than the one its points along it take: that one, if it is to be had
+            kept = graph.route(a, b, JOIN_PENALTY * longest, near=(lon, lat))
+            if kept is not None and kept[2] >= MIN_ON_TRACK and path_km(kept[0], kept[1]) <= longest:
+                way = kept
         track_lon, track_lat, on_track = way
         if on_track >= MIN_ON_TRACK and path_km(track_lon, track_lat) <= longest:
             return track_lon, track_lat
