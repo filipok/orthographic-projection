@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 239       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 223
+TRUNK_STATIONS = 243       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 232
 
 
 def _load(choice="open"):
@@ -187,6 +187,22 @@ class TestData:
             assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
         assert "Chaoyang" not in CHINA_STATIONS and CHINA_LINES["China Jinzhou-Chaoyang"] == ["Jinzhou", 20, "Chaoyang"]
         assert not any({"Beijing", "Shenyang"} == {rail.names[rail.a[k]], rail.names[rail.b[k]]} for k in range(len(rail.a)))
+
+    def test_chinas_longest_undrawn_lines_have_timetable_times(self):
+        # 12306's fastest trains on 25 November 2026: the Beijing-Tangshan intercity line from Yanjiao (Songzhuang's
+        # station), Lanzhou West to Wuwei East and Baiyin South on the new lines, Shantou station to Shanwei, Hefei South
+        # to Huangshan North, and Jinan West to Qingdao North by Weifang North on the Jinan-Qingdao high-speed line
+        rail = _load()
+        for a, b, minutes in (("Songzhuang", "Xianghe", 14), ("Xianghe", "Baodi", 9), ("Baodi", "Tangshan", 24),
+                              ("Lanzhou", "Wuwei", 92), ("Baiyin", "Lanzhou", 49), ("Chenghai", "Huilai", 20),
+                              ("Huilai", "Shanwei", 25), ("Hefei", "Huangshan", 74), ("Jinan", "Weifang", 70),
+                              ("Weifang", "Qingdao", 42)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        linked = {frozenset((rail.names[rail.a[k]], rail.names[rail.b[k]])) for k in range(len(rail.a))}
+        # Baiyin and Wuwei share no line; Chenghai's link to Shanwei now runs by Huilai, not on the Xiamen-Shenzhen line
+        for a, b in (("Baiyin", "Wuwei"), ("Shanwei", "Chenghai"), ("Jinan", "Qingdao")):
+            assert frozenset((a, b)) not in linked, (a, b)
+        assert CHINA_LINES["China Wuzhong-Baiyin"] == ["Wuzhong", 40, "Zhongwei", 50, "Baiyin"]
 
     def test_links_within_one_urban_centre_are_not_scored(self):
         rail = _load()

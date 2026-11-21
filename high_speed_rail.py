@@ -19,8 +19,10 @@ Russia, Morocco, Saudi Arabia, Uzbekistan, Indonesia and the United States'
 Northeast Corridor; and the main lines OpenStreetMap shows as fast that no link
 drew in November 2026 (Riyadh to Qurayyat, Stockholm to Gothenburg, London to
 Peterborough, Lisbon to Porto, Athens to Thessaloniki, Uppsala to Umeå,
-Helsinki to Seinäjoki and Lahti, Madrid to Badajoz, Rome to Pisa), with their
-operators' times. Beyond these lines are all those OpenStreetMap tags as
+Helsinki to Seinäjoki and Lahti, Madrid to Badajoz, Rome to Pisa, and in China
+the intercity line from Beijing to Tangshan, Lanzhou to Wuwei and Baiyin,
+Shantou to Shanwei, Hefei to Huangshan and Jinan to Qingdao by Weifang), with
+their operators' times. Beyond these lines are all those OpenStreetMap tags as
 fast, upgraded conventional lines among them, with their estimated times:
 China's in :mod:`high_speed_rail_china`, the rest of the world's in
 :mod:`high_speed_rail_world`.
@@ -283,6 +285,10 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Harbin": (45.7130, 126.5900, 4591886, "Harbin"),
     "Dalian": (38.9600, 121.6000, 3599519, "Dalian"),
     "Qingdao": (36.1700, 120.3720, 3682893, "Qingdao"),
+    "Weifang": (36.7958, 119.1894, 961428, "Weifang"),
+    "Xianghe": (39.7188, 117.0277, 107046, "Xianghe"),
+    "Baodi": (39.6632, 117.2769, 316917, "Baochi"),
+    "Huilai": (22.9969, 116.2820, 282494, "Huilai"),
     "Taiyuan": (37.7980, 112.6150, 4332180, "Taiyuan"),
     "Zhangjiakou": (40.8400, 114.8800, 587854, "Zhangjiakou"),
     "Nanning": (22.8200, 108.3700, 3695575, "Nanning"),
@@ -416,7 +422,12 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "Southeast Coast": ["Hangzhou", 50, "Ningbo", 95, "Wenzhou", 95, "Fuzhou", 60, "Xiamen", 90, "Shantou", 100,
                         "Shenzhen"],
     "Nanning-Guangzhou": ["Guangzhou", 190, "Nanning"],
-    "Jinan-Qingdao": ["Jinan", 115, "Qingdao"],
+    "Jinan-Qingdao": ["Jinan", 70, "Weifang", 42, "Qingdao"],
+    "Beijing-Tangshan": ["Songzhuang", 14, "Xianghe", 9, "Baodi", 24, "Tangshan"],
+    "Lanzhou-Zhangye": ["Lanzhou", 92, "Wuwei"],
+    "Zhongwei-Lanzhou": ["Baiyin", 49, "Lanzhou"],
+    "Shantou-Shanwei": ["Chenghai", 20, "Huilai", 25, "Shanwei"],
+    "Hefei-Fuzhou": ["Hefei", 74, "Huangshan"],
     "Shijiazhuang-Jinan": ["Shijiazhuang", 100, "Jinan"],
     "Shijiazhuang-Taiyuan": ["Shijiazhuang", 65, "Taiyuan"],
     "Beijing-Zhangjiakou": ["Beijing", 50, "Zhangjiakou"],
@@ -548,7 +559,15 @@ VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Xiamen", "Shantou"): [(24.51, 117.65), (23.95, 117.30)],
     ("Shantou", "Shenzhen"): [(22.95, 115.36), (23.08, 114.42)],
     ("Guangzhou", "Nanning"): [(23.48, 111.28), (23.10, 109.60)],
-    ("Jinan", "Qingdao"): [(36.70, 119.10)],
+    ("Jinan", "Weifang"): [(36.7485, 117.1539), (36.8952, 118.0204)],
+    ("Weifang", "Qingdao"): [(36.29, 120.22)],
+    ("Songzhuang", "Xianghe"): [(39.8886, 116.8976)],
+    ("Baodi", "Tangshan"): [(39.6951, 118.0171)],
+    ("Lanzhou", "Wuwei"): [(36.47, 103.62), (36.63, 103.63), (37.58, 102.92)],
+    ("Baiyin", "Lanzhou"): [(36.47, 103.62)],
+    ("Chenghai", "Huilai"): [(23.3747, 116.7524), (23.3834, 116.4174)],
+    ("Huilai", "Shanwei"): [(22.9082, 115.8848)],
+    ("Hefei", "Huangshan"): [(31.64, 117.90), (31.0157, 118.0161), (30.69, 118.40), (29.8183, 118.2673)],
     ("Shijiazhuang", "Taiyuan"): [(37.86, 113.58)],
     ("Haikou", "Sanya"): [(19.25, 110.47), (18.80, 110.40)],
     ("Tokyo", "Shizuoka"): [(35.256, 139.155), (35.10, 139.08), (35.13, 138.91)],
