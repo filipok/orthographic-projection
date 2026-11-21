@@ -51,7 +51,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
 
@@ -109,6 +109,9 @@ def editable_dir(name: str) -> str:
 
 
 WEB_DIR = bundled_dir("web")
+# The page and its scripts are asked for again on each load (an unchanged file costs a 304): with no word on it a
+# browser keeps a page for days by its age, so an edited page met an old script, or the old page a fixed one.
+FRESH = {"Cache-Control": "no-cache"}
 DEFAULT_WEB_DPI = 150
 
 PERIODS = [
@@ -617,6 +620,15 @@ class AtlasBuild(BaseModel):
 FORM_FIELDS = list(MapRequest.model_fields)
 
 
+class _FreshFiles(StaticFiles):
+    """The page's scripts and styles, sent with :data:`FRESH`."""
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers.update(FRESH)
+        return response
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """The web app; settings from the environment unless given."""
     settings = settings or Settings.from_env()
@@ -634,11 +646,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
-        return FileResponse(WEB_DIR / "index.html")
+        return FileResponse(WEB_DIR / "index.html", headers=FRESH)
 
     @app.get("/atlas", include_in_schema=False)
     def atlas_page() -> FileResponse:
-        return FileResponse(WEB_DIR / "atlas.html")
+        return FileResponse(WEB_DIR / "atlas.html", headers=FRESH)
 
     @app.get("/api/options")
     def options() -> dict[str, Any]:
@@ -800,7 +812,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return FileResponse(path, media_type="text/plain; charset=utf-8", filename=os.path.basename(path),
                             content_disposition_type="inline")
 
-    app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+    app.mount("/static", _FreshFiles(directory=WEB_DIR), name="static")
     return app
 
 

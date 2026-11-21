@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import sysconfig
 import threading
 
@@ -137,6 +138,13 @@ class TestPage:
         assert client.get("/static/app.js").status_code == 200
         assert client.get("/static/style.css").status_code == 200
 
+    def test_the_page_and_its_scripts_are_asked_for_again(self, client):
+        """Kept by its age, an old page met the fixed script and Render still did nothing."""
+        for path in ("/", "/atlas", "/static/app.js", "/static/atlas.js", "/static/style.css"):
+            assert client.get(path).headers["cache-control"] == "no-cache", path
+        etag = client.get("/static/app.js").headers["etag"]
+        assert client.get("/static/app.js", headers={"If-None-Match": etag}).status_code == 304
+
     def test_options(self, client):
         options = client.get("/api/options").json()
         assert "Paris" in options["cities"]
@@ -145,6 +153,35 @@ class TestPage:
         assert options["dpi"] == {"default": 150, "min": ortho.MIN_DPI, "max": 300}
         assert options["periods"][0] == ["year", "Year"] and len(options["periods"]) == 17
         assert "ph" in options["soil_properties"] and "wheat" in options["crops"]
+
+    def test_number_fields_take_the_values_the_form_and_recipes_put_in_them(self, client):
+        """The browser will not send a form whose number is off its field's step, and a field in a closed
+        section says nothing of it: the Render button just does nothing (the bird files' 50 MB with a step
+        of 10 from 1, the Romania recipes' 330 km radius with a step of 50)."""
+        options = client.get("/api/options").json()
+        base = {"radius": options["radius"]["min"], "dpi": options["dpi"]["min"],
+                "earthquake-magnitude": options["earthquakes"]["min"],
+                "storm-pressure": options["storms"]["pressure"]["min"], "ice-year": options["first_ice_year"],
+                "cyclones-since": options["first_cyclone_year"], "bird-max-mb": options["birds"]["max_mb"]["min"]}
+        defaults = {"radius": options["radius"]["default"], "dpi": options["dpi"]["default"],
+                    "earthquake-magnitude": options["earthquakes"]["default"],
+                    "storm-pressure": options["storms"]["pressure"]["default"],
+                    "bird-max-mb": options["birds"]["max_mb"]["default"]}
+        page = client.get("/").text
+        fields = {}
+        for tag in re.findall(r'<input\b[^>]*\btype="number"[^>]*>', page):
+            attrs = dict(re.findall(r'([\w-]+)="([^"]*)"', tag))
+            if attrs.get("step", "any") != "any":
+                fields[attrs["id"]] = (float(attrs["step"]), float(attrs.get("min", base.get(attrs["id"], 0))))
+        assert "dpi" in fields                    # the page is read
+        values = [(name, "default", value) for name, value in defaults.items()]
+        for recipe in client.get("/api/recipes").json():
+            request = client.get(f"/api/recipes/{recipe['name']}").json()["request"]
+            values += [(name, recipe["name"], request[name.replace("-", "_")]) for name in fields
+                       if isinstance(request.get(name.replace("-", "_")), (int, float))]
+        off = [(name, where, value) for name, where, value in values if name in fields
+               and abs((value - fields[name][1]) / fields[name][0] - round((value - fields[name][1]) / fields[name][0])) > 1e-6]
+        assert off == []
 
     def test_google_offered_with_a_key(self, client, monkeypatch):
         monkeypatch.setenv(ortho.API_KEY_ENV, "k")

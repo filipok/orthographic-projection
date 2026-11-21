@@ -52,7 +52,7 @@
           <label><input type="radio" name="view" value="radius"> Radius</label>
         </div>
         <label class="field" data-show="view:radius" hidden><span>Radius around the centre (km)</span>
-          <input id="radius" type="number" step="50"></label>
+          <input id="radius" type="number" step="any"></label>
         <label class="field" data-show="view:radius" hidden><span>Shape</span>
           <select id="rectangle">
             <option value="">Disc</option>
@@ -244,7 +244,7 @@
         <label class="field" data-show="birds" hidden><span>Only these, separated by commas (blank for every bird)</span>
           <input id="bird-names" type="text" placeholder="white stork, black kite, Accipitridae" autocomplete="off"></label>
         <label class="field" data-show="birds" hidden><span>Largest study file to download (MB)</span>
-          <input id="bird-max-mb" type="number" step="10" aria-describedby="bird-max-mb-hint"></label>
+          <input id="bird-max-mb" type="number" step="any" aria-describedby="bird-max-mb-hint"></label>
         <p id="bird-max-mb-hint" class="hint" data-show="birds" hidden>Larger studies are left out. 50 MB:
           ~230 files, 1.7 GB in all; 500 MB: ~30 GB, adding the biggest GPS studies (vultures, storks).
           Each file is downloaded once, then kept.</p>

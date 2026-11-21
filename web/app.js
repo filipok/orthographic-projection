@@ -589,7 +589,7 @@ async function saveRecipe() {
     $("recipe-name").focus();
     return;
   }
-  if (!form.reportValidity()) return;
+  if (!formValid()) return;
   const exists = recipes.some((r) => r.name === name);
   if (exists && name !== loadedRecipe && !confirm(`Replace the recipe "${name}"?`)) return;
   try {
@@ -655,7 +655,7 @@ async function startAtlasEdit() {
     atlasStatus(e.message, true);
   }
   $("atlas-edit-save").addEventListener("click", async () => {
-    if (!form.reportValidity()) return;
+    if (!formValid()) return;
     try {
       await getJSON(`/api/atlases/${encodeURIComponent(name)}/maps/${encodeURIComponent(page)}`, {
         method: "PUT",
@@ -670,6 +670,19 @@ async function startAtlasEdit() {
 }
 
 // --- Rendering and following a map ------------------------------------------------------
+
+// The browser points out a wrong value only in a field it can show; one in a hidden section would otherwise
+// stop the form with no word, so that one is named here.
+function formValid() {
+  if (form.reportValidity()) return true;
+  const bad = form.querySelector("input:invalid, select:invalid, textarea:invalid");
+  if (bad && !bad.checkVisibility()) {
+    const label = bad.closest("label");
+    const name = ((label && (label.querySelector("span") || label).textContent) || bad.id).trim();
+    showError(`${name}: ${bad.validationMessage}`);
+  }
+  return false;
+}
 
 function showError(message) {
   $("form-error").textContent = message;
@@ -743,7 +756,7 @@ async function follow(id) {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   showError("");
-  if (!form.reportValidity()) return;
+  if (!formValid()) return;
   saveForm();
   clearTimeout(polling);
   setBusy(true);
