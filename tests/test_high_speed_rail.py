@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 236       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 220
+TRUNK_STATIONS = 239       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 223
 
 
 def _load(choice="open"):
@@ -178,6 +178,15 @@ class TestData:
         # Helsinki at its central station, not where the fast track begins; the world table no longer has them
         assert not {"Helsinki", "Lahti", "Uppsala"} & set(WORLD_STATIONS)
         assert hsr.STATIONS["Helsinki"][:2] == (60.1714, 24.9414)
+
+    def test_beijing_shenyang_stops_at_chengde_chaoyang_and_fuxin(self):
+        # 12306's fastest trains on 24 November 2026, on the line through Chengde; Chaoyang left the China table
+        rail = _load()
+        for a, b, minutes in (("Beijing", "Chengde", 49), ("Chengde", "Chaoyang", 52), ("Chaoyang", "Fuxin", 29),
+                              ("Fuxin", "Shenyang", 43)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        assert "Chaoyang" not in CHINA_STATIONS and CHINA_LINES["China Jinzhou-Chaoyang"] == ["Jinzhou", 20, "Chaoyang"]
+        assert not any({"Beijing", "Shenyang"} == {rail.names[rail.a[k]], rail.names[rail.b[k]]} for k in range(len(rail.a)))
 
     def test_links_within_one_urban_centre_are_not_scored(self):
         rail = _load()

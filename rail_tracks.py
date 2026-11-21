@@ -77,8 +77,8 @@ SECTORS = 8               # the directions a station is joined to the tracks in
 MAX_STRETCH = 1.5
 SLACK_KM = 20.0
 MIN_ON_TRACK = 0.5
-STRAY_KM = 60.0           # a way this far from a link's points along it runs on another line (Beijing to Shenyang
-NEAR_PATH_KM = 30.0       # by the coast, not Chengde): the link then keeps to the tracks this near them
+STRAY_KM = 60.0           # a way this far from a link's points along it runs on another line (Xiangyang to Yichang
+NEAR_PATH_KM = 30.0       # by Jingmen, not Nanzhang): the link then keeps to the tracks this near them
 
 TRACKS_ATTRIBUTION = "tracks © OpenStreetMap contributors, ODbL"
 

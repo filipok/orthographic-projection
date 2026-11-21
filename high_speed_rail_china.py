@@ -11,6 +11,8 @@ The stations are not real stations: each is the point on the fast track nearest 
 are rarely on these tracks. The minutes are ESTIMATES, not timetable times, unlike those of the trunk lines: the
 track's length over its ``maxspeed``, as ``5.3 + 1.111 × km / maxspeed`` in minutes, fitted on 47 trunk lines' timetable
 times (median error 8%, 90th percentile 24%), and rounded to 5 minutes.
+
+Chaoyang, a stop of the Beijing-Shenyang trunk line since, is in :mod:`high_speed_rail`'s own table, at its station.
 """
 
 from __future__ import annotations
@@ -48,7 +50,6 @@ CHINA_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Changyi": (36.8031, 119.3913, 400490, "Changyi"),
     "Changzhi": (36.1939, 113.1550, 590098, "Changzhi"),
     "Chaohu": (31.6418, 117.9056, 243724, "Chaohu"),
-    "Chaoyang": (41.6061, 120.4190, 448412, "Chaoyang"),
     "Chenggong": (24.8874, 102.8545, 173038, "Chenggong"),
     "Chenghai": (23.4725, 116.6947, 886988, "Chenghai"),
     "Chifeng": (42.2597, 118.9120, 549177, "Chifeng"),

@@ -327,8 +327,8 @@ class TestRouting:
         assert lat.min() > 0.99 and rt.path_km(lon, lat) < 125
 
     def test_a_link_through_its_via_points_keeps_to_their_line(self, tmp_path):
-        # Two lines between A and C: straight on, and bowed ~110 km north, the way its VIA point goes (Beijing to
-        # Shenyang by Chengde, not by the coast): the shorter one, ~75 km from that line, is not the link's
+        # Two lines between A and C: straight on, and bowed ~110 km north, the way its VIA point goes (Xiangyang to
+        # Yichang by Nanzhang, not Jingmen): the shorter one, ~75 km from that line, is not the link's
         north = _way(2, _arc(0.05, 1.95, 1.0), 500)
         router = _router([_way(1, _arc(0.05, 1.95, 0.0), 1), north], tmp_path)
         via = np.array([1.0, 2.0, 3.0]), np.array([1.0, 2.0, 1.0])

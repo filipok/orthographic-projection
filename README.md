@@ -2561,8 +2561,8 @@ largest named.
   and, fewer, Turkey, Russia, Morocco, Saudi Arabia (Haramain and Riyadh to
   Qurayyat), Uzbekistan, Indonesia and the Northeast Corridor, and beyond them
   everything OpenStreetMap tags as fast, conventional lines upgraded to
-  200 km/h among them: 630 links between 602 cities. 348 of those links and
-  290 of the cities are China's, beyond its trunk lines; about 1,900 km of its
+  200 km/h among them: 633 links between 604 cities. 348 of those links and
+  289 of the cities are China's, beyond its trunk lines; about 1,900 km of its
   fast line (a double line counted once) lie over 10 km from any link, chiefly
   Mianzhu to Huanglong and the intercity line from Beijing to Tangshan. 62 links
   and 76 cities are the rest of the world's, most in Britain, Sweden, Germany,
@@ -2612,8 +2612,8 @@ largest named.
   high-speed) and across gaps of up to 3 km. A way must be no more than 1.5 times as long as the link drawn city
   to city (plus 20 km), and at least half of it on track. A link drawn through
   points along its way that the shortest way strays over 60 km from runs on
-  another line, as Beijing–Shenyang by the coast does from the line through
-  Chengde: it keeps to the tracks within 30 km of those points instead.
+  another line, as Xiangyang–Yichang through Jingmen does from the line by
+  Nanzhang: it keeps to the tracks within 30 km of those points instead.
 
   Many links run partly on slower track, so a link with no such way
   tries again with every railway but sidings and yards within 15 km of its
@@ -2621,7 +2621,7 @@ largest named.
   like the rest, though their trains are slower. A link still with no way
   is drawn from city to city through a few points along it, as it is when the
   tracks cannot be downloaded (the map is then noted incomplete, so an atlas
-  draws it again). In November 2026, 621 of the 630 links followed the tracks;
+  draws it again). In November 2026, 624 of the 633 links followed the tracks;
   the others are Tashkent-Samarkand, Istanbul-Eskisehir and seven of China's
   lesser ones.
   `--high-speed-rail-schematic` draws every link so and downloads nothing.
