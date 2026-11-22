@@ -13,7 +13,7 @@ has the name it goes by, checked against GeoNames where GHSL's differs; the cent
 it.
 
 The minutes are ESTIMATES, not timetable times, unlike those of the hand-compiled lines: the track's length over
-its ``maxspeed`` (a join at 140 km/h), as ``4.5 + 1.398 × km / maxspeed`` in minutes, fitted on 172 hand-compiled
+its ``maxspeed`` (a join at 140 km/h), as ``4.6 + 1.388 × km / maxspeed`` in minutes, fitted on 172 hand-compiled
 links' timetable times outside China (median error 13%, 90th percentile 30%), and rounded to 5 minutes.
 """
 
@@ -59,7 +59,6 @@ WORLD_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Jecheon": (37.1273, 128.2061, 71244, "Jecheon-si"),
     "Jerez de la Frontera": (36.6882, -6.1273, 194301, "Jerez"),
     "Jinju": (35.1481, 128.1109, 238454, "Jinju-si"),
-    "Jizzakh": (40.0941, 67.8539, 357000, "Jizzakh"),
     "Johannesburg": (-26.1820, 28.0486, 8592843, "Johannesburg"),
     "Karaman": (37.1936, 33.2228, 125344, "Karaman"),
     "Khiva": (41.3813, 60.3778, 136853, "Khiva"),
@@ -85,7 +84,6 @@ WORLD_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Qarshi": (38.9220, 65.7495, 512027, "Qarshi"),
     "Reading": (51.4614, -0.9924, 273287, "Reading"),
     "Setúbal": (38.5647, -8.8713, 99295, "Setúbal"),
-    "Sirdaryo": (40.8293, 68.6716, 54830, "Sirdaryo"),
     "Stoke-on-Trent": (52.9531, -2.2800, 329688, "Stoke-on-Trent"),
     "Suncheon": (34.9568, 127.4915, 134691, "Suncheon-si"),
     "Södertälje": (59.1642, 17.6510, 68810, "Södertälje"),
@@ -97,12 +95,11 @@ WORLD_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "York": (53.9651, -1.1148, 151629, "York"),
     "Zwolle": (52.4872, 6.0465, 120061, "Zwolle"),
     "Çerkezköy": (41.2808, 27.9752, 354520, "Çerkezköy"),
-    "İzmit": (40.7609, 29.9025, 746536, "Kocaeli"),
 }
 
 # As high_speed_rail.OPEN_LINES
 WORLD_LINES: dict[str, list[str | int]] = {
-    "OSM Andong-Daegu": ["Andong", 45, "Daegu"],
+    "OSM Andong-Daegu": ["Andong", 40, "Daegu"],
     "OSM Andong-Pohang": ["Andong", 40, "Gyeongju", 15, "Pohang"],
     "OSM Andong-Wonju": ["Andong", 35, "Jecheon", 15, "Wonju"],
     "OSM Birmingham-Derby": ["Birmingham", 25, "Derby"],
@@ -116,25 +113,23 @@ WORLD_LINES: dict[str, list[str | int]] = {
     "OSM Aïn Oussera-Laghouat": ["Aïn Oussera", 45, "Djelfa", 45, "Laghouat"],
     "OSM Barreiro-Setúbal": ["Barreiro", 15, "Setúbal"],
     "OSM Bedford-Luton": ["Bedford", 15, "Luton"],
-    "OSM Bilecik-Eskişehir": ["Bilecik", 30, "Eskişehir"],
+    "OSM Bilecik-Bursa": ["Bilecik", 50, "Bursa"],
     "OSM Brindisi-Lecce": ["Brindisi", 15, "Lecce"],
     "OSM Bristol-London": ["Bristol", 45, "Reading", 25, "London"],
     "OSM Bukhara-Khiva": ["Bukhara", 125, "Hazorasp", 20, "Urgench", 15, "Khiva"],
-    "OSM Bursa-İzmit": ["Bursa", 75, "İzmit"],
     "OSM Ceyhan-Osmaniye": ["Ceyhan", 15, "Osmaniye"],
     "OSM Chungju-Pyeongtaek": ["Chungju", 65, "Seoul", 20, "Pyeongtaek"],
     "OSM Cologne-Essen": ["Cologne", 20, "Düsseldorf", 15, "Essen"],
     "OSM Copenhagen-Greve": ["Copenhagen", 10, "Greve"],
     "OSM Cádiz-Jerez de la Frontera": ["Cádiz", 15, "Jerez de la Frontera"],
     "OSM Darlington-Peterborough": ["Darlington", 30, "York", 70, "Peterborough"],
-    "OSM Dortmund-Hamburg": ["Dortmund", 45, "Bielefeld", 70, "Bremen", 55, "Hamburg"],
+    "OSM Dortmund-Hamburg": ["Dortmund", 45, "Bielefeld", 65, "Bremen", 55, "Hamburg"],
     "OSM Dresden-Leipzig": ["Dresden", 60, "Leipzig"],
     "OSM Echizen-Tsuruga": ["Echizen", 15, "Tsuruga"],
     "OSM Edirne-Çerkezköy": ["Edirne", 60, "Çerkezköy"],
     "OSM Ereğli-Konya": ["Ereğli", 40, "Karaman", 45, "Konya"],
     "OSM Granada-Seville": ["Granada", 115, "Seville"],
     "OSM Jinju-Mokpo": ["Jinju", 30, "Suncheon", 65, "Mokpo"],
-    "OSM Jizzakh-Sirdaryo": ["Jizzakh", 55, "Sirdaryo"],
     "OSM Johannesburg-Pretoria": ["Johannesburg", 30, "Pretoria"],
     "OSM Lancaster-Preston": ["Lancaster", 15, "Preston"],
     "OSM Lelystad-Zwolle": ["Lelystad", 20, "Zwolle"],
@@ -142,7 +137,7 @@ WORLD_LINES: dict[str, list[str | int]] = {
     "OSM Nagasaki-Omura": ["Nagasaki", 10, "Isahaya", 10, "Omura"],
     "OSM Paris-Tours": ["Paris", 55, "Orléans", 50, "Tours"],
     "OSM Qarshi-Samarkand": ["Qarshi", 75, "Samarkand"],
-    "OSM Södertälje-Uppsala": ["Södertälje", 55, "Västerås", 50, "Stockholm", 35, "Uppsala"],
+    "OSM Södertälje-Uppsala": ["Södertälje", 55, "Västerås", 45, "Stockholm", 35, "Uppsala"],
     "OSM Tarragona-Valencia": ["Tarragona", 80, "Castelló de la Plana", 30, "Valencia"],
 }
 
@@ -150,11 +145,11 @@ WORLD_LINES: dict[str, list[str | int]] = {
 WORLD_VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Paris", "Orléans"): [(48.60, 2.08), (48.42, 2.13)],
     ("Seoul", "Chungju"): [(37.47, 127.55), (37.20, 127.53)],
-    ("Bursa", "İzmit"): [(40.25, 29.70), (40.35, 30.04), (40.48, 30.07), (40.59, 30.34), (40.70, 30.25)],
     ("Hamburg", "Bremen"): [(53.12, 9.41)],
     ("Samarkand", "Qarshi"): [(39.57, 66.43)],
     ("Leipzig", "Dresden"): [(51.33, 13.34), (51.26, 13.53)],
     ("Dortmund", "Bielefeld"): [(51.77, 7.90)],
+    ("Bursa", "Bilecik"): [(40.26, 29.73), (40.37, 29.97), (40.33, 30.06)],
     ("Stockholm", "Västerås"): [(59.61, 17.42)],
     ("Bristol", "Reading"): [(51.62, -1.32)],
     ("Daegu", "Andong"): [(35.98, 128.91), (36.27, 128.68)],
@@ -163,14 +158,12 @@ WORLD_VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
         (37.03, -4.57)],
     ("Bremen", "Bielefeld"): [(52.60, 8.38), (52.35, 8.30)],
     ("Strasbourg", "Mulhouse"): [(48.17, 7.36)],
-    ("Eskişehir", "Bilecik"): [(39.89, 30.02)],
     ("Astana", "Kokshetau"): [(51.51, 71.10), (52.02, 70.94), (52.07, 70.73), (52.92, 70.22)],
     ("Tours", "Orléans"): [(47.50, 1.22)],
     ("Çerkezköy", "Edirne"): [(41.37, 27.19)],
     ("Gothenburg", "Helsingborg"): [(57.10, 12.25), (56.57, 13.01), (56.36, 12.81)],
     ("Mokpo", "Suncheon"): [(34.62, 126.68)],
     ("Peterborough", "York"): [(53.51, -1.13)],
-    ("Jizzakh", "Sirdaryo"): [(40.06, 68.31), (40.31, 68.81)],
     ("Tarragona", "Castelló de la Plana"): [(40.69, 0.52), (40.57, 0.43), (40.48, 0.46)],
     ("Musaffah", "Ar Ruways"): [(24.03, 54.06)],
     ("Bukhara", "Hazorasp"): [(39.82, 64.18), (40.17, 64.06), (40.50, 63.65), (41.29, 61.74), (41.36, 61.41)],

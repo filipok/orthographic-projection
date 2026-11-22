@@ -38,8 +38,12 @@ the tracks within :data:`NEAR_PATH_KM` of them, if that way passes the same test
 
 Many links run partly on slower track, so a link with no such way tries again
 with every railway but sidings and yards within :data:`CORRIDOR_KM` of its path,
-downloaded and cached for that link alone. If that fails too,
-:mod:`high_speed_rail` draws the link city to city as before.
+downloaded and cached for that link alone. A link whose ways all fail jumps
+off the track somewhere, as a long join can be shorter than the track around:
+it then takes the way with its joins at :data:`KEEP_PENALTY` times their length,
+if at least :data:`KEEP_ON_TRACK` of it is on track and it passes the other
+tests. If that fails too, :mod:`high_speed_rail` draws the link city to city as
+before.
 """
 
 from __future__ import annotations
@@ -77,6 +81,8 @@ SECTORS = 8               # the directions a station is joined to the tracks in
 MAX_STRETCH = 1.5
 SLACK_KM = 20.0
 MIN_ON_TRACK = 0.5
+KEEP_PENALTY = 5.0        # a join's cost, as JOIN_PENALTY, in a way kept to the track (Langfang to Bazhou by Tianjin)
+KEEP_ON_TRACK = 0.9       # how much of that way is on track
 STRAY_KM = 60.0           # a way this far from a link's points along it runs on another line (Xiangyang to Yichang
 NEAR_PATH_KM = 30.0       # by Jingmen, not Nanzhang): the link then keeps to the tracks this near them
 
@@ -346,7 +352,7 @@ class Graph:
         w = (along[index_kept[1:]] - along[index_kept[:-1]])[same_way]
         ok = u != v
         u, v, w = u[ok], v[ok], np.maximum(w[ok], 1e-6)
-        rows, cols, weights = [u], [v], [w]
+        rows, cols, weights = [u], [v], [w]       # the tracks', then joins
         if n:
             track = coo_matrix((w, (u, v)), shape=(n, n)).tocsr()
             track = track + track.T
@@ -371,15 +377,19 @@ class Graph:
             rows.append(joins[0])
             cols.append(joins[1])
             weights.append(joins[2])
+        join = np.concatenate([np.full(len(part), k > 0) for k, part in enumerate(rows)])
         u, v, w = np.concatenate(rows), np.concatenate(cols), np.concatenate(weights)
         # Both ways, the shortest edge between two vertices
-        u, v, w = np.concatenate([u, v]), np.concatenate([v, u]), np.concatenate([w, w])
+        u, v, w, join = np.concatenate([u, v]), np.concatenate([v, u]), np.concatenate([w, w]), np.r_[join, join]
         order = np.lexsort((w, v, u))
-        u, v, w = u[order], v[order], w[order]
+        u, v, w, join = u[order], v[order], w[order], join[order]
         first_of = np.ones(len(u), bool)
         first_of[1:] = (u[1:] != u[:-1]) | (v[1:] != v[:-1])
         size = len(self.lon)
-        self.matrix = coo_matrix((w[first_of], (u[first_of], v[first_of])), shape=(size, size)).tocsr()
+        u, v, w, join = u[first_of], v[first_of], w[first_of], join[first_of]
+        self.matrix = coo_matrix((w, (u, v)), shape=(size, size)).tocsr()
+        # The joins among those edges, as 1, to be costed otherwise (see route)
+        self.joins = coo_matrix((join.astype(float), (u, v)), shape=(size, size)).tocsr()
         self.tracks = n
 
     def _joins(self, tree: cKDTree, track: csr_matrix, lon: np.ndarray, lat: np.ndarray, reach_km: float,
@@ -423,15 +433,17 @@ class Graph:
                 weights.append(JOIN_PENALTY * max(float(d[j]), 1e-3))
         return np.array(rows, int), np.array(cols, int), np.array(weights, float)
 
-    def route(self, a: str, b: str, limit_km: float, near: tuple[np.ndarray, np.ndarray] | None = None
-              ) -> tuple[np.ndarray, np.ndarray, float] | None:
+    def route(self, a: str, b: str, limit_km: float, near: tuple[np.ndarray, np.ndarray] | None = None,
+              penalty: float = JOIN_PENALTY) -> tuple[np.ndarray, np.ndarray, float] | None:
         """The shortest way from station *a* to *b* (lon, lat) and the share of it on track; None if there is
-        none within *limit_km* (counting joins at their penalty). With *near*, a path (lon, lat), only the
-        tracks within :data:`NEAR_PATH_KM` of it are taken."""
+        none within *limit_km* (counting joins at *penalty* times their length). With *near*, a path (lon, lat),
+        only the tracks within :data:`NEAR_PATH_KM` of it are taken."""
         if a not in self.station or b not in self.station:
             return None
         src, dst = self.station[a], self.station[b]
         matrix = self.matrix
+        if penalty != JOIN_PENALTY:
+            matrix = (matrix + matrix.multiply(self.joins) * (penalty / JOIN_PENALTY - 1)).tocsr()
         if near is not None:
             keep = off_path_km(self.lon, self.lat, *near) <= NEAR_PATH_KM
             keep[self.tracks:] = True                                  # the stations
@@ -532,8 +544,15 @@ class TrackRouter:
         regions = regions_for(lon, lat)
         if all(self._region(region) for region in regions):
             found = self._follow(self._graph(), a, b, lon, lat)
+            corridor = None
             if found is None:
-                found = self._along_the_railways(a, b, lon, lat, regions)
+                corridor = self._along_the_railways(a, b, lon, lat, regions)
+                if corridor is not None:
+                    found = self._follow(corridor, a, b, lon, lat)
+            # Each way jumps off the track somewhere: one kept to it, if there is one
+            for graph in (self._graph(), corridor):
+                if found is None and graph is not None:
+                    found = self._keep_to_track(graph, a, b, lon, lat)
             if found is None:
                 logger.info("High-speed rail %s-%s drawn city to city.", a, b)
         self._note_failures(len(regions))
@@ -560,9 +579,26 @@ class TrackRouter:
                     a, b, path_km(track_lon, track_lat), 100 * on_track)
         return None
 
+    @staticmethod
+    def _keep_to_track(graph: Graph, a: str, b: str, lon: np.ndarray, lat: np.ndarray
+                       ) -> tuple[np.ndarray, np.ndarray] | None:
+        """The way from *a* to *b* on *graph* with its joins at :data:`KEEP_PENALTY` times their length; None
+        unless at least :data:`KEEP_ON_TRACK` of it is on track, it is short enough and it keeps within
+        :data:`STRAY_KM` of the path (lon, lat)."""
+        longest = MAX_STRETCH * path_km(lon, lat) + SLACK_KM
+        way = graph.route(a, b, KEEP_PENALTY * longest, penalty=KEEP_PENALTY)
+        if way is None or way[2] < KEEP_ON_TRACK or path_km(way[0], way[1]) > longest:
+            return None
+        if len(lon) > 2 and off_path_km(way[0], way[1], lon, lat).max() > STRAY_KM:
+            return None
+        logger.info("High-speed rail %s-%s kept to the track: %.0f km, %.0f%% on it.",
+                    a, b, path_km(way[0], way[1]), 100 * way[2])
+        return way[0], way[1]
+
     def _along_the_railways(self, a: str, b: str, lon: np.ndarray, lat: np.ndarray,
-                            regions: Sequence[tuple[int, int]]) -> tuple[np.ndarray, np.ndarray] | None:
-        """The way of a link with no fast one, on the fast tracks of its *regions* and the railways around it."""
+                            regions: Sequence[tuple[int, int]]) -> Graph | None:
+        """For a link with no fast way, the graph of the fast tracks of its *regions* and the railways around it;
+        None if those could not be downloaded."""
         try:
             corridor = load_corridor(a, b, lon, lat, self.cache_dir, self.fetch)
         except (TrackDataError, OSError) as exc:
@@ -573,4 +609,4 @@ class TrackRouter:
             return None
         ways = merge([self.loaded[region] for region in regions] + [corridor])
         stations = {name: self.stations[name] for name in (a, b) if name in self.stations}
-        return self._follow(Graph(ways, stations), a, b, lon, lat)
+        return Graph(ways, stations)

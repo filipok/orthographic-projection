@@ -2561,14 +2561,14 @@ largest named.
   and, fewer, Turkey, Russia, Morocco, Saudi Arabia (Haramain and Riyadh to
   Qurayyat), Uzbekistan, Indonesia and the Northeast Corridor, and beyond them
   everything OpenStreetMap tags as fast, conventional lines upgraded to
-  200 km/h among them: 640 links between 608 cities. 346 of those links and
-  289 of the cities are China's, beyond its trunk lines; about 1,200 km of its
+  200 km/h among them: 638 links between 605 cities. 346 of those links and
+  289 of the cities are China's, beyond its trunk lines; about 1,250 km of its
   fast line (a double line counted once) lie over 10 km from any link, chiefly
   Mianzhu to Huanglong and the Baotou-Xi'an line by Pucheng (the intercity
   line from Beijing to Tangshan, Lanzhou to Wuwei, Shantou to Shanwei, Hefei to
   Huangshan and Jinan to Qingdao by Weifang were added by hand, with 12306's
-  times, as no link drew them). 62 links
-  and 76 cities are the rest of the world's, most in Britain, Sweden, Germany,
+  times, as no link drew them). 60 links
+  and 73 cities are the rest of the world's, most in Britain, Sweden, Germany,
   Korea, Turkey and Uzbekistan. Outside China OSM tags lines as fast only in
   stretches (200 km/h, then 160, then 200), and about 3,400 km of fast line is
   still on no link, 70% of it with no town of 50,000 within 20 km
@@ -2621,12 +2621,15 @@ largest named.
   Many links run partly on slower track, so a link with no such way
   tries again with every railway but sidings and yards within 15 km of its
   path, downloaded and cached for that link alone. Those stretches are drawn
-  like the rest, though their trains are slower. A link still with no way
-  is drawn from city to city through a few points along it, as it is when the
+  like the rest, though their trains are slower. A link whose ways all fail
+  the tests because they jump a gap shorter than the track around (Langfang to
+  Bazhou, whose track runs round by Tianjin) takes the way with its jumps
+  counted five times their length instead, if nine tenths of it is on track.
+  A link still with no way is drawn from city to city through a few points along it, as it is when the
   tracks cannot be downloaded (the map is then noted incomplete, so an atlas
-  draws it again). In November 2026, 632 of the 640 links followed the tracks;
-  the others are Tashkent-Samarkand, Istanbul-Eskisehir and six of China's
-  lesser ones.
+  draws it again). In November 2026, 637 of the 638 links followed the tracks;
+  the other is China's Jiangyin-Changzhou, whose line meets Changzhou at Wujin,
+  not at its station.
   `--high-speed-rail-schematic` draws every link so and downloads nothing.
 
   The first map of a large area is slow, as the Overpass servers are busy and

@@ -138,7 +138,8 @@ class TestData:
         for name in WORLD_STATIONS:
             assert "#" not in name and not name.endswith("-si"), name
         # GHSL's names for these places are a province, an industrial estate, or spelt without accents
-        for wrong, right in (("Kocaeli", "İzmit"), ("ICAD I", "Musaffah"), ("Malmo", "Malmö")):
+        assert "Kocaeli" not in WORLD_STATIONS
+        for wrong, right in (("ICAD I", "Musaffah"), ("Malmo", "Malmö")):
             assert wrong not in WORLD_STATIONS and WORLD_STATIONS[right][3] == wrong
         pairs = {frozenset(l[:2]) for n, items in WORLD_LINES.items() for l in hsr._sequence(n, items)}
         for a, b in (("Luton", "Peterborough"), ("Luton", "Northampton"), ("Helsingborg", "Västerås")):

@@ -356,6 +356,21 @@ class TestRouting:
             assert router.route("A", "B", *_straight("A", "B")) is None
         assert "drawn city to city" in caplog.text
 
+    def test_a_link_whose_shortest_way_jumps_off_the_track_keeps_to_it(self, tmp_path, caplog):
+        # A and B on the two arms of a U, its bend beyond SNAP_KM of both (Langfang to Bazhou, round by Tianjin): the
+        # shortest way jumps the ~22 km between the arms, but with its joins at KEEP_PENALTY the ~100 km of track
+        # round the U costs less
+        stations = {"A": (1.0, 1.0), "B": (1.0, 1.2)}
+        u = ([(1.0 + 0.35 * t, 1.0) for t in np.linspace(0, 1, 40)]
+             + [(1.35, 1.0 + 0.2 * t) for t in np.linspace(0, 1, 25)[1:]]
+             + [(1.35 - 0.35 * t, 1.2) for t in np.linspace(0, 1, 40)[1:]])
+        assert rt.Graph(rt.parse([_way(1, u, 1)]), stations).route("A", "B", 1e9)[2] < rt.MIN_ON_TRACK
+        router = _router([_way(1, u, 1)], tmp_path, stations=stations)
+        with caplog.at_level(logging.INFO, logger="rail_tracks"):
+            lon, lat = router.route("A", "B", np.array([1.0, 1.35, 1.0]), np.array([1.0, 1.1, 1.2]))
+        assert lon.max() == pytest.approx(1.35, abs=0.01) and rt.path_km(lon, lat) == pytest.approx(100, abs=3)
+        assert "kept to the track" in caplog.text
+
     def test_a_link_mostly_off_track_is_drawn_city_to_city(self, tmp_path):
         stations = {"A": (1.0, 1.0), "B": (1.5, 1.0)}
         short = _way(1, [(1.2, 1.01), (1.25, 1.01), (1.3, 1.01)], 1)            # 11 km of 55 km on track
