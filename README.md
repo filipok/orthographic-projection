@@ -2559,19 +2559,19 @@ largest named.
   to Seinäjoki and Lahti, Madrid to Badajoz, Rome to Pisa, Lisbon to Porto,
   Athens to Thessaloniki, and the TGV's lines from Le Mans to Angers and Nantes
   and from Rennes to Brest and to Quimper), East Asia (China, the Shinkansen, Korea's KTX with
-  the Suseo line to Pyeongtaek, the east coast line from Pohang to Gangneung,
+  the Suseo line to Pyeongtaek, the east coast line from Ulsan to Gangneung,
   Pangyo to Chungju and Mungyeong, the Jeolla line from Iksan to Yeosu and the
   Seohae line from Hongseong to Hyangnam, Taiwan)
   and, fewer, Turkey, Russia, Morocco, Saudi Arabia (Haramain and Riyadh to
   Qurayyat), Uzbekistan, Indonesia and the Northeast Corridor, and beyond them
   everything OpenStreetMap tags as fast, conventional lines upgraded to
-  200 km/h among them: 654 links between 621 cities. 346 of those links and
+  200 km/h among them: 655 links between 623 cities. 346 of those links and
   289 of the cities are China's, beyond its trunk lines; about 1,250 km of its
   fast line (a double line counted once) lie over 10 km from any link, chiefly
   Mianzhu to Huanglong and the Baotou-Xi'an line by Pucheng (the intercity
   line from Beijing to Tangshan, Lanzhou to Wuwei, Shantou to Shanwei, Hefei to
   Huangshan and Jinan to Qingdao by Weifang were added by hand, with 12306's
-  times, as no link drew them). 58 links
+  times, as no link drew them). 57 links
   and 68 cities are the rest of the world's, most in Britain, Sweden, Germany,
   Korea, Turkey and Uzbekistan. Outside China OSM tags lines as fast only in
   stretches (200 km/h, then 160, then 200), and about 2,900 km of fast line is
@@ -2636,7 +2636,7 @@ largest named.
   counted five times their length instead, if nine tenths of it is on track.
   A link still with no way is drawn from city to city through a few points along it, as it is when the
   tracks cannot be downloaded (the map is then noted incomplete, so an atlas
-  draws it again). In November 2026, all 654 links followed the tracks (the
+  draws it again). In November 2026, all 655 links followed the tracks (the
   line from Nantong to Nanjing stops at Wujin, its station for Changzhou, as it
   does not reach Changzhou's own).
   `--high-speed-rail-schematic` draws every link so and downloads nothing.

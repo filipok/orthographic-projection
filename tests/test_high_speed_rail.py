@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 264       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 250
+TRUNK_STATIONS = 266       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 252
 
 
 def _load(choice="open"):
@@ -208,13 +208,15 @@ class TestData:
         # Korail's fastest trains on 24 November 2026; Seoul-Iksan from Yongsan or Suseo, as Seoul station's are slower
         rail = _load()
         for a, b, minutes in (("Seoul", "Iksan", 65), ("Iksan", "Gwangju", 28), ("Iksan", "Jeonju", 14),
-                              ("Jeonju", "Suncheon", 53), ("Suncheon", "Yeosu", 17), ("Pangyo", "Chungju", 65)):
+                              ("Jeonju", "Suncheon", 53), ("Suncheon", "Yeosu", 17), ("Pangyo", "Chungju", 65),
+                              ("Taehwagang", "Pohang", 45)):
             assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
         for a, b in (("Seoul", "Gwangju"), ("Seoul", "Chungju")):
             with pytest.raises(AssertionError):
                 _link(rail, a, b)
         # Pangyo's KTX-Eum station is in Seoul's urban centre, which Seoul station's track does not reach
         assert hsr.STATIONS["Pangyo"][2:] == hsr.STATIONS["Seoul"][2:]
+        assert hsr.STATIONS["Taehwagang"][2:] == hsr.STATIONS["Ulsan"][2:]     # the east coast line's, in Ulsan
         assert "Suncheon" not in WORLD_STATIONS and hsr.STATIONS["Suncheon"][:2] == (34.9458, 127.5041)
         assert hsr.STATIONS["Yeosu"][3] == ""          # in no urban centre: its people are GeoNames'
 
@@ -229,15 +231,17 @@ class TestData:
         assert hsr.STATIONS["Nantes"] == (47.2171, -1.5414, 472262, "Nantes")
         assert all(hsr.STATIONS[town][3] == "" for town in ("Vannes", "Quimper"))     # GeoNames
 
-    def test_istanbul_eskisehir_stops_at_izmit(self):
-        # TCDD's fastest high-speed trains in October 2026: Söğütlüçeşme-İzmit 78 minutes, İzmit-Eskişehir 87 non-stop.
-        # İzmit's urban centre is "Kocaeli" in GHSL, the province's name
+    def test_istanbul_eskisehir_stops_at_izmit_and_adapazari(self):
+        # TCDD's fastest high-speed trains in October 2026: Söğütlüçeşme-İzmit 78 minutes, Arifiye-İzmit 20 and
+        # Eskişehir-Arifiye 67. GHSL names their urban centres after their provinces, Kocaeli and Sakarya
         rail = _load()
-        assert rail.minutes[_link(rail, "Istanbul", "İzmit")] == 78
-        assert rail.minutes[_link(rail, "İzmit", "Eskişehir")] == 87
-        with pytest.raises(AssertionError):
-            _link(rail, "Istanbul", "Eskişehir")
+        for a, b, minutes in (("Istanbul", "İzmit", 78), ("İzmit", "Adapazarı", 20), ("Adapazarı", "Eskişehir", 67)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        for a, b in (("Istanbul", "Eskişehir"), ("İzmit", "Eskişehir")):
+            with pytest.raises(AssertionError):
+                _link(rail, a, b)
         assert hsr.STATIONS["İzmit"] == (40.7614, 29.9177, 746536, "Kocaeli")
+        assert hsr.STATIONS["Adapazarı"] == (40.7131, 30.3558, 359260, "Sakarya")      # at Arifiye station
 
     def test_beijing_shenyang_stops_at_chengde_chaoyang_and_fuxin(self):
         # 12306's fastest trains on 24 November 2026, on the line through Chengde; Chaoyang left the China table

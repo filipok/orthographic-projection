@@ -23,10 +23,10 @@ Helsinki to Seinäjoki and Lahti, Madrid to Badajoz, Rome to Pisa, Le Mans to
 Angers and Nantes, Rennes to Brest and Rennes to Quimper, and in China
 the intercity line from Beijing to Tangshan, Lanzhou to Wuwei and Baiyin,
 Shantou to Shanwei, Hefei to Huangshan and Jinan to Qingdao by Weifang; in
-Korea the east coast line from Pohang to Donghae and Gangneung, Pangyo to
-Chungju and Mungyeong, the Jeolla line from Iksan to Jeonju, Suncheon and
-Yeosu and the Seohae line from Hongseong to Hyangnam), with their operators'
-times. Beyond these lines are all those OpenStreetMap tags as
+Korea the east coast line from Ulsan's Taehwagang to Pohang, Donghae and
+Gangneung, Pangyo to Chungju and Mungyeong, the Jeolla line from Iksan to
+Jeonju, Suncheon and Yeosu and the Seohae line from Hongseong to Hyangnam),
+with their operators' times. Beyond these lines are all those OpenStreetMap tags as
 fast, upgraded conventional lines among them, with their estimated times:
 China's in :mod:`high_speed_rail_china`, the rest of the world's in
 :mod:`high_speed_rail_world`.
@@ -233,6 +233,7 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Saint Petersburg": (59.9300, 30.3620, 4878966, "Saint Petersburg"),
     "Istanbul": (40.9925, 29.0370, 14210222, "Istanbul"),
     "İzmit": (40.7614, 29.9177, 746536, "Kocaeli"),
+    "Adapazarı": (40.7131, 30.3558, 359260, "Sakarya"),
     "Eskişehir": (39.7750, 30.5140, 608474, "Eskişehir"),
     "Ankara": (39.9365, 32.8440, 3695989, "Ankara"),
     "Konya": (37.8720, 32.4910, 1017329, "Konya"),
@@ -345,6 +346,7 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Suncheon": (34.9458, 127.5041, 134691, "Suncheon-si"),
     "Yeosu": (34.7555, 127.7492, 268823, ""),
     "Pangyo": (37.3947, 127.1115, 22261692, "Seoul"),
+    "Taehwagang": (35.5388, 129.3540, 887568, "Ulsan"),
     "Gangneung": (37.7640, 128.8990, 118784, "Gangneung"),
     "Pyeongtaek": (37.0188, 127.0699, 159972, "Pyeongtaek"),
     "Pohang": (36.0712, 129.3427, 373323, "Pohang-si"),
@@ -428,7 +430,7 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "Warsaw-Gdańsk": ["Warsaw", 160, "Gdańsk"],
     "Belgrade-Subotica": ["Belgrade", 36, "Novi Sad", 40, "Subotica"],
     "Moscow-Saint Petersburg": ["Moscow", 63, "Tver", 160, "Saint Petersburg"],
-    "Ankara-Istanbul": ["Istanbul", 78, "İzmit", 87, "Eskişehir", 85, "Ankara"],
+    "Ankara-Istanbul": ["Istanbul", 78, "İzmit", 20, "Adapazarı", 67, "Eskişehir", 85, "Ankara"],
     "Ankara-Konya": ["Ankara", 105, "Konya"],
     "Ankara-Sivas": ["Ankara", 125, "Sivas"],
     "Al Boraq": ["Tangier", 50, "Kenitra", 25, "Rabat", 50, "Casablanca"],
@@ -472,7 +474,7 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "Jeolla Line": ["Iksan", 14, "Jeonju", 53, "Suncheon", 17, "Yeosu"],
     "Gangneung Line": ["Seoul", 95, "Gangneung"],
     "Suseo-Pyeongtaek HSR": ["Seoul", 20, "Pyeongtaek"],
-    "Donghae Line": ["Pohang", 98, "Donghae", 41, "Gangneung"],
+    "Donghae Line": ["Taehwagang", 45, "Pohang", 98, "Donghae", 41, "Gangneung"],
     "Jungbu Naeryuk Line": ["Pangyo", 65, "Chungju", 24, "Mungyeong"],
     "Seohae Line": ["Hongseong", 49, "Hyangnam"],
     "Taiwan HSR": ["Taipei", 32, "Hsinchu", 27, "Taichung", 30, "Chiayi", 16, "Tainan", 14, "Kaohsiung"],
@@ -547,7 +549,8 @@ VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Warsaw", "Gdańsk"): [(53.24, 20.18), (53.6, 19.57), (54.03, 19.03)],
     ("Tver", "Saint Petersburg"): [(57.88, 34.05), (59.12, 31.66)],
     ("Istanbul", "İzmit"): [(40.77, 29.44)],
-    ("İzmit", "Eskişehir"): [(40.70, 30.25), (40.60, 30.32), (40.49, 30.12), (40.37, 30.00), (40.15, 29.98)],
+    ("İzmit", "Adapazarı"): [(40.70, 30.25)],
+    ("Adapazarı", "Eskişehir"): [(40.60, 30.32), (40.49, 30.12), (40.37, 30.00), (40.15, 29.98)],
     ("Eskişehir", "Ankara"): [(39.58, 32.14)],
     ("Tashkent", "Samarkand"): [(40.83, 68.67), (40.32, 68.82), (40.10, 67.85), (40.02, 67.45), (39.84, 67.45),
                                 (39.76, 67.25)],
@@ -633,6 +636,7 @@ VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Jeonju", "Suncheon"): [(35.43, 127.37), (35.30, 127.29), (35.16, 127.46)],
     ("Seoul", "Gangneung"): [(37.31, 127.92), (37.56, 128.43)],
     ("Seoul", "Pyeongtaek"): [(37.48, 127.10), (37.35, 127.11), (37.20, 127.10)],
+    ("Taehwagang", "Pohang"): [(35.69, 129.35), (35.81, 129.12)],
     ("Pohang", "Donghae"): [(36.78, 129.45), (37.26, 129.32)],
     ("Donghae", "Gangneung"): [(37.69, 129.04)],
     ("Hongseong", "Hyangnam"): [(36.78, 126.78), (36.86, 126.93)],

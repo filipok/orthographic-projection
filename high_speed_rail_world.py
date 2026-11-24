@@ -13,8 +13,8 @@ has the name it goes by, checked against GeoNames where GHSL's differs; the cent
 it.
 
 The minutes are ESTIMATES, not timetable times, unlike those of the hand-compiled lines: the track's length over
-its ``maxspeed`` (a join at 140 km/h), as ``5.5 + 1.374 × km / maxspeed`` in minutes, fitted on 183 hand-compiled
-links' timetable times outside China (median error 13%, 90th percentile 33%), and rounded to 5 minutes.
+its ``maxspeed`` (a join at 140 km/h), as ``5.4 + 1.374 × km / maxspeed`` in minutes, fitted on 192 hand-compiled
+links' timetable times outside China (median error 13%, 90th percentile 32%), and rounded to 5 minutes.
 """
 
 from __future__ import annotations
@@ -95,23 +95,23 @@ WORLD_STATIONS: dict[str, tuple[float, float, int, str]] = {
 # As high_speed_rail.OPEN_LINES
 WORLD_LINES: dict[str, list[str | int]] = {
     "OSM Andong-Daegu": ["Andong", 45, "Daegu"],
-    "OSM Andong-Pohang": ["Andong", 40, "Gyeongju", 15, "Pohang"],
+    "OSM Andong-Gyeongju": ["Andong", 40, "Gyeongju"],
     "OSM Andong-Wonju": ["Andong", 35, "Jecheon", 15, "Wonju"],
     "OSM Birmingham-Derby": ["Birmingham", 25, "Derby"],
     "OSM Birmingham-Northampton": ["Birmingham", 30, "Northampton"],
     "OSM Birmingham-Warrington": ["Birmingham", 30, "Stoke-on-Trent", 25, "Warrington"],
     "OSM Lund-Gothenburg": ["Lund", 25, "Helsingborg", 105, "Gothenburg"],
     "OSM Lund-Linköping": ["Lund", 170, "Linköping"],
-    "OSM Lund-Malmö": ["Lund", 15, "Malmö"],
+    "OSM Lund-Malmö": ["Lund", 10, "Malmö"],
+    "OSM Adapazarı-Bursa": ["Adapazarı", 70, "Bursa"],
     "OSM Ar Ruways-Musaffah": ["Ar Ruways", 105, "Musaffah"],
     "OSM Astana-Kokshetau": ["Astana", 110, "Kokshetau"],
-    "OSM Aïn Oussera-Laghouat": ["Aïn Oussera", 45, "Djelfa", 50, "Laghouat"],
+    "OSM Aïn Oussera-Laghouat": ["Aïn Oussera", 45, "Djelfa", 45, "Laghouat"],
     "OSM Barreiro-Setúbal": ["Barreiro", 15, "Setúbal"],
     "OSM Bedford-Luton": ["Bedford", 15, "Luton"],
     "OSM Brindisi-Lecce": ["Brindisi", 15, "Lecce"],
     "OSM Bristol-London": ["Bristol", 45, "Reading", 25, "London"],
     "OSM Bukhara-Khiva": ["Bukhara", 125, "Hazorasp", 20, "Urgench", 15, "Khiva"],
-    "OSM Bursa-İzmit": ["Bursa", 75, "İzmit"],
     "OSM Ceyhan-Osmaniye": ["Ceyhan", 15, "Osmaniye"],
     "OSM Cologne-Essen": ["Cologne", 20, "Düsseldorf", 15, "Essen"],
     "OSM Copenhagen-Greve": ["Copenhagen", 10, "Greve"],
@@ -132,15 +132,14 @@ WORLD_LINES: dict[str, list[str | int]] = {
     "OSM Paris-Tours": ["Paris", 55, "Orléans", 50, "Tours"],
     "OSM Qarshi-Samarkand": ["Qarshi", 75, "Samarkand"],
     "OSM Södertälje-Uppsala": ["Södertälje", 55, "Västerås", 50, "Stockholm", 35, "Uppsala"],
-    "OSM Tarragona-Valencia": ["Tarragona", 80, "Castelló de la Plana", 35, "Valencia"],
+    "OSM Tarragona-Valencia": ["Tarragona", 80, "Castelló de la Plana", 30, "Valencia"],
 }
 
 # As high_speed_rail.VIA: points along the way, to draw a link from city to city where its tracks are not to be had
 WORLD_VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Paris", "Orléans"): [(48.60, 2.08), (48.42, 2.13)],
-    ("İzmit", "Bursa"): [(40.70, 30.25), (40.58, 30.34), (40.48, 30.07), (40.36, 30.04), (40.37, 29.92),
-        (40.25, 29.73)],
     ("Hamburg", "Bremen"): [(53.12, 9.41)],
+    ("Adapazarı", "Bursa"): [(40.56, 30.33), (40.48, 30.07), (40.36, 30.04), (40.37, 29.92), (40.25, 29.72)],
     ("Samarkand", "Qarshi"): [(39.57, 66.43)],
     ("Leipzig", "Dresden"): [(51.33, 13.34), (51.26, 13.53)],
     ("Dortmund", "Bielefeld"): [(51.77, 7.90)],
