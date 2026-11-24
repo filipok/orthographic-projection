@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 252       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 238
+TRUNK_STATIONS = 257       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 243
 
 
 def _load(choice="open"):
@@ -203,6 +203,20 @@ class TestData:
                 _link(rail, other, "Changzhou")
         assert hsr.STATIONS["Wujin"] == (31.6605, 119.9424, 2772878, "Changzhou")
         assert hsr.STATIONS["Changzhou"][2:] == hsr.STATIONS["Wujin"][2:]
+
+    def test_koreas_jeolla_line_and_the_line_from_pangyo(self):
+        # Korail's fastest trains on 24 November 2026; Seoul-Iksan from Yongsan or Suseo, as Seoul station's are slower
+        rail = _load()
+        for a, b, minutes in (("Seoul", "Iksan", 65), ("Iksan", "Gwangju", 28), ("Iksan", "Jeonju", 14),
+                              ("Jeonju", "Suncheon", 53), ("Suncheon", "Yeosu", 17), ("Pangyo", "Chungju", 65)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        for a, b in (("Seoul", "Gwangju"), ("Seoul", "Chungju")):
+            with pytest.raises(AssertionError):
+                _link(rail, a, b)
+        # Pangyo's KTX-Eum station is in Seoul's urban centre, which Seoul station's track does not reach
+        assert hsr.STATIONS["Pangyo"][2:] == hsr.STATIONS["Seoul"][2:]
+        assert "Suncheon" not in WORLD_STATIONS and hsr.STATIONS["Suncheon"][:2] == (34.9458, 127.5041)
+        assert hsr.STATIONS["Yeosu"][3] == ""          # in no urban centre: its people are GeoNames'
 
     def test_istanbul_eskisehir_stops_at_izmit(self):
         # TCDD's fastest high-speed trains in October 2026: Söğütlüçeşme-İzmit 78 minutes, İzmit-Eskişehir 87 non-stop.

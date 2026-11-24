@@ -250,7 +250,7 @@ The main script is [ortho.py](ortho.py).
 
 <p align="center">
   <img src="sample_europe_high_speed_rail.png" alt="A disc 1,500 km around Germany with Europe's high-speed lines along their tracks, wider and darker the higher each link's gravity score, the score written along it: London-Lille 576k, Lille-Paris 682k and Rome-Naples 510k the strongest, Paris-Lyon 480k, the German, Italian and Spanish lines in between, small scores on the branches to Spain's smaller towns, and the British and Swedish main lines upgraded to 200 km/h: London-Reading-Bristol, London-Stevenage-Peterborough-York-Darlington, Stockholm-Gothenburg 23k, Lund-Gothenburg, Lund-Linköping and Stockholm's, with Uppsala-Gävle; and Rome-Grosseto-Livorno-Pisa along Italy's west coast" width="48%">
-  <img src="sample_east_asia_high_speed_rail.png" alt="A disc 2,100 km around the East China Sea with East Asia's high-speed lines by gravity score: China's dense network from Harbin to Hainan, Kunming and Hong Kong, darkest and widest between Shanghai and the Yangtze delta's cities, Beijing and Tianjin, and the Pearl River Delta and Shantou (23M), with the Shinkansen from Kagoshima to Hokkaido, Korea's KTX from Seoul to Busan and Mokpo and up the east coast to Gangneung, and Taiwan's line from Taipei to Kaohsiung" width="48%">
+  <img src="sample_east_asia_high_speed_rail.png" alt="A disc 2,100 km around the East China Sea with East Asia's high-speed lines by gravity score: China's dense network from Harbin to Hainan, Kunming and Hong Kong, darkest and widest between Shanghai and the Yangtze delta's cities, Beijing and Tianjin, and the Pearl River Delta and Shantou (23M), with the Shinkansen from Kagoshima to Hokkaido, Korea's KTX from Seoul to Busan, Mokpo and Yeosu and up the east coast to Gangneung, and Taiwan's line from Taipei to Kaohsiung" width="48%">
 </p>
 
 *Left: Europe's high-speed lines by gravity score (plain OSM, radius 1,500 km).*<br>
@@ -2559,20 +2559,21 @@ largest named.
   to Seinäjoki and Lahti, Madrid to Badajoz, Rome to Pisa, Lisbon to Porto and
   Athens to Thessaloniki), East Asia (China, the Shinkansen, Korea's KTX with
   the Suseo line to Pyeongtaek, the east coast line from Pohang to Gangneung,
-  Chungju to Mungyeong and the Seohae line from Hongseong to Hyangnam, Taiwan)
+  Pangyo to Chungju and Mungyeong, the Jeolla line from Iksan to Yeosu and the
+  Seohae line from Hongseong to Hyangnam, Taiwan)
   and, fewer, Turkey, Russia, Morocco, Saudi Arabia (Haramain and Riyadh to
   Qurayyat), Uzbekistan, Indonesia and the Northeast Corridor, and beyond them
   everything OpenStreetMap tags as fast, conventional lines upgraded to
-  200 km/h among them: 643 links between 611 cities. 346 of those links and
+  200 km/h among them: 647 links between 614 cities. 346 of those links and
   289 of the cities are China's, beyond its trunk lines; about 1,250 km of its
   fast line (a double line counted once) lie over 10 km from any link, chiefly
   Mianzhu to Huanglong and the Baotou-Xi'an line by Pucheng (the intercity
   line from Beijing to Tangshan, Lanzhou to Wuwei, Shantou to Shanwei, Hefei to
   Huangshan and Jinan to Qingdao by Weifang were added by hand, with 12306's
-  times, as no link drew them). 59 links
-  and 70 cities are the rest of the world's, most in Britain, Sweden, Germany,
+  times, as no link drew them). 58 links
+  and 68 cities are the rest of the world's, most in Britain, Sweden, Germany,
   Korea, Turkey and Uzbekistan. Outside China OSM tags lines as fast only in
-  stretches (200 km/h, then 160, then 200), and about 3,150 km of fast line is
+  stretches (200 km/h, then 160, then 200), and about 3,050 km of fast line is
   still on no link, 70% of it with no town of 50,000 within 20 km
   to end one at, such as Oslo's airport line. Lines planned or under
   construction are not drawn.
@@ -2580,7 +2581,7 @@ largest named.
   (GHS-UCDB R2024A, 2025), the metropolitan area as it is built, the same as
   `--cities` draws; a town too small or sparse to be one (Toledo, Cuenca,
   Segovia, Zamora, Santiago de Compostela, Coimbra, Aveiro, Gävle, Sundsvall,
-  Seinäjoki, Cáceres, Mérida, Donghae, Mungyeong, Hongseong) takes its people
+  Seinäjoki, Cáceres, Mérida, Donghae, Mungyeong, Hongseong, Yeosu) takes its people
   in GeoNames. As
   GHSL joins built-up areas across city limits, Tokyo takes in Yokohama, Osaka
   Kyoto, Suzhou Wuxi and Guangzhou Shenzhen: such links within one urban area
@@ -2624,13 +2625,16 @@ largest named.
   Many links run partly on slower track, so a link with no such way
   tries again with every railway but sidings and yards within 15 km of its
   path, downloaded and cached for that link alone. Those stretches are drawn
-  like the rest, though their trains are slower. A link whose ways all fail
+  like the rest, though their trains are slower. So does a link whose fast way
+  is over 1.5 times as long as the link, passing only by the 20 km, as that way
+  is likely round by another line (Pangyo to Chungju, round by Wonju): it takes
+  the way along the railways if that is shorter. A link whose ways all fail
   the tests because they jump a gap shorter than the track around (Langfang to
   Bazhou, whose track runs round by Tianjin) takes the way with its jumps
   counted five times their length instead, if nine tenths of it is on track.
   A link still with no way is drawn from city to city through a few points along it, as it is when the
   tracks cannot be downloaded (the map is then noted incomplete, so an atlas
-  draws it again). In November 2026, all 643 links followed the tracks (the
+  draws it again). In November 2026, all 647 links followed the tracks (the
   line from Nantong to Nanjing stops at Wujin, its station for Changzhou, as it
   does not reach Changzhou's own).
   `--high-speed-rail-schematic` draws every link so and downloads nothing.

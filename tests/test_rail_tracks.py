@@ -502,6 +502,19 @@ class TestTheRailwaysAroundALink:
         assert router.route("A", "B", *_straight("A", "B")) is not None
         assert not any("around:" in text for text in asked)
 
+    def test_a_fast_way_round_by_another_line_gives_way_to_them(self, tmp_path):
+        # The fast way bows ~60 km north, over MAX_STRETCH times the line but within its slack, while a slower
+        # railway runs near the line (Pangyo to Chungju: the fast way is round by Wonju, the trains take Bubal)
+        fast = _way(1, _arc(0.05, 0.95, 0.55), 1)
+        assert rt.MAX_STRETCH * 111.2 < 175 < rt.MAX_STRETCH * 111.2 + rt.SLACK_KM
+        router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([fast], [_way(2, self.BOW, 500, {"railway": "rail"})]))
+        lon, lat = router.route("A", "B", *_straight("A", "B"))
+        assert lat.max() == pytest.approx(1.17, abs=0.01)
+        # With no railway nearer, the fast way stands
+        router = rt.TrackRouter(STATIONS, str(tmp_path / "none"), _by_kind([fast], []))
+        lon, lat = router.route("A", "B", *_straight("A", "B"))
+        assert lat.max() > 1.5
+
     def test_a_long_way_round_is_refused_there_too(self, tmp_path, caplog):
         far = _way(1, _arc(0.05, 0.95, 0.8), 1, {"railway": "rail"})            # bowed ~90 km north
         router = rt.TrackRouter(STATIONS, str(tmp_path), _by_kind([], [far]))

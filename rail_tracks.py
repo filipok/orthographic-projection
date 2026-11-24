@@ -38,7 +38,10 @@ the tracks within :data:`NEAR_PATH_KM` of them, if that way passes the same test
 
 Many links run partly on slower track, so a link with no such way tries again
 with every railway but sidings and yards within :data:`CORRIDOR_KM` of its path,
-downloaded and cached for that link alone. A link whose ways all fail jumps
+downloaded and cached for that link alone. So does a link whose fast way is
+longer than :data:`MAX_STRETCH` times its line, passing only by the slack, as
+that way is likely round by another fast line (Pangyo to Chungju, round by
+Wonju): it takes the way along the railways if that is shorter. A link whose ways all fail jumps
 off the track somewhere, as a long join can be shorter than the track around:
 it then takes the way with its joins at :data:`KEEP_PENALTY` times their length,
 if at least :data:`KEEP_ON_TRACK` of it is on track and it passes the other
@@ -545,10 +548,13 @@ class TrackRouter:
         if all(self._region(region) for region in regions):
             found = self._follow(self._graph(), a, b, lon, lat)
             corridor = None
-            if found is None:
+            if found is None or path_km(*found) > MAX_STRETCH * path_km(lon, lat):
+                # No fast way, or one long enough to be round by another line: the railways along the link
                 corridor = self._along_the_railways(a, b, lon, lat, regions)
                 if corridor is not None:
-                    found = self._follow(corridor, a, b, lon, lat)
+                    along = self._follow(corridor, a, b, lon, lat)
+                    if along is not None and (found is None or path_km(*along) < path_km(*found)):
+                        found = along
             # Each way jumps off the track somewhere: one kept to it, if there is one
             for graph in (self._graph(), corridor):
                 if found is None and graph is not None:
