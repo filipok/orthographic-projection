@@ -253,6 +253,7 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Xuzhou": (34.2240, 117.2620, 1310475, "Xuzhou"),
     "Nanjing": (31.9690, 118.7980, 8061029, "Nanjing"),
     "Changzhou": (31.7810, 119.9690, 2772878, "Changzhou"),
+    "Wujin": (31.6605, 119.9424, 2772878, "Changzhou"),
     "Wuxi": (31.5880, 120.3030, 11540430, "Suzhou"),
     "Suzhou": (31.3320, 120.6110, 11540430, "Suzhou"),
     "Shanghai": (31.1945, 121.3210, 30678616, "Shanghai"),

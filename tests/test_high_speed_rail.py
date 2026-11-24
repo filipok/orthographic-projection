@@ -14,7 +14,7 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 250       # high_speed_rail's own tables, without the generated ones
+TRUNK_STATIONS = 251       # high_speed_rail's own tables, without the generated ones
 TRUNK_OPEN_LINKS = 237
 
 
@@ -191,6 +191,18 @@ class TestData:
         assert not {"Pohang", "Chungju", "Pyeongtaek"} & set(WORLD_STATIONS)
         assert hsr.STATIONS["Pohang"][:2] == (36.0712, 129.3427)
         assert all(hsr.STATIONS[town][3] == "" for town in ("Donghae", "Mungyeong", "Hongseong"))   # GeoNames
+
+    def test_the_line_from_nantong_to_nanjing_stops_at_wujin_not_changzhou(self):
+        # Its track reaches Changzhou at Wujin station, 14 km south of Changzhou's own, so a link to Changzhou station
+        # could only be drawn straight; Wujin has Changzhou's people, as Wuxi has Suzhou's
+        rail = _load()
+        assert rail.minutes[_link(rail, "Jiangyin", "Wujin")] == 15
+        assert rail.minutes[_link(rail, "Wujin", "Jintan")] == 10
+        for other in ("Jiangyin", "Jintan"):
+            with pytest.raises(AssertionError):
+                _link(rail, other, "Changzhou")
+        assert hsr.STATIONS["Wujin"] == (31.6605, 119.9424, 2772878, "Changzhou")
+        assert hsr.STATIONS["Changzhou"][2:] == hsr.STATIONS["Wujin"][2:]
 
     def test_beijing_shenyang_stops_at_chengde_chaoyang_and_fuxin(self):
         # 12306's fastest trains on 24 November 2026, on the line through Chengde; Chaoyang left the China table

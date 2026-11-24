@@ -12,7 +12,8 @@ are rarely on these tracks. The minutes are ESTIMATES, not timetable times, unli
 track's length over its ``maxspeed``, as ``5.3 + 1.111 × km / maxspeed`` in minutes, fitted on 47 trunk lines' timetable
 times (median error 8%, 90th percentile 24%), and rounded to 5 minutes.
 
-Chaoyang, a stop of the Beijing-Shenyang trunk line since, is in :mod:`high_speed_rail`'s own table, at its station.
+Chaoyang, a stop of the Beijing-Shenyang trunk line since, is in :mod:`high_speed_rail`'s own table, at its station;
+so is Wujin, Changzhou's station on the line from Nantong to Nanjing, which does not reach Changzhou's own.
 """
 
 from __future__ import annotations
@@ -415,7 +416,7 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Nantong-Huai'an District": ["Nantong", 45, "Taizhou (Jiangsu)", 35, "Zhenjiang", 35, "Gaoyou", 30,
         "Huai'an District"],
     "China Nantong-Yancheng": ["Nantong", 40, "Yancheng"],
-    "China Nantong-Nanjing": ["Nantong", 25, "Zhangjiagang", 10, "Jiangyin", 10, "Changzhou", 15, "Jintan", 20,
+    "China Nantong-Nanjing": ["Nantong", 25, "Zhangjiagang", 10, "Jiangyin", 15, "Wujin", 10, "Jintan", 20,
         "Nanjing"],
     "China Shenyang-Dalian": ["Shenyang", 25, "Benxi", 45, "Dandong", 50, "Zhuanghe", 60, "Dalian"],
     "China Shenyang-Dunhua": ["Shenyang", 15, "Fushun", 50, "Baishan", 10, "Jiangyuan", 60, "Dunhua"],

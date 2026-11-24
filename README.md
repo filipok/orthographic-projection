@@ -2563,7 +2563,7 @@ largest named.
   and, fewer, Turkey, Russia, Morocco, Saudi Arabia (Haramain and Riyadh to
   Qurayyat), Uzbekistan, Indonesia and the Northeast Corridor, and beyond them
   everything OpenStreetMap tags as fast, conventional lines upgraded to
-  200 km/h among them: 642 links between 609 cities. 346 of those links and
+  200 km/h among them: 642 links between 610 cities. 346 of those links and
   289 of the cities are China's, beyond its trunk lines; about 1,250 km of its
   fast line (a double line counted once) lie over 10 km from any link, chiefly
   Mianzhu to Huanglong and the Baotou-Xi'an line by Pucheng (the intercity
@@ -2630,9 +2630,9 @@ largest named.
   counted five times their length instead, if nine tenths of it is on track.
   A link still with no way is drawn from city to city through a few points along it, as it is when the
   tracks cannot be downloaded (the map is then noted incomplete, so an atlas
-  draws it again). In November 2026, 641 of the 642 links followed the tracks;
-  the other is China's Jiangyin-Changzhou, whose line meets Changzhou at Wujin,
-  not at its station.
+  draws it again). In November 2026, all 642 links followed the tracks (the
+  line from Nantong to Nanjing stops at Wujin, its station for Changzhou, as it
+  does not reach Changzhou's own).
   `--high-speed-rail-schematic` draws every link so and downloads nothing.
 
   The first map of a large area is slow, as the Overpass servers are busy and
