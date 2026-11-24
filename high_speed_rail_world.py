@@ -13,8 +13,8 @@ has the name it goes by, checked against GeoNames where GHSL's differs; the cent
 it.
 
 The minutes are ESTIMATES, not timetable times, unlike those of the hand-compiled lines: the track's length over
-its ``maxspeed`` (a join at 140 km/h), as ``4.6 + 1.388 × km / maxspeed`` in minutes, fitted on 172 hand-compiled
-links' timetable times outside China (median error 13%, 90th percentile 30%), and rounded to 5 minutes.
+its ``maxspeed`` (a join at 140 km/h), as ``5.1 + 1.384 × km / maxspeed`` in minutes, fitted on 177 hand-compiled
+links' timetable times outside China (median error 13%, 90th percentile 32%), and rounded to 5 minutes.
 """
 
 from __future__ import annotations
@@ -37,7 +37,6 @@ WORLD_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Bursa": (40.2826, 29.0342, 2366448, "Bursa"),
     "Castelló de la Plana": (39.9860, -0.0534, 159760, "Castelló de la Plana"),
     "Ceyhan": (37.0323, 35.8574, 69661, "Ceyhan"),
-    "Chungju": (36.9824, 127.9119, 98242, "Chungju-si"),
     "Copenhagen": (55.6533, 12.4844, 1258202, "Copenhagen"),
     "Cádiz": (36.5217, -6.2808, 114582, "Cádiz"),
     "Darlington": (54.5306, -1.5437, 86204, "Darlington"),
@@ -77,10 +76,8 @@ WORLD_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Omura": (32.9228, 129.9606, 67616, "Omura"),
     "Orléans": (47.9178, 1.9020, 219332, "Orléans"),
     "Osmaniye": (37.0795, 36.2372, 297348, "Osmaniye"),
-    "Pohang": (36.0516, 129.3307, 373323, "Pohang-si"),
     "Preston": (53.8091, -2.7341, 235599, "Preston"),
     "Pretoria": (-25.7473, 28.2393, 1826232, "Pretoria"),
-    "Pyeongtaek": (37.0602, 127.0771, 76532, "Jangdeung-ri"),
     "Qarshi": (38.9220, 65.7495, 512027, "Qarshi"),
     "Reading": (51.4614, -0.9924, 273287, "Reading"),
     "Setúbal": (38.5647, -8.8713, 99295, "Setúbal"),
@@ -99,7 +96,7 @@ WORLD_STATIONS: dict[str, tuple[float, float, int, str]] = {
 
 # As high_speed_rail.OPEN_LINES
 WORLD_LINES: dict[str, list[str | int]] = {
-    "OSM Andong-Daegu": ["Andong", 40, "Daegu"],
+    "OSM Andong-Daegu": ["Andong", 45, "Daegu"],
     "OSM Andong-Pohang": ["Andong", 40, "Gyeongju", 15, "Pohang"],
     "OSM Andong-Wonju": ["Andong", 35, "Jecheon", 15, "Wonju"],
     "OSM Birmingham-Derby": ["Birmingham", 25, "Derby"],
@@ -113,17 +110,17 @@ WORLD_LINES: dict[str, list[str | int]] = {
     "OSM Aïn Oussera-Laghouat": ["Aïn Oussera", 45, "Djelfa", 45, "Laghouat"],
     "OSM Barreiro-Setúbal": ["Barreiro", 15, "Setúbal"],
     "OSM Bedford-Luton": ["Bedford", 15, "Luton"],
-    "OSM Bilecik-Bursa": ["Bilecik", 50, "Bursa"],
+    "OSM Bilecik-Bursa": ["Bilecik", 55, "Bursa"],
     "OSM Brindisi-Lecce": ["Brindisi", 15, "Lecce"],
     "OSM Bristol-London": ["Bristol", 45, "Reading", 25, "London"],
     "OSM Bukhara-Khiva": ["Bukhara", 125, "Hazorasp", 20, "Urgench", 15, "Khiva"],
     "OSM Ceyhan-Osmaniye": ["Ceyhan", 15, "Osmaniye"],
-    "OSM Chungju-Pyeongtaek": ["Chungju", 65, "Seoul", 20, "Pyeongtaek"],
+    "OSM Chungju-Seoul": ["Chungju", 65, "Seoul"],
     "OSM Cologne-Essen": ["Cologne", 20, "Düsseldorf", 15, "Essen"],
     "OSM Copenhagen-Greve": ["Copenhagen", 10, "Greve"],
     "OSM Cádiz-Jerez de la Frontera": ["Cádiz", 15, "Jerez de la Frontera"],
     "OSM Darlington-Peterborough": ["Darlington", 30, "York", 70, "Peterborough"],
-    "OSM Dortmund-Hamburg": ["Dortmund", 45, "Bielefeld", 65, "Bremen", 55, "Hamburg"],
+    "OSM Dortmund-Hamburg": ["Dortmund", 45, "Bielefeld", 70, "Bremen", 55, "Hamburg"],
     "OSM Dresden-Leipzig": ["Dresden", 60, "Leipzig"],
     "OSM Echizen-Tsuruga": ["Echizen", 15, "Tsuruga"],
     "OSM Edirne-Çerkezköy": ["Edirne", 60, "Çerkezköy"],
@@ -137,7 +134,7 @@ WORLD_LINES: dict[str, list[str | int]] = {
     "OSM Nagasaki-Omura": ["Nagasaki", 10, "Isahaya", 10, "Omura"],
     "OSM Paris-Tours": ["Paris", 55, "Orléans", 50, "Tours"],
     "OSM Qarshi-Samarkand": ["Qarshi", 75, "Samarkand"],
-    "OSM Södertälje-Uppsala": ["Södertälje", 55, "Västerås", 45, "Stockholm", 35, "Uppsala"],
+    "OSM Södertälje-Uppsala": ["Södertälje", 55, "Västerås", 50, "Stockholm", 35, "Uppsala"],
     "OSM Tarragona-Valencia": ["Tarragona", 80, "Castelló de la Plana", 30, "Valencia"],
 }
 

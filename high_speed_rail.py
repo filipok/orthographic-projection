@@ -21,8 +21,10 @@ drew in November 2026 (Riyadh to Qurayyat, Stockholm to Gothenburg, London to
 Peterborough, Lisbon to Porto, Athens to Thessaloniki, Uppsala to Umeå,
 Helsinki to Seinäjoki and Lahti, Madrid to Badajoz, Rome to Pisa, and in China
 the intercity line from Beijing to Tangshan, Lanzhou to Wuwei and Baiyin,
-Shantou to Shanwei, Hefei to Huangshan and Jinan to Qingdao by Weifang), with
-their operators' times. Beyond these lines are all those OpenStreetMap tags as
+Shantou to Shanwei, Hefei to Huangshan and Jinan to Qingdao by Weifang; in
+Korea the east coast line from Pohang to Donghae and Gangneung, Chungju to
+Mungyeong and the Seohae line from Hongseong to Hyangnam), with their
+operators' times. Beyond these lines are all those OpenStreetMap tags as
 fast, upgraded conventional lines among them, with their estimated times:
 China's in :mod:`high_speed_rail_china`, the rest of the world's in
 :mod:`high_speed_rail_world`.
@@ -43,8 +45,8 @@ metropolitan area as it is built, so the Pearl River Delta is one city
 (Guangzhou with Shenzhen) and Tokyo takes in Yokohama: a link within one urban
 centre is drawn but not scored. The few towns too small or sparse to be an
 urban centre (Toledo, Cuenca, Segovia, Zamora, Santiago de Compostela, Coimbra,
-Aveiro, Gävle, Sundsvall, Seinäjoki, Cáceres, Mérida) have
-their people in GeoNames (cities5000, CC BY 4.0).
+Aveiro, Gävle, Sundsvall, Seinäjoki, Cáceres, Mérida, Donghae, Mungyeong,
+Hongseong) have their people in GeoNames (cities5000, CC BY 4.0).
 """
 
 from __future__ import annotations
@@ -328,6 +330,13 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Gwangju": (35.1375, 126.7910, 1428492, "Gwangju"),
     "Mokpo": (34.7915, 126.3870, 228462, "Mokpo-si"),
     "Gangneung": (37.7640, 128.8990, 118784, "Gangneung"),
+    "Pyeongtaek": (37.0188, 127.0699, 159972, "Pyeongtaek"),
+    "Pohang": (36.0712, 129.3427, 373323, "Pohang-si"),
+    "Donghae": (37.4976, 129.1226, 101128, ""),
+    "Chungju": (36.9753, 127.9081, 98242, "Chungju-si"),
+    "Mungyeong": (36.7203, 128.1102, 77304, ""),
+    "Hongseong": (36.5993, 126.6812, 89174, ""),
+    "Hyangnam": (37.1229, 126.9128, 81538, "Hyangnam"),
     "Taipei": (25.0478, 121.5170, 9686521, "Taipei"),
     "Hsinchu": (24.8080, 121.0403, 713497, "Hsinchu"),
     "Taichung": (24.1123, 120.6157, 2318377, "Taichung"),
@@ -442,6 +451,10 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "Gyeongbu HSR": ["Seoul", 58, "Daejeon", 47, "Daegu", 28, "Ulsan", 18, "Busan"],
     "Honam HSR": ["Seoul", 95, "Gwangju", 25, "Mokpo"],
     "Gangneung Line": ["Seoul", 95, "Gangneung"],
+    "Suseo-Pyeongtaek HSR": ["Seoul", 20, "Pyeongtaek"],
+    "Donghae Line": ["Pohang", 98, "Donghae", 41, "Gangneung"],
+    "Jungbu Naeryuk Line": ["Chungju", 24, "Mungyeong"],
+    "Seohae Line": ["Hongseong", 49, "Hyangnam"],
     "Taiwan HSR": ["Taipei", 32, "Hsinchu", 27, "Taichung", 30, "Chiayi", 16, "Tainan", 14, "Kaohsiung"],
     "Whoosh": ["Jakarta", 46, "Bandung"],
     "Northeast Corridor (Acela)": ["Boston", 34, "Providence", 70, "New Haven", 95, "New York", 70, "Philadelphia",
@@ -589,6 +602,10 @@ VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Daegu", "Ulsan"): [(35.80, 129.14)],
     ("Seoul", "Gwangju"): [(36.62, 127.33), (35.94, 126.95)],
     ("Seoul", "Gangneung"): [(37.31, 127.92), (37.56, 128.43)],
+    ("Seoul", "Pyeongtaek"): [(37.48, 127.10), (37.35, 127.11), (37.20, 127.10)],
+    ("Pohang", "Donghae"): [(36.78, 129.45), (37.26, 129.32)],
+    ("Donghae", "Gangneung"): [(37.69, 129.04)],
+    ("Hongseong", "Hyangnam"): [(36.78, 126.78), (36.86, 126.93)],
     ("Boston", "Providence"): [(42.10, -71.20)],
     ("Providence", "New Haven"): [(41.35, -71.90), (41.30, -72.40)],
     ("New Haven", "New York"): [(41.05, -73.55), (40.85, -73.85)],

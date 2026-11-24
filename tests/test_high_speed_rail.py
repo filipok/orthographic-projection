@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 243       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 232
+TRUNK_STATIONS = 250       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 237
 
 
 def _load(choice="open"):
@@ -179,6 +179,18 @@ class TestData:
         # Helsinki at its central station, not where the fast track begins; the world table no longer has them
         assert not {"Helsinki", "Lahti", "Uppsala"} & set(WORLD_STATIONS)
         assert hsr.STATIONS["Helsinki"][:2] == (60.1714, 24.9414)
+
+    def test_koreas_lines_no_link_drew_have_timetable_times(self):
+        # The fastest trains in Korail's timetable for 23 November 2026: the east coast line (KTX-Eum), Chungju to
+        # Mungyeong (KTX-Eum), the Seohae line (ITX-Maeum) and the Suseo line from Suseo (KTX-Sancheon)
+        rail = _load()
+        for a, b, minutes in (("Pohang", "Donghae", 98), ("Donghae", "Gangneung", 41), ("Chungju", "Mungyeong", 24),
+                              ("Hongseong", "Hyangnam", 49), ("Seoul", "Pyeongtaek", 20)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        # Their stations moved from the world table to the hand-compiled one, at OSM's stations
+        assert not {"Pohang", "Chungju", "Pyeongtaek"} & set(WORLD_STATIONS)
+        assert hsr.STATIONS["Pohang"][:2] == (36.0712, 129.3427)
+        assert all(hsr.STATIONS[town][3] == "" for town in ("Donghae", "Mungyeong", "Hongseong"))   # GeoNames
 
     def test_beijing_shenyang_stops_at_chengde_chaoyang_and_fuxin(self):
         # 12306's fastest trains on 24 November 2026, on the line through Chengde; Chaoyang left the China table
