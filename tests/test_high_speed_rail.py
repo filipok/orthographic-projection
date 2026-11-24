@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 257       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 243
+TRUNK_STATIONS = 264       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 250
 
 
 def _load(choice="open"):
@@ -217,6 +217,17 @@ class TestData:
         assert hsr.STATIONS["Pangyo"][2:] == hsr.STATIONS["Seoul"][2:]
         assert "Suncheon" not in WORLD_STATIONS and hsr.STATIONS["Suncheon"][:2] == (34.9458, 127.5041)
         assert hsr.STATIONS["Yeosu"][3] == ""          # in no urban centre: its people are GeoNames'
+
+    def test_the_tgv_to_nantes_brest_and_quimper(self):
+        # SNCF's fastest TGV INOUI or OUIGO in its 2026 timetable (GTFS, January to June), none stopping between
+        rail = _load()
+        for a, b, minutes in (("Paris", "Le Mans", 52), ("Le Mans", "Rennes", 43),
+                              ("Le Mans", "Angers", 37), ("Angers", "Nantes", 36), ("Rennes", "Saint-Brieuc", 44),
+                              ("Saint-Brieuc", "Brest", 66), ("Rennes", "Vannes", 55), ("Vannes", "Lorient", 23),
+                              ("Lorient", "Quimper", 31)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        assert hsr.STATIONS["Nantes"] == (47.2171, -1.5414, 472262, "Nantes")
+        assert all(hsr.STATIONS[town][3] == "" for town in ("Vannes", "Quimper"))     # GeoNames
 
     def test_istanbul_eskisehir_stops_at_izmit(self):
         # TCDD's fastest high-speed trains in October 2026: Söğütlüçeşme-İzmit 78 minutes, İzmit-Eskişehir 87 non-stop.

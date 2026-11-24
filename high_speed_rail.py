@@ -19,7 +19,8 @@ Russia, Morocco, Saudi Arabia, Uzbekistan, Indonesia and the United States'
 Northeast Corridor; and the main lines OpenStreetMap shows as fast that no link
 drew in November 2026 (Riyadh to Qurayyat, Stockholm to Gothenburg, London to
 Peterborough, Lisbon to Porto, Athens to Thessaloniki, Uppsala to Umeå,
-Helsinki to Seinäjoki and Lahti, Madrid to Badajoz, Rome to Pisa, and in China
+Helsinki to Seinäjoki and Lahti, Madrid to Badajoz, Rome to Pisa, Le Mans to
+Angers and Nantes, Rennes to Brest and Rennes to Quimper, and in China
 the intercity line from Beijing to Tangshan, Lanzhou to Wuwei and Baiyin,
 Shantou to Shanwei, Hefei to Huangshan and Jinan to Qingdao by Weifang; in
 Korea the east coast line from Pohang to Donghae and Gangneung, Pangyo to
@@ -46,8 +47,8 @@ metropolitan area as it is built, so the Pearl River Delta is one city
 (Guangzhou with Shenzhen) and Tokyo takes in Yokohama: a link within one urban
 centre is drawn but not scored. The few towns too small or sparse to be an
 urban centre (Toledo, Cuenca, Segovia, Zamora, Santiago de Compostela, Coimbra,
-Aveiro, Gävle, Sundsvall, Seinäjoki, Cáceres, Mérida, Donghae, Mungyeong,
-Hongseong, Yeosu) have their people in GeoNames (cities5000, CC BY 4.0).
+Aveiro, Gävle, Sundsvall, Seinäjoki, Cáceres, Mérida, Vannes, Quimper, Donghae,
+Mungyeong, Hongseong, Yeosu) have their people in GeoNames (cities5000, CC BY 4.0).
 """
 
 from __future__ import annotations
@@ -111,6 +112,13 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Bordeaux": (44.8256, -0.5562, 642756, "Bordeaux"),
     "Le Mans": (47.9952, 0.1920, 140414, "Le Mans"),
     "Rennes": (48.1035, -1.6723, 251924, "Rennes"),
+    "Angers": (47.4644, -0.5562, 162720, "Angers"),
+    "Nantes": (47.2171, -1.5414, 472262, "Nantes"),
+    "Saint-Brieuc": (48.5073, -2.7649, 56276, "Saint-Brieuc"),
+    "Brest": (48.3877, -4.4801, 127489, "Brest"),
+    "Vannes": (47.6653, -2.7526, 54020, ""),
+    "Lorient": (47.7551, -3.3669, 72374, "Lorient"),
+    "Quimper": (47.9947, -4.0922, 63849, ""),
     "Perpignan": (42.6960, 2.8796, 124596, "Perpignan"),
     # Britain, Belgium and the Netherlands
     "London": (51.5317, -0.1263, 10408332, "London"),
@@ -377,6 +385,9 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "Kerava-Lahti": ["Helsinki", 49, "Lahti"],
     "Madrid-Badajoz": ["Madrid", 82, "Talavera", 109, "Cáceres", 35, "Mérida", 30, "Badajoz"],
     "Tirrenica": ["Rome", 94, "Grosseto", 58, "Livorno", 12, "Pisa"],
+    "Le Mans-Nantes": ["Le Mans", 37, "Angers", 36, "Nantes"],
+    "Rennes-Brest": ["Rennes", 44, "Saint-Brieuc", 66, "Brest"],
+    "Rennes-Quimper": ["Rennes", 55, "Vannes", 23, "Lorient", 31, "Quimper"],
     "LGV Nord to Brussels": ["Lille", 35, "Brussels"],
     "HSL 4 and HSL-Zuid": ["Brussels", 35, "Antwerp", 33, "Rotterdam", 41, "Amsterdam"],
     "HSL 2 and 3": ["Brussels", 40, "Liège", 22, "Aachen", 38, "Cologne"],
@@ -384,7 +395,7 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "LGV Rhin-Rhône": ["Paris", 95, "Dijon", 28, "Besançon", 40, "Mulhouse", 20, "Basel"],
     "LGV Atlantique and Sud Europe Atlantique": ["Paris", 58, "Tours", 35, "Poitiers", 38, "Angoulême", 35,
                                                  "Bordeaux"],
-    "LGV Bretagne-Pays de la Loire": ["Paris", 55, "Le Mans", 40, "Rennes"],
+    "LGV Bretagne-Pays de la Loire": ["Paris", 52, "Le Mans", 43, "Rennes"],
     "Perpignan-Barcelona": ["Perpignan", 38, "Girona", 38, "Barcelona"],
     "Madrid-Barcelona": ["Madrid", 78, "Zaragoza", 47, "Lleida", 30, "Tarragona", 35, "Barcelona"],
     "Madrid-Seville": ["Madrid", 52, "Ciudad Real", 50, "Córdoba", 43, "Seville"],
@@ -490,6 +501,13 @@ VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Paris", "Tours"): [(48.08, 1.15), (47.82, 1.03)],
     ("Paris", "Le Mans"): [(48.08, 1.15)],
     ("Le Mans", "Rennes"): [(48.07, -0.77)],
+    ("Le Mans", "Angers"): [(47.84, -0.34)],
+    ("Angers", "Nantes"): [(47.37, -1.18)],
+    ("Rennes", "Saint-Brieuc"): [(48.47, -2.51)],
+    ("Saint-Brieuc", "Brest"): [(48.56, -3.14), (48.58, -3.83), (48.45, -4.26)],
+    ("Rennes", "Vannes"): [(47.65, -2.09)],
+    ("Vannes", "Lorient"): [(47.68, -3.00), (47.80, -3.29)],
+    ("Lorient", "Quimper"): [(47.87, -3.55)],
     ("Perpignan", "Girona"): [(42.46, 2.86), (42.27, 2.94)],
     ("Madrid", "Zaragoza"): [(40.59, -3.16), (41.35, -1.64)],
     ("Córdoba", "Málaga"): [(37.02, -4.56)],
