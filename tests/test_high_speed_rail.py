@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 251       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 237
+TRUNK_STATIONS = 252       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 238
 
 
 def _load(choice="open"):
@@ -203,6 +203,16 @@ class TestData:
                 _link(rail, other, "Changzhou")
         assert hsr.STATIONS["Wujin"] == (31.6605, 119.9424, 2772878, "Changzhou")
         assert hsr.STATIONS["Changzhou"][2:] == hsr.STATIONS["Wujin"][2:]
+
+    def test_istanbul_eskisehir_stops_at_izmit(self):
+        # TCDD's fastest high-speed trains in October 2026: Söğütlüçeşme-İzmit 78 minutes, İzmit-Eskişehir 87 non-stop.
+        # İzmit's urban centre is "Kocaeli" in GHSL, the province's name
+        rail = _load()
+        assert rail.minutes[_link(rail, "Istanbul", "İzmit")] == 78
+        assert rail.minutes[_link(rail, "İzmit", "Eskişehir")] == 87
+        with pytest.raises(AssertionError):
+            _link(rail, "Istanbul", "Eskişehir")
+        assert hsr.STATIONS["İzmit"] == (40.7614, 29.9177, 746536, "Kocaeli")
 
     def test_beijing_shenyang_stops_at_chengde_chaoyang_and_fuxin(self):
         # 12306's fastest trains on 24 November 2026, on the line through Chengde; Chaoyang left the China table
