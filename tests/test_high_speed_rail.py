@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 301       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 311
+TRUNK_STATIONS = 302       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 312
 
 
 def _load(choice="open"):
@@ -244,6 +244,9 @@ class TestData:
             with pytest.raises(AssertionError):
                 _link(rail, a, b)
         assert hsr.STATIONS["Eryaman"] == (39.9558, 32.6303, 1169437, "Sincan")
+        # DB's ICE at Siegburg/Bonn, in Bonn's urban centre (ÖBB Scotty, 27 November 2026): from Köln Messe/Deutz 12
+        # minutes, to Frankfurt Hbf 51
+        assert rail.minutes[_link(rail, "Cologne", "Bonn")] == 12 and rail.minutes[_link(rail, "Bonn", "Frankfurt")] == 51
         # China's trunk lines, 12306's fastest on 27 November 2026 from any of a city's stations: every urban centre of
         # half a million they cross is a stop, Taizhou to Yueqing to Yueqing station, not Yandangshan's
         for a, b, minutes in (("Beijing", "Baoding", 35), ("Xingtai", "Handan", 16), ("Changsha", "Zhuzhou", 13),
