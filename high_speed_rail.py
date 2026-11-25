@@ -22,7 +22,9 @@ Peterborough, Lisbon to Porto, Athens to Thessaloniki, Uppsala to Umeå,
 Helsinki to Seinäjoki and Lahti, Madrid to Badajoz, Rome to Pisa, Le Mans to
 Angers and Nantes, Rennes to Brest and Rennes to Quimper, and in China
 the intercity line from Beijing to Tangshan, Lanzhou to Wuwei and Baiyin,
-Shantou to Shanwei, Hefei to Huangshan and Jinan to Qingdao by Weifang; in
+Shantou to Shanwei, Hefei to Huangshan, Jinan to Qingdao by Weifang, Jingdezhen
+to Huangshan, Xi'an to Yan'an by Pucheng, Nanjing to Yangzhou, Zigong to Luzhou,
+Yingshan to Dazhou and Wendeng to Rongcheng; in
 Korea the east coast line from Ulsan's Taehwagang to Pohang, Donghae and
 Gangneung, Pangyo to Chungju and Mungyeong, the Jeolla line from Iksan to
 Jeonju, Suncheon and Yeosu and the Seohae line from Hongseong to Hyangnam),
@@ -298,6 +300,10 @@ STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Changchun": (43.9070, 125.3230, 3519692, "Changchun"),
     "Harbin": (45.7130, 126.5900, 4591886, "Harbin"),
     "Dalian": (38.9600, 121.6000, 3599519, "Dalian"),
+    "Luzhou": (28.9307, 105.4183, 446058, "Luzhou"),
+    "Dazhou": (31.2007, 107.4478, 771803, "Dazhou"),
+    "Rongcheng": (37.1437, 122.4026, 174923, "Rongcheng"),
+    "Pucheng": (34.9897, 109.6041, 90241, "Pucheng"),
     "Qingdao": (36.1700, 120.3720, 3682893, "Qingdao"),
     "Weifang": (36.7958, 119.1894, 961428, "Weifang"),
     "Xianghe": (39.7188, 117.0277, 107046, "Xianghe"),
@@ -458,6 +464,12 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "Zhongwei-Lanzhou": ["Baiyin", 49, "Lanzhou"],
     "Shantou-Shanwei": ["Chenghai", 20, "Huilai", 25, "Shanwei"],
     "Hefei-Fuzhou": ["Hefei", 74, "Huangshan"],
+    "Hangzhou-Nanchang": ["Jingdezhen", 40, "Huangshan"],
+    "Baotou-Xi'an": ["Xi'an", 49, "Pucheng", 85, "Yan'an"],
+    "Nanjing-Yangzhou": ["Nanjing", 46, "Yangzhou"],
+    "Mianyang-Luzhou": ["Zigong", 28, "Luzhou"],
+    "Dazhou-Chengdu": ["Yingshan", 47, "Dazhou"],
+    "Weifang-Rongcheng": ["Wendeng", 11, "Rongcheng"],
     "Shijiazhuang-Jinan": ["Shijiazhuang", 100, "Jinan"],
     "Shijiazhuang-Taiyuan": ["Shijiazhuang", 65, "Taiyuan"],
     "Beijing-Zhangjiakou": ["Beijing", 50, "Zhangjiakou"],
@@ -614,6 +626,10 @@ VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Chenghai", "Huilai"): [(23.3747, 116.7524), (23.3834, 116.4174)],
     ("Huilai", "Shanwei"): [(22.9082, 115.8848)],
     ("Hefei", "Huangshan"): [(31.64, 117.90), (31.0157, 118.0161), (30.69, 118.40), (29.8183, 118.2673)],
+    ("Jingdezhen", "Huangshan"): [(29.43, 117.34), (29.88, 117.90)],
+    ("Xi'an", "Pucheng"): [(34.61, 109.37)],
+    ("Pucheng", "Yan'an"): [(35.58, 109.78), (35.67, 109.36)],
+    ("Yingshan", "Dazhou"): [(31.01, 106.66), (31.05, 107.13)],
     ("Shijiazhuang", "Taiyuan"): [(37.86, 113.58)],
     ("Haikou", "Sanya"): [(19.25, 110.47), (18.80, 110.40)],
     ("Tokyo", "Shizuoka"): [(35.256, 139.155), (35.10, 139.08), (35.13, 138.91)],

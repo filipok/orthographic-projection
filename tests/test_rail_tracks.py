@@ -338,6 +338,20 @@ class TestRouting:
         lon, lat = _router([_way(1, _arc(0.05, 1.95, 0.0), 1), north], tmp_path).route("A", "C", *_straight("A", "C"))
         assert lat.max() < 1.05
 
+    def test_of_two_lines_about_as_long_a_link_takes_its_via_points_one(self, tmp_path):
+        # Two fast lines bow ~17 km south and ~18 km north, the southern a little shorter; the VIA point is on the
+        # northern, which the southern strays ~35 km from (Jingdezhen to Huangshan by Qimen, not Wuyuan)
+        south = [(lon, 2.04 - lat) for lon, lat in _arc(0.05, 1.95, 0.15)]
+        north = _way(2, _arc(0.05, 1.95, 0.16), 500)
+        via = np.array([1.0, 2.0, 3.0]), np.array([1.0, 1.18, 1.0])
+        router = _router([_way(1, south, 1), north], tmp_path, stations={"A": (1.0, 1.0), "C": (3.0, 1.0)})
+        lon, lat = router.route("A", "C", *via)
+        assert lat.max() > 1.1
+        # Without the VIA point, the shorter southern line
+        lon, lat = _router([_way(1, south, 1), north], tmp_path / "x", stations={"A": (1.0, 1.0), "C": (3.0, 1.0)}
+                           ).route("A", "C", np.array([1.0, 3.0]), np.array([1.0, 1.0]))
+        assert lat.min() < 0.9
+
     def test_a_link_near_its_via_points_takes_the_shortest_way(self, tmp_path):
         # A way that strays less than STRAY_KM from the path is kept, though another lies nearer it
         router = _router([_way(1, _arc(0.05, 0.95, 0.0), 1), _way(2, _arc(0.05, 0.95, 0.3), 500)], tmp_path)

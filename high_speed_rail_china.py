@@ -14,7 +14,9 @@ times (median error 8%, 90th percentile 24%), and rounded to 5 minutes.
 
 Chaoyang, a stop of the Beijing-Shenyang trunk line since, is in :mod:`high_speed_rail`'s own table, at its station;
 so is Wujin, Changzhou's station on the line from Nantong to Nanjing, which does not reach Changzhou's own.
-Hanchuan-Xiaogan is left out: no train runs between them, and its only way is round by Wuhan.
+Hanchuan-Xiaogan is left out: no train runs between them, and its only way is round by Wuhan. So is Yizheng, where
+no train stops. Jingdezhen-Huangshan and Yan'an-Xi'an, by Pucheng, are in :mod:`high_speed_rail`'s own table with
+12306's times.
 """
 
 from __future__ import annotations
@@ -281,7 +283,6 @@ CHINA_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Yingshan": (31.0674, 106.5605, 135900, "Yingshan"),
     "Yiwu": (29.3572, 120.0133, 718657, "Yiwu"),
     "Yiyang": (28.5173, 112.3361, 771016, "Yiyang"),
-    "Yizheng": (32.3177, 119.1689, 193319, "Yizheng"),
     "Yongchuan": (29.3678, 105.9051, 694286, "Yongchuan"),
     "Yongzhou": (26.4534, 111.5649, 416168, "Yongzhou"),
     "Yudu": (25.9795, 115.4077, 223353, "Yudu"),
@@ -396,7 +397,6 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Huizhou-Boluo": ["Huizhou", 10, "Boluo"],
     "China Huizhou-Longchuan": ["Huizhou", 20, "Heyuan", 20, "Longchuan"],
     "China Huizhou-Shanwei": ["Huizhou", 25, "Shanwei"],
-    "China Jingdezhen-Huangshan": ["Jingdezhen", 30, "Huangshan"],
     "China Jingdezhen-Nancheng": ["Jingdezhen", 15, "Poyang", 55, "Fuzhou (Jiangxi)", 25, "Nancheng"],
     "China Jingdezhen-Nanping": ["Jingdezhen", 50, "Shangrao", 55, "Nanping"],
     "China Jingmen-Jingzhou": ["Jingmen", 25, "Jingzhou"],
@@ -428,7 +428,7 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Tianjin-Fengrun": ["Tianjin", 35, "Songzhuang", 45, "Fengrun"],
     "China Tianjin-Tangshan 2": ["Tianjin", 40, "Tangshan"],
     "China Xi'an-Ankang": ["Xi'an", 45, "Ankang"],
-    "China Xi'an-Xi'an": ["Xi'an", 25, "Tongchuan", 45, "Yan'an", 105, "Xi'an"],
+    "China Xi'an-Yan'an": ["Xi'an", 25, "Tongchuan", 45, "Yan'an"],
     "China Yibin-Leshan": ["Yibin", 50, "Leshan"],
     "China Yibin-Duyun": ["Yibin", 50, "Weixin", 25, "Bijie", 50, "Guiyang", 30, "Duyun"],
     "China Yibin-Zigong": ["Yibin", 30, "Zigong"],
@@ -507,7 +507,6 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Wenling-Yuhuan": ["Wenling", 10, "Yuhuan"],
     "China Xining-Ürümqi": ["Xining", 20, "Qiaotou", 90, "Zhangye", 80, "Jiayuguan", 185, "Hami", 105, "Turpan", 50,
         "Ürümqi"],
-    "China Yangzhou-Yizheng": ["Yangzhou", 10, "Yizheng"],
 }
 
 # As high_speed_rail.VIA: points along the way, to draw a link from city to city where its tracks are not to be had
@@ -528,7 +527,6 @@ CHINA_VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Hefei", "Lujiang"): [(31.60, 117.03), (31.45, 117.06)],
     ("Xi'an", "Tongchuan"): [(34.68, 109.19), (34.83, 109.07)],
     ("Harbin", "Jiamusi"): [(45.80, 128.11), (46.06, 129.37)],
-    ("Xi'an", "Yan'an"): [(35.01, 109.68), (35.67, 109.36)],
     ("Binzhou", "Zibo"): [(37.36, 117.38), (37.05, 117.12), (36.76, 117.27)],
     ("Yichang", "Xiangyang"): [(31.04, 111.08), (31.31, 110.79), (31.63, 110.91), (31.75, 111.28), (31.81, 111.73)],
     ("Huaibei", "Shangqiu"): [(34.21, 116.70), (34.41, 116.26)],

@@ -35,6 +35,10 @@ so only if that way is no more than
 drawn through points along its way (:data:`high_speed_rail.VIA`) whose shortest
 way strays more than :data:`STRAY_KM` from them takes another line: it keeps to
 the tracks within :data:`NEAR_PATH_KM` of them, if that way passes the same tests.
+One that strays only more than :data:`NEAR_PATH_KM` keeps to them too if that way
+is no more than :data:`NEAR_SLACK` times as long and at least :data:`KEEP_ON_TRACK`
+of it is on track: of two lines about as long, the one its points take (Jingdezhen
+to Huangshan by Qimen, not Wuyuan).
 
 Many links run partly on slower track, so a link with no such way tries again
 with every railway but sidings and yards within :data:`CORRIDOR_KM` of its path,
@@ -88,6 +92,7 @@ KEEP_PENALTY = 5.0        # a join's cost, as JOIN_PENALTY, in a way kept to the
 KEEP_ON_TRACK = 0.9       # how much of that way is on track
 STRAY_KM = 60.0           # a way this far from a link's points along it runs on another line (Xiangyang to Yichang
 NEAR_PATH_KM = 30.0       # by Jingmen, not Nanzhang): the link then keeps to the tracks this near them
+NEAR_SLACK = 1.05         # a way kept near them that strays less than STRAY_KM may be this much longer
 
 TRACKS_ATTRIBUTION = "tracks © OpenStreetMap contributors, ODbL"
 
@@ -573,10 +578,14 @@ class TrackRouter:
         way = graph.route(a, b, JOIN_PENALTY * longest)
         if way is None:
             return None
-        if len(lon) > 2 and off_path_km(way[0], way[1], lon, lat).max() > STRAY_KM:
-            # Another line than the one its points along it take: that one, if it is to be had
+        off = off_path_km(way[0], way[1], lon, lat).max() if len(lon) > 2 else 0.0
+        if off > NEAR_PATH_KM:
+            # Another line than the one its points along it take: that one, if it is to be had, and if the way
+            # strays less than STRAY_KM, only if it is about as short and nearly all on track
             kept = graph.route(a, b, JOIN_PENALTY * longest, near=(lon, lat))
-            if kept is not None and kept[2] >= MIN_ON_TRACK and path_km(kept[0], kept[1]) <= longest:
+            if (kept is not None and kept[2] >= MIN_ON_TRACK and path_km(kept[0], kept[1]) <= longest
+                    and (off > STRAY_KM or (kept[2] >= KEEP_ON_TRACK
+                                            and path_km(kept[0], kept[1]) <= NEAR_SLACK * path_km(way[0], way[1])))):
                 way = kept
         track_lon, track_lat, on_track = way
         if on_track >= MIN_ON_TRACK and path_km(track_lon, track_lat) <= longest:

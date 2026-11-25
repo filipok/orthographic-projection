@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 266       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 252
+TRUNK_STATIONS = 270       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 259
 
 
 def _load(choice="open"):
@@ -256,9 +256,27 @@ class TestData:
         assert rail.minutes[_link(rail, "Changchun", "Harbin")] == 55
 
     def test_no_link_where_no_train_runs(self):
-        # Hanchuan-Xiaogan's only way was round by Wuhan, on the tracks Wuhan-Hanchuan and Wuhan-Xiaogan draw
+        # Hanchuan-Xiaogan's only way was round by Wuhan, on the tracks Wuhan-Hanchuan and Wuhan-Xiaogan draw; no train
+        # stops at Yizheng, which the Nanjing-Yangzhou trains pass
+        rail = _load()
         with pytest.raises(AssertionError):
-            _link(_load(), "Hanchuan", "Xiaogan")
+            _link(rail, "Hanchuan", "Xiaogan")
+        assert "Yizheng" not in rail.names and "Yizheng" not in CHINA_STATIONS
+
+    def test_chinas_lines_on_leftover_track_have_timetable_times(self):
+        # 12306's fastest trains on 27 November 2026: Jingdezhen North-Huangshan North on the Hangzhou-Nanchang line,
+        # Xi'an and Yan'an to Pucheng East on the Baotou-Xi'an line, Nanjing-Yangzhou East,
+        # Zigong-Luzhou, Yingshan-Dazhou and Wendeng East-Rongcheng
+        rail = _load()
+        for a, b, minutes in (("Jingdezhen", "Huangshan", 40), ("Xi'an", "Pucheng", 49), ("Pucheng", "Yan'an", 85),
+                              ("Nanjing", "Yangzhou", 46), ("Zigong", "Luzhou", 28), ("Yingshan", "Dazhou", 47),
+                              ("Wendeng", "Rongcheng", 11)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        # The China table's estimated Jingdezhen-Huangshan and Yan'an-Xi'an, the second round by Tongchuan, are gone
+        assert not any("Jingdezhen" in line and "Huangshan" in line for line in CHINA_LINES.values())
+        assert CHINA_LINES["China Xi'an-Yan'an"] == ["Xi'an", 25, "Tongchuan", 45, "Yan'an"]
+        with pytest.raises(AssertionError):
+            _link(rail, "Xi'an", "Yan'an")
 
     def test_chinas_longest_undrawn_lines_have_timetable_times(self):
         # 12306's fastest trains on 25 November 2026: the Beijing-Tangshan intercity line from Yanjiao (Songzhuang's
