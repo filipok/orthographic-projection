@@ -14,9 +14,11 @@ times (median error 8%, 90th percentile 24%), and rounded to 5 minutes.
 
 Chaoyang, a stop of the Beijing-Shenyang trunk line since, is in :mod:`high_speed_rail`'s own table, at its station;
 so is Wujin, Changzhou's station on the line from Nantong to Nanjing, which does not reach Changzhou's own.
-Hanchuan-Xiaogan is left out: no train runs between them, and its only way is round by Wuhan. So is Yizheng, where
-no train stops. Jingdezhen-Huangshan and Yan'an-Xi'an, by Pucheng, are in :mod:`high_speed_rail`'s own table with
-12306's times.
+Hanchuan-Xiaogan is left out: no train runs between them, and its only way is round by Wuhan. So are Yizheng, where
+no train stops, and Pingyi, where no high-speed train stops. Jingdezhen-Huangshan and Yan'an-Xi'an, by Pucheng, are in
+:mod:`high_speed_rail`'s own table with 12306's times, as are Putian-Quanzhou, now a stop of the trunk line along the
+coast, Rizhao-Linyi-Qufu, Wuhan-Ezhou-Huangshi, and Hangzhou-Zhuji-Yiwu-Jinhua-Quzhou on the line to Kunming. Zibo
+is at Zibo North, the Jinan-Qingdao high-speed line's station, as its trains do not reach the older line's.
 """
 
 from __future__ import annotations
@@ -179,7 +181,6 @@ CHINA_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Pengzhou": (30.9710, 103.9349, 190933, "Pengzhou"),
     "Pingtan": (25.5460, 119.7793, 107085, "Pingtan"),
     "Pingyao": (37.1826, 112.2012, 177193, "Pingyao"),
-    "Pingyi": (35.4560, 117.6184, 169009, "Pingyi"),
     "Pizhou": (34.3178, 117.9477, 702594, "Yitang"),
     "Poyang": (28.9575, 116.7762, 188396, "Poyang"),
     "Putian": (25.3977, 119.0728, 2463177, "Putian"),
@@ -308,7 +309,7 @@ CHINA_STATIONS: dict[str, tuple[float, float, int, str]] = {
     "Zhuanghe": (39.7422, 122.9640, 132632, "Zhuanghe"),
     "Zhuhai": (22.2608, 113.5144, 2253273, "Zhuhai [Macau]"),
     "Zhuji": (29.7231, 120.1783, 522884, "Zhuji"),
-    "Zibo": (36.7516, 117.9055, 1680283, "Zibo"),
+    "Zibo": (36.8952, 118.0204, 1680283, "Zibo"),
     "Zigong": (29.3778, 104.8717, 414628, "Zigong"),
     "Ziyang": (30.1373, 104.6750, 516028, "Ziyang"),
     "Ürümqi": (43.8277, 87.5422, 3974257, "Ürümqi"),
@@ -356,7 +357,6 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Nanchong-Suining": ["Nanchong", 25, "Suining"],
     "China Nanchong-Yingshan": ["Nanchong", 25, "Yingshan"],
     "China Wuhan-Hanchuan": ["Wuhan", 25, "Hanchuan"],
-    "China Wuhan-Huangshi": ["Wuhan", 25, "Huangshi"],
     "China Wuhan-Jingzhou": ["Wuhan", 40, "Xiantao", 50, "Jingzhou"],
     "China Wuhan-Xiaogan": ["Wuhan", 30, "Xiaogan"],
     "China Wuhan-Xishui": ["Wuhan", 35, "Xishui"],
@@ -432,10 +432,9 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Yibin-Leshan": ["Yibin", 50, "Leshan"],
     "China Yibin-Duyun": ["Yibin", 50, "Weixin", 25, "Bijie", 50, "Guiyang", 30, "Duyun"],
     "China Yibin-Zigong": ["Yibin", 30, "Zigong"],
-    "China Yiwu-Jinhua": ["Yiwu", 15, "Jinhua"],
     "China Yiwu-Tonglu": ["Yiwu", 15, "Tonglu"],
     "China Yiwu-Jinhua 2": ["Yiwu", 25, "Xianju", 30, "Wenzhou", 35, "Lishui", 40, "Jinhua"],
-    "China Yiwu-Tonglu 2": ["Yiwu", 20, "Zhuji", 20, "Hangzhou", 25, "Tonglu"],
+    "China Yiwu-Tonglu 2": ["Hangzhou", 25, "Tonglu"],
     "China Zhengzhou-Taiyuan": ["Zhengzhou", 35, "Jiaozuo", 20, "Jincheng", 30, "Changzhi", 60, "Taiyuan"],
     "China Zigong-Yongchuan": ["Zigong", 35, "Yongchuan"],
     "China Bazhou-Bazhou": ["Bazhou", 35, "Beijing", 15, "Langfang", 40, "Bazhou"],
@@ -465,7 +464,6 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Huangshan-Quzhou": ["Huangshan", 65, "Quzhou"],
     "China Huangshan-Xuancheng": ["Huangshan", 45, "Xuancheng"],
     "China Huangshi-Xishui": ["Huangshi", 35, "Xishui"],
-    "China Jinhua-Quzhou": ["Jinhua", 20, "Quzhou"],
     "China Jinzhou-Chaoyang": ["Jinzhou", 20, "Chaoyang"],
     "China Leshan-Emeishan": ["Leshan", 10, "Emeishan"],
     "China Lianyungang-Rizhao": ["Lianyungang", 40, "Rizhao"],
@@ -477,10 +475,10 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Mile-Yuxi": ["Mile", 30, "Chenggong", 30, "Yuxi"],
     "China Mile-Mengzi": ["Mile", 30, "Kaiyuan", 10, "Mengzi"],
     "China Mudanjiang-Suifenhe": ["Mudanjiang", 50, "Suifenhe"],
-    "China Nancheng-Shenhu": ["Nancheng", 135, "Putian", 20, "Quanzhou", 5, "Shenhu"],
+    "China Nancheng-Putian": ["Nancheng", 135, "Putian"],
+    "China Quanzhou-Shenhu": ["Quanzhou", 5, "Shenhu"],
     "China Qinzhou-Beihai": ["Qinzhou", 30, "Beihai"],
     "China Qinzhou-Dongxing": ["Qinzhou", 15, "Fangchenggang", 25, "Dongxing"],
-    "China Rizhao-Tengzhou": ["Rizhao", 40, "Pingyi", 30, "Tengzhou"],
     "China Shangqiu-Suzhou (Anhui)": ["Shangqiu", 45, "Huaibei", 15, "Suzhou (Anhui)"],
     "China Shaoyang-Shuangfeng": ["Shaoyang", 30, "Shuangfeng"],
     "China Taiyuan-Weinan": ["Taiyuan", 25, "Pingyao", 45, "Linfen", 40, "Yuncheng", 45, "Weinan"],
@@ -493,7 +491,7 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Zhangjiajie-Changsha": ["Zhangjiajie", 50, "Changde", 20, "Yiyang", 25, "Changsha"],
     "China Anshun-Liupanshui": ["Anshun", 40, "Liupanshui"],
     "China Baicheng-Da'an": ["Baicheng", 45, "Da'an"],
-    "China Binzhou-Gaomi": ["Binzhou", 55, "Zibo", 65, "Gaomi"],
+    "China Binzhou-Zibo": ["Binzhou", 55, "Zibo"],
     "China Chifeng-Jianping": ["Chifeng", 40, "Jianping"],
     "China Dali-Kunming": ["Dali", 45, "Nanhua", 15, "Chuxiong", 50, "Kunming"],
     "China Dawu-Xiaochang": ["Dawu", 15, "Xiaochang"],
@@ -541,7 +539,6 @@ CHINA_VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Wuhu", "Lanxi"): [(31.00, 118.03), (30.77, 118.33), (30.40, 118.49), (30.12, 118.64), (29.88, 119.00),
         (29.60, 119.32)],
     ("Jiamusi", "Qitaihe"): [(46.76, 131.02), (46.52, 130.80), (46.19, 130.61)],
-    ("Tengzhou", "Pingyi"): [(35.44, 117.07), (35.54, 117.21)],
     ("Haikou", "Lingao"): [(19.95, 110.15), (19.88, 109.97)],
     ("Weihai", "Wendeng"): [(37.26, 122.24), (37.14, 122.40)],
     ("Yantai", "Laizhou"): [(37.71, 120.96), (37.65, 120.63), (37.49, 120.29)],

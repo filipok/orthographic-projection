@@ -14,8 +14,8 @@ from high_speed_rail_world import WORLD_LINES, WORLD_STATIONS, WORLD_VIA
 from rail_tracks import distance_km
 from rotation import globe_projection
 
-TRUNK_STATIONS = 270       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 259
+TRUNK_STATIONS = 301       # high_speed_rail's own tables, without the generated ones
+TRUNK_OPEN_LINKS = 311
 
 
 def _load(choice="open"):
@@ -121,7 +121,7 @@ class TestData:
         assert all(name.startswith("OSM ") for name in WORLD_LINES)
         assert set(CHINA_VIA) | set(WORLD_VIA) <= set(hsr.VIA)
         rail = _load()
-        assert rail.minutes[_link(rail, "Shenyang", "Dalian")] == 105      # a trunk link keeps its timetable time
+        assert rail.minutes[_link(rail, "Anshan", "Dalian")] == 62        # a trunk link keeps its timetable time
         assert rail.minutes[_link(rail, "Paris", "Lyon")] == 116
 
     @pytest.mark.parametrize("lines", [CHINA_LINES, WORLD_LINES], ids=["china", "world"])
@@ -231,6 +231,39 @@ class TestData:
         assert hsr.STATIONS["Nantes"] == (47.2171, -1.5414, 472262, "Nantes")
         assert all(hsr.STATIONS[town][3] == "" for town in ("Vannes", "Quimper"))     # GeoNames
 
+    def test_trunk_lines_stop_in_the_cities_of_half_a_million_they_cross(self):
+        # Jorudan's fastest Shinkansen on 27 November 2026 (Hikari at Toyohashi, Nozomi and Hikari at Himeji); TCDD's
+        # in October 2026, where every Konya train takes 2 h 15 min, by Selçuklu, Polatlı and Eryaman. Eryaman YHT
+        # station is in the urban centre GHSL calls Sincan, Ankara's west
+        rail = _load()
+        for a, b, minutes in (("Hamamatsu", "Toyohashi", 11), ("Toyohashi", "Nagoya", 19), ("Osaka", "Himeji", 28),
+                              ("Himeji", "Okayama", 18), ("Eskişehir", "Eryaman", 69), ("Eryaman", "Ankara", 12),
+                              ("Eryaman", "Konya", 123)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        for a, b in (("Hamamatsu", "Nagoya"), ("Osaka", "Okayama"), ("Eskişehir", "Ankara"), ("Ankara", "Konya")):
+            with pytest.raises(AssertionError):
+                _link(rail, a, b)
+        assert hsr.STATIONS["Eryaman"] == (39.9558, 32.6303, 1169437, "Sincan")
+        # China's trunk lines, 12306's fastest on 27 November 2026 from any of a city's stations: every urban centre of
+        # half a million they cross is a stop, Taizhou to Yueqing to Yueqing station, not Yandangshan's
+        for a, b, minutes in (("Beijing", "Baoding", 35), ("Xingtai", "Handan", 16), ("Changsha", "Zhuzhou", 13),
+                              ("Chenzhou", "Huadu", 62), ("Taizhou (Zhejiang)", "Yueqing", 31), ("Wenzhou", "Fuzhou", 103),
+                              ("Fuzhou", "Putian", 24), ("Putian", "Quanzhou", 25), ("Liaoyang", "Anshan", 11),
+                              ("Chongqing", "Zunyi", 77), ("Shijiazhuang", "Hengshui", 38)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        for a, b in (("Shijiazhuang", "Zhengzhou"), ("Changsha", "Guangzhou"), ("Fuzhou", "Xiamen"), ("Jinan", "Xuzhou"),
+                     ("Shenyang", "Dalian"), ("Hefei", "Wuhan")):
+            with pytest.raises(AssertionError):
+                _link(rail, a, b)
+        assert hsr.STATIONS["Zunyi"][3] == "Honghuagang"       # GHSL's name for Zunyi's urban centre
+        # The line to Kunming stops at Zhuji, Yiwu and Jinhua, and at Jiangxi's Yichun, not Heilongjiang's; Linyi and
+        # Ezhou have their own lines; Pingyi, where no high-speed train stops, is gone
+        for a, b, minutes in (("Hangzhou", "Zhuji", 22), ("Yiwu", "Jinhua", 17), ("Nanchang", "Yichun (Jiangxi)", 39),
+                              ("Rizhao", "Linyi", 29), ("Linyi", "Qufu", 35), ("Wuhan", "Ezhou", 22),
+                              ("Ezhou", "Huangshi", 11)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
+        assert "Pingyi" not in hsr.STATIONS and hsr.STATIONS["Yichun"][0] > 45
+
     def test_istanbul_eskisehir_stops_at_izmit_and_adapazari(self):
         # TCDD's fastest high-speed trains in October 2026: Söğütlüçeşme-İzmit 78 minutes, Arifiye-İzmit 20 and
         # Eskişehir-Arifiye 67. GHSL names their urban centres after their provinces, Kocaeli and Sakarya
@@ -251,8 +284,9 @@ class TestData:
             assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
         assert "Chaoyang" not in CHINA_STATIONS and CHINA_LINES["China Jinzhou-Chaoyang"] == ["Jinzhou", 20, "Chaoyang"]
         assert not any({"Beijing", "Shenyang"} == {rail.names[rail.a[k]], rail.names[rail.b[k]]} for k in range(len(rail.a)))
-        # On to Harbin, 12306's fastest on 26 November 2026: Shenyang North-Changchun West 63, Changchun West-Harbin West 55
-        assert rail.minutes[_link(rail, "Shenyang", "Changchun")] == 63
+        # On to Harbin, 12306's fastest on 26 November 2026: Changchun West-Harbin West 55 (Shenyang-Changchun stops at
+        # Siping since)
+        assert rail.minutes[_link(rail, "Siping", "Changchun")] == 26
         assert rail.minutes[_link(rail, "Changchun", "Harbin")] == 55
 
     def test_no_link_where_no_train_runs(self):
@@ -285,8 +319,8 @@ class TestData:
         rail = _load()
         for a, b, minutes in (("Songzhuang", "Xianghe", 14), ("Xianghe", "Baodi", 9), ("Baodi", "Tangshan", 24),
                               ("Lanzhou", "Wuwei", 92), ("Baiyin", "Lanzhou", 49), ("Chenghai", "Huilai", 20),
-                              ("Huilai", "Shanwei", 25), ("Hefei", "Huangshan", 74), ("Jinan", "Weifang", 70),
-                              ("Weifang", "Qingdao", 42)):
+                              ("Huilai", "Shanwei", 25), ("Hefei", "Huangshan", 74), ("Zibo", "Weifang", 27),
+                              ("Weifang", "Gaomi", 18)):
             assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
         linked = {frozenset((rail.names[rail.a[k]], rail.names[rail.b[k]])) for k in range(len(rail.a))}
         # Baiyin and Wuwei share no line; Chenghai's link to Shanwei now runs by Huilai, not on the Xiamen-Shenzhen line

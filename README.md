@@ -2565,15 +2565,20 @@ largest named.
   and, fewer, Turkey, Russia, Morocco, Saudi Arabia (Haramain and Riyadh to
   Qurayyat), Uzbekistan, Indonesia and the Northeast Corridor, and beyond them
   everything OpenStreetMap tags as fast, conventional lines upgraded to
-  200 km/h among them: 658 links between 626 cities. 342 of those links and
-  288 of the cities are China's, beyond its trunk lines; about 900 km of its
-  fast line (a double line counted once) lie over 10 km from any link, chiefly
-  Mianzhu to Huanglong, through mountains with no town to end a link at (the
-  intercity line from Beijing to Tangshan, Lanzhou to Wuwei, Shantou to
-  Shanwei, Hefei to Huangshan, Jinan to Qingdao by Weifang, Jingdezhen to
-  Huangshan, Xi'an to Yan'an by Pucheng, Nanjing to Yangzhou, Zigong to Luzhou,
-  Yingshan to Dazhou and Wendeng to Rongcheng were added by hand, with 12306's
-  times, as no link drew them). 57 links
+  200 km/h among them: 701 links between 656 cities. A line stops in every
+  urban centre of half a million it crosses where its trains stop, so the trunk
+  lines run Beijing–Baoding–Shijiazhuang–Xingtai–Handan–Anyang–Zhengzhou and on,
+  Fuzhou–Putian–Quanzhou–Xiamen, Hamamatsu–Toyohashi–Nagoya, Eskişehir–Eryaman–
+  Ankara. 333 of those links and 287 of the cities are China's, beyond its trunk
+  lines; about 1,100 km of its fast line (a double line counted once) lie over
+  10 km from any link, chiefly Mianzhu to Huanglong, through mountains with no
+  town to end a link at, and older lines beside the high-speed ones, as from
+  Jinan to Weifang (the intercity line from Beijing to Tangshan, Lanzhou to
+  Wuwei, Shantou to Shanwei, Hefei to Huangshan, Jinan to Qingdao by Weifang,
+  Jingdezhen to Huangshan, Xi'an to Yan'an by Pucheng, Nanjing to Yangzhou,
+  Zigong to Luzhou, Yingshan to Dazhou, Wendeng to Rongcheng, Rizhao to Linyi
+  and Qufu, Wuhan to Ezhou and Huangshi and Hangzhou to Quzhou by Jiande were
+  added by hand, with 12306's times, as no link drew them). 57 links
   and 68 cities are the rest of the world's, most in Britain, Sweden, Germany,
   Korea, Turkey and Uzbekistan. Outside China OSM tags lines as fast only in
   stretches (200 km/h, then 160, then 200), and about 2,900 km of fast line is
@@ -2640,7 +2645,7 @@ largest named.
   counted five times their length instead, if nine tenths of it is on track.
   A link still with no way is drawn from city to city through a few points along it, as it is when the
   tracks cannot be downloaded (the map is then noted incomplete, so an atlas
-  draws it again). In November 2026, all 658 links followed the tracks (the
+  draws it again). In November 2026, all 701 links followed the tracks (the
   line from Nantong to Nanjing stops at Wujin, its station for Changzhou, as it
   does not reach Changzhou's own).
   `--high-speed-rail-schematic` draws every link so and downloads nothing.
