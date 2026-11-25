@@ -446,7 +446,7 @@ OPEN_LINES: dict[str, list[str | int]] = {
     "Nanjing-Hangzhou": ["Nanjing", 65, "Hangzhou"],
     "Xuzhou-Lanzhou": ["Xuzhou", 90, "Zhengzhou", 30, "Luoyang", 80, "Xi'an", 175, "Lanzhou", 60, "Xining"],
     "Xi'an-Chengdu-Chongqing-Guiyang": ["Xi'an", 185, "Chengdu", 62, "Chongqing", 120, "Guiyang"],
-    "Beijing-Harbin": ["Beijing", 49, "Chengde", 52, "Chaoyang", 29, "Fuxin", 43, "Shenyang", 65, "Changchun", 60,
+    "Beijing-Harbin": ["Beijing", 49, "Chengde", 52, "Chaoyang", 29, "Fuxin", 43, "Shenyang", 63, "Changchun", 55,
                        "Harbin"],
     "Shenyang-Dalian": ["Shenyang", 105, "Dalian"],
     "Southeast Coast": ["Hangzhou", 50, "Ningbo", 95, "Wenzhou", 95, "Fuzhou", 60, "Xiamen", 90, "Shantou", 100,

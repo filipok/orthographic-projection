@@ -14,6 +14,7 @@ times (median error 8%, 90th percentile 24%), and rounded to 5 minutes.
 
 Chaoyang, a stop of the Beijing-Shenyang trunk line since, is in :mod:`high_speed_rail`'s own table, at its station;
 so is Wujin, Changzhou's station on the line from Nantong to Nanjing, which does not reach Changzhou's own.
+Hanchuan-Xiaogan is left out: no train runs between them, and its only way is round by Wuhan.
 """
 
 from __future__ import annotations
@@ -452,7 +453,6 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Fuzhou-Nanping": ["Fuzhou", 35, "Nanping"],
     "China Fuzhou-Pingtan": ["Fuzhou", 35, "Pingtan"],
     "China Ganzhou-Longchuan": ["Ganzhou", 20, "Xinfeng", 40, "Longchuan"],
-    "China Hanchuan-Xiaogan": ["Hanchuan", 35, "Xiaogan"],
     "China Harbin-Mudanjiang": ["Harbin", 120, "Jiamusi", 55, "Qitaihe", 20, "Jixi", 45, "Mudanjiang"],
     "China Harbin-Mudanjiang 2": ["Harbin", 45, "Shangzhi", 45, "Mudanjiang"],
     "China Harbin-Qiqihar": ["Harbin", 20, "Zhaodong", 35, "Daqing", 35, "Qiqihar"],
@@ -531,7 +531,6 @@ CHINA_VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Xi'an", "Yan'an"): [(35.01, 109.68), (35.67, 109.36)],
     ("Binzhou", "Zibo"): [(37.36, 117.38), (37.05, 117.12), (36.76, 117.27)],
     ("Yichang", "Xiangyang"): [(31.04, 111.08), (31.31, 110.79), (31.63, 110.91), (31.75, 111.28), (31.81, 111.73)],
-    ("Xiaogan", "Hanchuan"): [(31.15, 113.70), (30.95, 113.72)],
     ("Huaibei", "Shangqiu"): [(34.21, 116.70), (34.41, 116.26)],
     ("Zhenjiang", "Gaoyou"): [(32.23, 119.67), (32.45, 119.53)],
     ("Zhenjiang", "Taizhou (Jiangsu)"): [(32.23, 119.67), (32.44, 119.53)],

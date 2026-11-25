@@ -251,6 +251,14 @@ class TestData:
             assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
         assert "Chaoyang" not in CHINA_STATIONS and CHINA_LINES["China Jinzhou-Chaoyang"] == ["Jinzhou", 20, "Chaoyang"]
         assert not any({"Beijing", "Shenyang"} == {rail.names[rail.a[k]], rail.names[rail.b[k]]} for k in range(len(rail.a)))
+        # On to Harbin, 12306's fastest on 26 November 2026: Shenyang North-Changchun West 63, Changchun West-Harbin West 55
+        assert rail.minutes[_link(rail, "Shenyang", "Changchun")] == 63
+        assert rail.minutes[_link(rail, "Changchun", "Harbin")] == 55
+
+    def test_no_link_where_no_train_runs(self):
+        # Hanchuan-Xiaogan's only way was round by Wuhan, on the tracks Wuhan-Hanchuan and Wuhan-Xiaogan draw
+        with pytest.raises(AssertionError):
+            _link(_load(), "Hanchuan", "Xiaogan")
 
     def test_chinas_longest_undrawn_lines_have_timetable_times(self):
         # 12306's fastest trains on 25 November 2026: the Beijing-Tangshan intercity line from Yanjiao (Songzhuang's
