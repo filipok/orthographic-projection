@@ -249,7 +249,7 @@ The main script is [ortho.py](ortho.py).
 *Right: Every route out of London Heathrow (plain OSM, zoom 3, OpenFlights 2014).*
 
 <p align="center">
-  <img src="sample_europe_high_speed_rail.png" alt="A disc 1,500 km around Germany with Europe's high-speed lines along their tracks, wider and darker the higher each link's gravity score, the score written along it: London-Lille 576k, Lille-Paris 682k and Rome-Naples 510k the strongest, Paris-Lyon 480k, the German, Italian and Spanish lines in between, small scores on the branches to Spain's smaller towns, and the British and Swedish main lines upgraded to 200 km/h: London-Reading-Bristol, London-Stevenage-Peterborough-York-Darlington, Stockholm-Gothenburg 23k, Lund-Gothenburg, Lund-Linköping and Stockholm's, with Uppsala-Gävle; Rome-Grosseto-Livorno-Pisa along Italy's west coast; and the TGV west of Le Mans and Rennes to Nantes, Brest and Quimper" width="48%">
+  <img src="sample_europe_high_speed_rail.png" alt="A disc 1,500 km around Germany with Europe's high-speed lines along their tracks, wider and darker the higher each link's gravity score, the score written along it: London-Lille 576k, Lille-Paris 682k and Rome-Naples 525k the strongest, Paris-Lyon 493k, the German, Italian and Spanish lines in between, small scores on the branches to Spain's smaller towns, and the British and Swedish main lines upgraded to 200 km/h: London-Reading-Bristol, London-Stevenage-Peterborough-York-Darlington, Stockholm-Gothenburg 23k, Lund-Gothenburg, Lund-Linköping and Stockholm's, with Uppsala-Gävle; Rome-Grosseto-Livorno-Pisa along Italy's west coast; and the TGV west of Le Mans and Rennes to Nantes, Brest and Quimper" width="48%">
   <img src="sample_east_asia_high_speed_rail.png" alt="A disc 2,100 km around the East China Sea with East Asia's high-speed lines by gravity score: China's dense network from Harbin to Hainan, Kunming and Hong Kong, darkest and widest between Shanghai and the Yangtze delta's cities, Beijing and Tianjin, and the Pearl River Delta and Shantou (23M), with the Shinkansen from Kagoshima to Hokkaido, Korea's KTX from Seoul to Busan, Mokpo and Yeosu and up the east coast to Gangneung, and Taiwan's line from Taipei to Kaohsiung" width="48%">
 </p>
 
@@ -2565,11 +2565,11 @@ largest named.
   and, fewer, Turkey, Russia, Morocco, Saudi Arabia (Haramain and Riyadh to
   Qurayyat), Uzbekistan, Indonesia and the Northeast Corridor, and beyond them
   everything OpenStreetMap tags as fast, conventional lines upgraded to
-  200 km/h among them: 702 links between 657 cities. A line stops in every urban
+  200 km/h among them: 700 links between 657 cities. A line stops in every urban
   centre of half a million it crosses where its trains stop, so the trunk lines
   run Beijing–Baoding–Shijiazhuang–Xingtai–Handan–Anyang–Zhengzhou and on,
   Fuzhou–Putian–Quanzhou–Xiamen, Hamamatsu–Toyohashi–Nagoya, Cologne–Bonn–
-  Frankfurt, Eskişehir–Eryaman–Ankara. 333 of those links and 287 of the cities
+  Frankfurt, Eskişehir–Eryaman–Ankara. 327 of those links and 287 of the cities
   are China's, beyond its trunk lines; about 1,100 km of its fast line (a double
   line counted once) lie over 10 km from any link, chiefly Mianzhu to Huanglong,
   through mountains with no town to end a link at, and older lines beside the
@@ -2577,9 +2577,9 @@ largest named.
   Tangshan, Lanzhou to Wuwei, Shantou to Shanwei, Hefei to Huangshan, Jinan to
   Qingdao by Weifang, Jingdezhen to Huangshan, Xi'an to Yan'an by Pucheng,
   Nanjing to Yangzhou, Zigong to Luzhou, Yingshan to Dazhou, Wendeng to
-  Rongcheng, Rizhao to Linyi and Qufu, Wuhan to Ezhou and Huangshi and Hangzhou
-  to Quzhou by Jiande were added by hand, with 12306's times, as no link drew
-  them). 57 links
+  Rongcheng, Rizhao to Linyi and Qufu, Wuhan to Ezhou and Huangshi, Hangzhou to
+  Quzhou by Jiande and Chengdu to Suining and Chongqing were added by hand, with
+  12306's times, as no link drew them). 57 links
   and 68 cities are the rest of the world's, most in Britain, Sweden, Germany,
   Korea, Turkey and Uzbekistan. Outside China OSM tags lines as fast only in
   stretches (200 km/h, then 160, then 200), and about 2,900 km of fast line is
@@ -2646,7 +2646,7 @@ largest named.
   counted five times their length instead, if nine tenths of it is on track.
   A link still with no way is drawn from city to city through a few points along it, as it is when the
   tracks cannot be downloaded (the map is then noted incomplete, so an atlas
-  draws it again). In November 2026, all 702 links followed the tracks (the
+  draws it again). In November 2026, all 700 links followed the tracks (the
   line from Nantong to Nanjing stops at Wujin, its station for Changzhou, as it
   does not reach Changzhou's own).
   `--high-speed-rail-schematic` draws every link so and downloads nothing.

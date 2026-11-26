@@ -15,7 +15,7 @@ from rail_tracks import distance_km
 from rotation import globe_projection
 
 TRUNK_STATIONS = 302       # high_speed_rail's own tables, without the generated ones
-TRUNK_OPEN_LINKS = 312
+TRUNK_OPEN_LINKS = 316
 
 
 def _load(choice="open"):
@@ -108,9 +108,9 @@ class TestData:
         assert len(rail.a) == len({frozenset((int(a), int(b))) for a, b in zip(rail.a, rail.b)})
         assert np.all(np.diff(rail.score) >= 0)                           # the strongest drawn last
         k = _link(rail, "Paris", "Lyon")
-        assert rail.minutes[k] == 116
+        assert rail.minutes[k] == 113
         people = hsr.STATIONS["Paris"][2] * hsr.STATIONS["Lyon"][2]
-        assert rail.score[k] == pytest.approx(people / 100_000 / 232)
+        assert rail.score[k] == pytest.approx(people / 100_000 / 226)
 
     def test_the_generated_tables_only_add_to_the_hand_compiled_lines(self):
         # A name or a line of the same name in two tables would silently replace the hand-compiled line's
@@ -122,7 +122,7 @@ class TestData:
         assert set(CHINA_VIA) | set(WORLD_VIA) <= set(hsr.VIA)
         rail = _load()
         assert rail.minutes[_link(rail, "Anshan", "Dalian")] == 62        # a trunk link keeps its timetable time
-        assert rail.minutes[_link(rail, "Paris", "Lyon")] == 116
+        assert rail.minutes[_link(rail, "Paris", "Lyon")] == 113
 
     @pytest.mark.parametrize("lines", [CHINA_LINES, WORLD_LINES], ids=["china", "world"])
     def test_the_generated_tables_have_estimated_times(self, lines):
@@ -247,6 +247,8 @@ class TestData:
         # DB's ICE at Siegburg/Bonn, in Bonn's urban centre (ÖBB Scotty, 27 November 2026): from Köln Messe/Deutz 12
         # minutes, to Frankfurt Hbf 51
         assert rail.minutes[_link(rail, "Cologne", "Bonn")] == 12 and rail.minutes[_link(rail, "Bonn", "Frankfurt")] == 51
+        # Faster trains Scotty has than the 2025-26 timetables gave: Warsaw-Gdańsk, Reims (Champagne-Ardenne TGV)-Strasbourg
+        assert rail.minutes[_link(rail, "Warsaw", "Gdańsk")] == 144 and rail.minutes[_link(rail, "Reims", "Strasbourg")] == 68
         # China's trunk lines, 12306's fastest on 27 November 2026 from any of a city's stations: every urban centre of
         # half a million they cross is a stop, Taizhou to Yueqing to Yueqing station, not Yandangshan's
         for a, b, minutes in (("Beijing", "Baoding", 35), ("Xingtai", "Handan", 16), ("Changsha", "Zhuzhou", 13),
@@ -259,6 +261,10 @@ class TestData:
             with pytest.raises(AssertionError):
                 _link(rail, a, b)
         assert hsr.STATIONS["Zunyi"][3] == "Honghuagang"       # GHSL's name for Zunyi's urban centre
+        # Chengdu-Chongqing on the high-speed line by Ziyang and Yongchuan; the older line by Suining has its D trains
+        for a, b, minutes in (("Chengdu", "Ziyang", 22), ("Ziyang", "Yongchuan", 37), ("Yongchuan", "Chongqing", 16),
+                              ("Chengdu", "Suining", 56), ("Suining", "Chongqing", 65)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
         # The line to Kunming stops at Zhuji, Yiwu and Jinhua, and at Jiangxi's Yichun, not Heilongjiang's; Linyi and
         # Ezhou have their own lines; Pingyi, where no high-speed train stops, is gone
         for a, b, minutes in (("Hangzhou", "Zhuji", 22), ("Yiwu", "Jinhua", 17), ("Nanchang", "Yichun (Jiangxi)", 39),
@@ -299,6 +305,10 @@ class TestData:
         with pytest.raises(AssertionError):
             _link(rail, "Hanchuan", "Xiaogan")
         assert "Yizheng" not in rail.names and "Yizheng" not in CHINA_STATIONS
+        # Nor links whose way is all on two others' through a third city (Binhai, Ma'anshan, Yongchuan)
+        for a, b in (("Tianjin", "Tangshan"), ("Chaohu", "Nanjing"), ("Chongqing", "Zigong")):
+            with pytest.raises(AssertionError):
+                _link(rail, a, b)
 
     def test_chinas_lines_on_leftover_track_have_timetable_times(self):
         # 12306's fastest trains on 27 November 2026: Jingdezhen North-Huangshan North on the Hangzhou-Nanchang line,

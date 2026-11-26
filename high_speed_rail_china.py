@@ -17,7 +17,9 @@ so is Wujin, Changzhou's station on the line from Nantong to Nanjing, which does
 Hanchuan-Xiaogan is left out: no train runs between them, and its only way is round by Wuhan. So are Yizheng, where
 no train stops, and Pingyi, where no high-speed train stops. Jingdezhen-Huangshan and Yan'an-Xi'an, by Pucheng, are in
 :mod:`high_speed_rail`'s own table with 12306's times, as are Putian-Quanzhou, now a stop of the trunk line along the
-coast, Rizhao-Linyi-Qufu, Wuhan-Ezhou-Huangshi, and Hangzhou-Zhuji-Yiwu-Jinhua-Quzhou on the line to Kunming. Zibo
+coast, Rizhao-Linyi-Qufu, Wuhan-Ezhou-Huangshi, Hangzhou-Zhuji-Yiwu-Jinhua-Quzhou on the line to Kunming, and
+Chengdu-Ziyang-Yongchuan-Chongqing, now the trunk line's way between them. Tianjin-Tangshan, Chaohu-Nanjing and
+Chongqing-Zigong are left out too: their track is drawn by the links through Binhai, Ma'anshan and Yongchuan. Zibo
 is at Zibo North, the Jinan-Qingdao high-speed line's station, as its trains do not reach the older line's.
 """
 
@@ -322,14 +324,11 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Chengdu-Pengzhou": ["Chengdu", 25, "Pengzhou"],
     "China Chengdu-Chengdu": ["Chengdu", 15, "Wenjiang", 45, "Ya'an", 55, "Chengdu"],
     "China Chengdu-Zigong": ["Chengdu", 55, "Zigong"],
-    "China Chengdu-Yongchuan": ["Chengdu", 20, "Ziyang", 35, "Yongchuan"],
     "China Chongqing-Changshou": ["Chongqing", 25, "Changshou"],
     "China Chongqing-Fengdu": ["Chongqing", 50, "Fengdu"],
     "China Chongqing-Nanchong": ["Chongqing", 55, "Nanchong"],
     "China Chongqing-Zhangjiajie": ["Chongqing", 20, "Nanchuan", 70, "Longshan", 45, "Zhangjiajie"],
     "China Chongqing-Yibin": ["Chongqing", 70, "Yibin"],
-    "China Chongqing-Yongchuan": ["Chongqing", 20, "Yongchuan"],
-    "China Chongqing-Zigong": ["Chongqing", 65, "Zigong"],
     "China Nanning-Mile": ["Nanning", 65, "Baise", 110, "Mile"],
     "China Nanning-Guigang": ["Nanning", 45, "Guigang"],
     "China Nanning-Duyun": ["Nanning", 45, "Hechi", 45, "Duyun"],
@@ -345,7 +344,6 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Nanchang-Fenyi": ["Nanchang", 35, "Zhangshu", 30, "Xinyu", 15, "Fenyi"],
     "China Chaohu-Hefei": ["Chaohu", 20, "Hefei"],
     "China Chaohu-Ma'anshan": ["Chaohu", 20, "Ma'anshan"],
-    "China Chaohu-Nanjing": ["Chaohu", 55, "Nanjing"],
     "China Chaohu-Anqing": ["Chaohu", 25, "Tongling", 30, "Anqing"],
     "China Chaohu-Wuhu": ["Chaohu", 20, "Wuhu"],
     "China Hefei-Suzhou (Anhui)": ["Hefei", 35, "Bengbu", 25, "Suzhou (Anhui)"],
@@ -426,7 +424,6 @@ CHINA_LINES: dict[str, list[str | int]] = {
     "China Tianjin-Bazhou": ["Tianjin", 25, "Bazhou"],
     "China Tianjin-Tangshan": ["Tianjin", 15, "Binhai New Area", 20, "Tangshan"],
     "China Tianjin-Fengrun": ["Tianjin", 35, "Songzhuang", 45, "Fengrun"],
-    "China Tianjin-Tangshan 2": ["Tianjin", 40, "Tangshan"],
     "China Xi'an-Ankang": ["Xi'an", 45, "Ankang"],
     "China Xi'an-Yan'an": ["Xi'an", 25, "Tongchuan", 45, "Yan'an"],
     "China Yibin-Leshan": ["Yibin", 50, "Leshan"],
@@ -511,16 +508,13 @@ CHINA_LINES: dict[str, list[str | int]] = {
 CHINA_VIA: dict[tuple[str, str], list[tuple[float, float]]] = {
     ("Guangzhou", "Zhuhai"): [(22.60, 113.32), (22.52, 113.47)],
     ("Shanghai", "Changshu"): [(31.50, 121.20), (31.63, 121.06)],
-    ("Tianjin", "Tangshan"): [(39.56, 117.35), (39.67, 117.54)],
     ("Wuhan", "Xiaogan"): [(30.79, 114.23), (30.83, 114.14)],
     ("Nantong", "Zhangjiagang"): [(31.93, 120.72), (31.83, 120.67)],
     ("Tianjin", "Songzhuang"): [(39.53, 117.35), (39.70, 117.12)],
     ("Beijing", "Bazhou"): [(39.41, 116.40), (39.19, 116.32)],
     ("Chengdu", "Pengzhou"): [(30.78, 103.93), (30.83, 103.87)],
     ("Shenyang", "Panjin"): [(41.60, 122.86), (41.45, 122.45), (41.35, 122.00)],
-    ("Chongqing", "Zigong"): [(29.28, 105.99), (29.03, 105.59), (29.15, 105.36)],
     ("Jinan", "Laiwu"): [(36.62, 117.19), (36.57, 117.51)],
-    ("Nanjing", "Chaohu"): [(32.03, 118.10), (31.91, 117.60)],
     ("Nanchang", "Zhangshu"): [(28.34, 115.91), (28.19, 115.79)],
     ("Hefei", "Lujiang"): [(31.60, 117.03), (31.45, 117.06)],
     ("Xi'an", "Tongchuan"): [(34.68, 109.19), (34.83, 109.07)],
