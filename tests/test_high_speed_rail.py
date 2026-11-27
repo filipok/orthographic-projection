@@ -249,6 +249,10 @@ class TestData:
         assert rail.minutes[_link(rail, "Cologne", "Bonn")] == 12 and rail.minutes[_link(rail, "Bonn", "Frankfurt")] == 51
         # Faster trains Scotty has than the 2025-26 timetables gave: Warsaw-Gdańsk, Reims (Champagne-Ardenne TGV)-Strasbourg
         assert rail.minutes[_link(rail, "Warsaw", "Gdańsk")] == 144 and rail.minutes[_link(rail, "Reims", "Strasbourg")] == 68
+        # and its second pass, hourly by station id: Albacete-Alicante, Ourense-Santiago, Augsburg-Munich, Fulda-Frankfurt
+        for a, b, minutes in (("Albacete", "Alicante", 47), ("Ourense", "Santiago de Compostela", 33),
+                              ("Augsburg", "Munich", 26), ("Fulda", "Frankfurt", 54)):
+            assert rail.minutes[_link(rail, a, b)] == minutes, (a, b)
         # China's trunk lines, 12306's fastest on 27 November 2026 from any of a city's stations: every urban centre of
         # half a million they cross is a stop, Taizhou to Yueqing to Yueqing station, not Yandangshan's
         for a, b, minutes in (("Beijing", "Baoding", 35), ("Xingtai", "Handan", 16), ("Changsha", "Zhuzhou", 13),
