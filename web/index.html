@@ -109,7 +109,7 @@
       </fieldset>
 
       <details>
-        <summary>Land: relief, vegetation, biomes, soil</summary>
+        <summary>Land: relief, vegetation, biomes, geology, soil</summary>
         <label class="check"><input id="elevation" type="checkbox"> Elevation and relief shading</label>
         <label class="field slider" data-show="elevation" hidden><span>Opacity <output for="elevation-alpha"></output></span>
           <input id="elevation-alpha" type="range" min="0" max="1" step="0.05"></label>
@@ -145,6 +145,16 @@
           <span>Opacity <output for="biome-alpha"></output></span>
           <input id="biome-alpha" type="range" min="0" max="1" step="0.05"></label>
         <label class="check"><input id="realm-regions" type="checkbox"> Outline Holt's 20 zoogeographic regions</label>
+
+        <label class="field"><span>Geology (Macrostrat)</span>
+          <select id="geology">
+            <option value="">None</option>
+            <option value="age">Age of the rocks</option>
+            <option value="rock">Kind of rock</option>
+          </select></label>
+        <label class="field slider" data-show="geology:age,rock" hidden>
+          <span>Opacity <output for="geology-alpha"></output></span>
+          <input id="geology-alpha" type="range" min="0" max="1" step="0.05"></label>
 
         <label class="field"><span>Soil (SoilGrids)</span>
           <select id="soil">
@@ -334,6 +344,12 @@
           <select id="ro-admin"><option value="">None</option></select></label>
         <label class="field slider" data-show="ro-admin" hidden><span>Fill opacity, 0 for borders only <output for="ro-admin-alpha"></output></span>
           <input id="ro-admin-alpha" type="range" min="0" max="1" step="0.05"></label>
+      </details>
+
+      <details>
+        <summary>Archaeological cultures of Romania (RAN)</summary>
+        <label class="field"><span>Sites of these cultures, separated by commas (downloaded once, ~22 MB)</span>
+          <input id="ro-cultures" type="text" placeholder="e.g. Cucuteni, Gumelnița"></label>
       </details>
 
       <fieldset>

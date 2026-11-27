@@ -1,0 +1,10 @@
+# The age of the rocks on both hemispheres (Macrostrat; one map of the world, Chorlton 2007): the old shields in
+# pinks, the Saharan and Siberian cover, the Karoo and the young rocks of the Alpine and Himalayan belts in yellows.
+lat = 10
+lon = 70
+provider = "natural_earth"
+both-hemispheres = true
+no-circles = true
+geology = "age"
+geology-alpha = 0.85
+output = "orthographic_map_world_natural_earth_hemispheres_geology.png"

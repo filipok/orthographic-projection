@@ -83,6 +83,10 @@ from gbif import (
     GbifDataError, add_occurrences_legend, draw_occurrences, gbif_attribution, load_occurrences, parse_years,
     resolve_taxon,
 )
+from geology import (
+    DEFAULT_ALPHA as GEOLOGY_ALPHA, MODES as GEOLOGY_MODES, GeologyDataError, add_geology_legend, add_geology_overlay,
+    geology_attribution, load_geology, resolve_geology, visible_entries,
+)
 from indicators import (
     EUROSTAT_PRESETS, PRESETS as INDICATOR_PRESETS, IndicatorDataError, add_indicator_legend, class_breaks,
     draw_indicator, indicator_attribution, load_areas, load_values, resolve_indicator, resolve_indicator_year,
@@ -109,6 +113,10 @@ from relief import (
 )
 from ro_admin import (
     ADMIN_ATTRIBUTION, AdminError, add_admin_legend, draw_admin, load_admin, resolve_admin_level,
+)
+from ro_cultures import (
+    ATTRIBUTION as CULTURES_ATTRIBUTION, CulturesError, Shown as CulturesShown, UnknownCultureError, add_cultures_legend,
+    draw_cultures, load_cultures, parse_cultures,
 )
 import ne_local
 import osm_local
@@ -728,7 +736,8 @@ def validate_render_options(
     permafrost_alpha: float = 0.7, population_alpha: float = 0.7, livestock_alpha: float = 0.7,
     earthquakes: float | None = None, cyclones: int | None = None, malaria_alpha: float = 0.75,
     iucn_alpha: float = 0.45, indicator_alpha: float = 0.75, shipping_alpha: float = 0.85,
-    relief_alpha: float = 0.55, ro_admin_alpha: float = 0.0, text_scale: float = 1.0, language: str = "en",
+    relief_alpha: float = 0.55, ro_admin_alpha: float = 0.0, geology_alpha: float = GEOLOGY_ALPHA,
+    text_scale: float = 1.0, language: str = "en",
     storms: str | None = None, storm_pressure: float = DEFAULT_STORM_PRESSURE,
     birds: str | None = None, bird_max_mb: float = DEFAULT_BIRD_MAX_MB,
 ) -> None:
@@ -788,7 +797,8 @@ def validate_render_options(
                         ("population_alpha", population_alpha), ("livestock_alpha", livestock_alpha),
                         ("malaria_alpha", malaria_alpha), ("iucn_alpha", iucn_alpha),
                         ("indicator_alpha", indicator_alpha), ("shipping_alpha", shipping_alpha),
-                        ("relief_alpha", relief_alpha), ("ro_admin_alpha", ro_admin_alpha)):
+                        ("relief_alpha", relief_alpha), ("ro_admin_alpha", ro_admin_alpha),
+                        ("geology_alpha", geology_alpha)):
         if not 0.0 <= value <= 1.0:
             raise ValueError(f"{name} must be between 0 and 1, got {value}")
     if earthquakes is not None and not MIN_MAGNITUDE <= earthquakes <= MAX_MAGNITUDE:
@@ -838,6 +848,8 @@ def generate_orthographic_map(
     trewartha_classes: Sequence[str] | None = None,
     elevation: bool = False,
     elevation_alpha: float = 0.8,
+    geology: str | None = None,
+    geology_alpha: float = GEOLOGY_ALPHA,
     soil: bool = False,
     soil_classes: Sequence[str] | None = None,
     soil_alpha: float = 0.6,
@@ -921,6 +933,7 @@ def generate_orthographic_map(
     relief_alpha: float = 0.55,
     ro_admin: str | None = None,
     ro_admin_alpha: float = 0.0,
+    ro_cultures: str | Sequence[str] | None = None,
     text_scale: float = 1.0,
     language: str = "en",
 ) -> str:
@@ -1040,6 +1053,10 @@ def generate_orthographic_map(
         every other layer, with a key below the globe.
     elevation_alpha : float
         Opacity of the elevation layer (0–1).
+    geology : str, optional
+        Colour the land by its rocks (Macrostrat, see :mod:`geology`), with a
+        key: ``"age"``, by the shortest interval that holds each unit's whole
+        age, or ``"rock"``, by the kind of rock. *geology_alpha* sets its opacity.
     soil : bool
         When True, colour the land by its most probable soil group
         (SoilGrids 2.0, see :mod:`soil`), above the climate colours, with a key.
@@ -1264,6 +1281,10 @@ def generate_orthographic_map(
         municipalities, towns and communes within them as well (see
         :data:`ro_admin.LEVELS`). With *ro_admin_alpha* above 0 the counties
         are filled in pastel colours, no two neighbours alike.
+    ro_cultures : str or sequence of str, optional
+        Draw Romania's archaeological sites of these cultures (RAN, 2017), as a
+        list or with commas between them: filled where the site is known, hollow
+        at its commune (see :mod:`ro_cultures`), with a key in *language*.
     radius_km : float, optional
         Show only the land within this distance of the centre (100–10,000 km),
         as a disc filling the frame, instead of the whole hemisphere. Use a
@@ -1290,7 +1311,8 @@ def generate_orthographic_map(
         permafrost_alpha=permafrost_alpha, population_alpha=population_alpha, livestock_alpha=livestock_alpha,
         earthquakes=earthquakes, cyclones=cyclones, malaria_alpha=malaria_alpha, iucn_alpha=iucn_alpha,
         indicator_alpha=indicator_alpha, shipping_alpha=shipping_alpha, relief_alpha=relief_alpha,
-        ro_admin_alpha=ro_admin_alpha, text_scale=text_scale, language=language, storms=storms,
+        ro_admin_alpha=ro_admin_alpha, geology_alpha=geology_alpha, text_scale=text_scale, language=language,
+        storms=storms,
         storm_pressure=storm_pressure, birds=birds, bird_max_mb=bird_max_mb,
     )
     population_year = resolve_population_year(population) if population is not None else None
@@ -1333,6 +1355,13 @@ def generate_orthographic_map(
             divisions = load_admin(resolve_admin_level(ro_admin))
         except (AdminError, OSError) as e:
             incomplete.note(logger, "Skipping Romania's counties and UATs: %s", e)
+    culture_sites = None
+    if ro_cultures:
+        parse_cultures(ro_cultures)
+        try:
+            culture_sites = load_cultures(ro_cultures)
+        except (CulturesError, OSError) as e:
+            incomplete.note(logger, "Skipping Romania's archaeological cultures: %s", e)
     harbours = None
     if ports:
         try:
@@ -1362,6 +1391,7 @@ def generate_orthographic_map(
     ndvi_month = resolve_ndvi_month(ndvi) if ndvi else None
     if land_cover and ndvi_month:
         raise ValueError("choose one vegetation layer: land cover or NDVI")
+    geology_mode = resolve_geology(geology) if geology else None
     soil_codes = resolve_soil_classes(soil_classes or [])
     soil = soil or bool(soil_codes)
     biome_codes = resolve_biome_classes(biome_classes or [])
@@ -1699,7 +1729,20 @@ def generate_orthographic_map(
         for ax in axes:
             add_sea_overlay(ax, sea_grid, sea_key_period, alpha=alpha, regrid_shape=regrid_shape, zoom=zoom)
 
-    # Step 5b2: Soil groups or a soil property (above the climate colours, below crops)
+    # Step 5b1: The rocks (above the climate colours, below the soil)
+    rocks_shown = None
+    if geology_mode:
+        logger.info("Applying the geology by %s (alpha=%.2f) …", geology_mode, geology_alpha)
+        try:
+            rock_layers = load_geology(axes, geology_mode, whole_globe=radius_km is None, regrid_shape=regrid_shape)
+        except (GeologyDataError, OSError) as e:
+            incomplete.note(logger, "Skipping the geology: %s", e)
+        else:
+            for ax, rock_layer in zip(axes, rock_layers):
+                add_geology_overlay(ax, rock_layer, alpha=geology_alpha, regrid_shape=regrid_shape)
+            rocks_shown = visible_entries(axes, rock_layers)
+
+    # Step 5b2: Soil groups or a soil property (above the geology, below crops)
     soil_drawn = False
     property_drawn = False
     if prop is not None and prop_depth is not None:
@@ -1853,6 +1896,10 @@ def generate_orthographic_map(
     harbours_shown = 0
     if harbours is not None:
         harbours_shown = max(draw_ports(ax, harbours) for ax in axes)
+    cultures_shown: list[CulturesShown] = []
+    if culture_sites is not None:
+        # A site on two globes is one site: what the globe that shows the most of each culture shows
+        cultures_shown = [max(per_globe, key=sum) for per_globe in zip(*(draw_cultures(ax, culture_sites) for ax in axes))]
     divisions_shown = []
     if divisions is not None:
         divisions_shown = [draw_admin(ax, divisions, alpha=ro_admin_alpha) for ax in axes]
@@ -2119,6 +2166,8 @@ def generate_orthographic_map(
                             classes=biome_codes or None))
     if holt is not None and holt_realms:
         keys.append(add_holt_realm_legend(near, visible_values(axes, holt.realms), x=key_x))
+    if rocks_shown is not None and geology_mode:
+        keys.append(add_geology_legend(near, rocks_shown, geology_mode, x=key_x, alpha=geology_alpha))
     if soil_drawn:
         keys.append(add_soil_legend(near, x=key_x, classes=soil_codes or None))
     if property_drawn and prop is not None and prop_depth is not None:
@@ -2155,6 +2204,8 @@ def generate_orthographic_map(
         keys.append(add_relief_legend(near, landforms, landform_counts, x=key_x))
     if divisions is not None:
         keys.append(add_admin_legend(near, divisions, divisions_shown, alpha=ro_admin_alpha, x=key_x))
+    if culture_sites is not None:
+        keys.append(add_cultures_legend(near, culture_sites, cultures_shown, language, x=key_x))
     if flights is not None:
         keys.append(add_air_routes_legend(near, flights, flights_shown, x=key_x))
     if rail is not None:
@@ -2200,6 +2251,8 @@ def generate_orthographic_map(
     for credit in climate_credits + ([ELEVATION_ATTRIBUTION] if relief is not None or ocean is not None else []):
         if credit not in credits:
             credits.append(credit)
+    if rocks_shown:
+        credits.append(geology_attribution(rocks_shown))
     if soil_drawn:
         credits.append(SOIL_ATTRIBUTION)
     if property_drawn:
@@ -2240,6 +2293,10 @@ def generate_orthographic_map(
         credits.append(RELIEF_ATTRIBUTION)
     if divisions is not None:
         credits.append(ADMIN_ATTRIBUTION)
+    if culture_sites is not None and any(map(sum, cultures_shown)):
+        credits.append(CULTURES_ATTRIBUTION)
+        if any(counts.placed for counts in cultures_shown) and ADMIN_ATTRIBUTION not in credits:
+            credits.append(ADMIN_ATTRIBUTION)
     if flights is not None:
         credits.append(AIR_ROUTES_ATTRIBUTION)
     if rail is not None:
@@ -2829,6 +2886,7 @@ EXTRA_LAYERS: dict[str, tuple[str, Any]] = {
     "shipping": ("shipping", "commercial"), "ports": ("ports", "all"), "air-routes": ("air_routes", "all"),
     "high-speed-rail": ("high_speed_rail", "open"),
     "relief-units": ("relief_units", "units"), "ro-admin": ("ro_admin", "counties"),
+    "geology": ("geology", GEOLOGY_MODES[0]),
 }
 
 
@@ -2874,6 +2932,10 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             chosen["ports"] = resolve_port_kind(item.split(":", 1)[1])
         elif item.startswith("relief-units:"):
             chosen["relief_units"] = resolve_relief_level(item.split(":", 1)[1])
+        elif item.startswith("geology:"):
+            chosen["geology"] = resolve_geology(item.split(":", 1)[1])
+        elif item.startswith("ro-cultures:"):
+            chosen["ro_cultures"] = ", ".join(parse_cultures(item.split(":", 1)[1]))
         elif item.startswith("ro-admin:"):
             chosen["ro_admin"] = resolve_admin_level(item.split(":", 1)[1])
         elif item.startswith("air-routes:"):
@@ -2902,7 +2964,7 @@ def parse_extra_layers(text: str) -> dict[str, Any]:
             raise ValueError(f"Unknown layer {item!r}; choose from {', '.join(EXTRA_LAYERS)}, livestock:ANIMAL, "
                              "malaria:pv, aedes:SPECIES, species:NAME, iucn:NAME, cities:YEAR, storms:YEARS, birds:NAMES, indicator:NAME, industry:SECTORS, "
                              "shipping:KIND, ports:KIND, air-routes:AIRPORTS, relief-units:regions, "
-                             "ro-admin:uats.")
+                             "ro-admin:uats, ro-cultures:NAMES, geology:rock.")
     return chosen
 
 
@@ -2910,7 +2972,7 @@ def prompt_for_extra_layers() -> dict[str, Any]:
     """Prompt for the extra layers, comma-separated; blank for none."""
     while True:
         raw = input("More layers, comma-separated (" + ", ".join(EXTRA_LAYERS)
-                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, storms:2010-2020, birds:white stork+black kite, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, relief-units:regions, ro-admin:uats …) [blank for none]: ")
+                    + ", livestock:cattle, malaria:pv, aedes:albopictus, species:red fox, iucn:lion, cities:1975, storms:2010-2020, birds:white stork+black kite, indicator:life-expectancy, industry:petrochemical, shipping:fishing, ports:container, air-routes:LHR, relief-units:regions, ro-admin:uats, ro-cultures:cucuteni+noua, geology:rock …) [blank for none]: ")
         try:
             return parse_extra_layers(raw)
         except ValueError as e:
@@ -3288,6 +3350,13 @@ def build_cli_parser() -> argparse.ArgumentParser:
         help="Opacity of the biome, ecoregion or realm layer (0-1, default: 0.6).",
     )
 
+    rocks = parser.add_argument_group("Geology (Macrostrat)")
+    rocks.add_argument("--geology", nargs="?", const=GEOLOGY_MODES[0], default=None, metavar="MODE",
+                       help="Colour the land by its rocks: age (the default), by geological time, or rock, by kind "
+                            "(a globe downloads ~2 MB once, a closer map the tiles it needs).")
+    rocks.add_argument("--geology-alpha", type=float, default=GEOLOGY_ALPHA, metavar="ALPHA",
+                       help=f"Opacity of the geology (0-1, default: {GEOLOGY_ALPHA:g}).")
+
     soils = parser.add_argument_group("Soil (SoilGrids)")
     soils.add_argument(
         "--soil",
@@ -3381,6 +3450,12 @@ def build_cli_parser() -> argparse.ArgumentParser:
     divisions.add_argument("--ro-admin-alpha", type=float, default=0.0, metavar="ALPHA",
                            help="Fill the counties in pastel colours, no two neighbours alike, at this opacity "
                                 "(0-1, default: 0, borders only).")
+
+    sites = parser.add_argument_group("Archaeological cultures of Romania (RAN)")
+    sites.add_argument("--ro-cultures", default=None, metavar="NAMES",
+                       help="Draw Romania's archaeological sites of these cultures, with commas between them, e.g. "
+                            "\"Cucuteni, Noua\" (with or without accents, at most 8): filled where the site is "
+                            "known, hollow at its commune. Downloaded once (~22 MB, and the UATs, ~44 MB).")
 
     earth = parser.add_argument_group("Plate tectonics, rivers, cyclones, storms, time zones, permafrost")
     earth.add_argument("--plates", action="store_true",
@@ -4065,6 +4140,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         resolve_admin_level(args.ro_admin)
     elif args.ro_admin_alpha != 0.0:
         logger.warning("--ro-admin-alpha is ignored because no --ro-admin was given.")
+    if args.ro_cultures:
+        parse_cultures(args.ro_cultures)
     if args.air_routes:
         resolve_air_routes(args.air_routes)
     if args.high_speed_rail:
@@ -4073,6 +4150,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         logger.warning("--high-speed-rail-schematic is ignored because no --high-speed-rail was given.")
     resolve_koppen_classes(args.koppen_class or [])
     resolve_trewartha_classes(args.trewartha_class or [])
+    if args.geology:
+        resolve_geology(args.geology)
     resolve_soil_classes(args.soil_class or [])
     resolve_biome_classes(args.biome_class or [])
     if args.ecoregions and args.realms:
@@ -4158,7 +4237,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
             livestock_alpha=args.livestock_alpha, earthquakes=args.earthquakes, cyclones=args.cyclones,
             malaria_alpha=args.malaria_alpha, iucn_alpha=args.iucn_alpha, indicator_alpha=args.indicator_alpha,
             shipping_alpha=args.shipping_alpha, relief_alpha=args.relief_alpha,
-            ro_admin_alpha=args.ro_admin_alpha, text_scale=args.text_scale, language=args.language,
+            ro_admin_alpha=args.ro_admin_alpha, geology_alpha=args.geology_alpha, text_scale=args.text_scale,
+            language=args.language,
             storms=args.storms, storm_pressure=args.storm_pressure, birds=args.birds,
             bird_max_mb=args.bird_max_mb,
         )
@@ -4257,6 +4337,7 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         relief_alpha=args.relief_alpha,
         ro_admin=args.ro_admin,
         ro_admin_alpha=args.ro_admin_alpha,
+        ro_cultures=args.ro_cultures,
         text_scale=args.text_scale,
         language=args.language,
         koppen_classes=args.koppen_class,
@@ -4264,6 +4345,8 @@ def prepare_render(args: argparse.Namespace) -> RenderPlan:
         trewartha_classes=args.trewartha_class,
         elevation=args.elevation,
         elevation_alpha=args.elevation_alpha,
+        geology=args.geology,
+        geology_alpha=args.geology_alpha,
         soil=args.soil,
         soil_classes=args.soil_class,
         soil_alpha=args.soil_alpha,
@@ -4314,7 +4397,7 @@ def run_cli(args: argparse.Namespace) -> None:
 
     try:
         generate_orthographic_map(**plan.kwargs)
-    except (GoogleTilesError, OSMDataError) as e:
+    except (GoogleTilesError, OSMDataError, UnknownCultureError) as e:
         logger.error("%s", e)
         sys.exit(1)
 

@@ -202,6 +202,8 @@ class MapRequest(BaseModel):
     realms: str | None = None
     realm_regions: bool | None = None
     biome_alpha: float | None = None
+    geology: str | None = None
+    geology_alpha: float | None = None
     soil: bool | None = None
     soil_class: list[str] | None = None
     soil_alpha: float | None = None
@@ -263,6 +265,7 @@ class MapRequest(BaseModel):
     relief_alpha: float | None = None
     ro_admin: str | None = None
     ro_admin_alpha: float | None = None
+    ro_cultures: str | None = None
     route: list[str] | None = None
     route_legend: bool | None = None
 
@@ -540,7 +543,8 @@ def map_options(settings: Settings) -> dict[str, Any]:
                  "radius_max": ortho.MAX_RADIUS_ZOOM},
         "radius": {"default": ortho.DEFAULT_RADIUS_KM, "min": ortho.MIN_RADIUS_KM, "max": ortho.MAX_RADIUS_KM},
         "alpha": {"classification": ortho.CLASSIFICATION_ALPHA, "climate_mean": ortho.CLIMATE_MEAN_ALPHA,
-                  "elevation": 0.8, "vegetation": 0.7, "biome": 0.6, "soil": 0.6, "borders": 0.55,
+                  "elevation": 0.8, "vegetation": 0.7, "biome": 0.6, "geology": ortho.GEOLOGY_ALPHA,
+                  "soil": 0.6, "borders": 0.55,
                   "basins": 0.5, "permafrost": 0.7, "population": 0.7, "livestock": 0.7, "malaria": 0.75,
                   "iucn": 0.45, "indicator": 0.75, "shipping": 0.85, "relief": 0.55,
                   "ro_admin": 0.0},

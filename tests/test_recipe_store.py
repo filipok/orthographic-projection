@@ -20,11 +20,11 @@ FIELDS = [
     "circles_from", "no_circles", "koppen", "koppen_class", "trewartha", "trewartha_class", "temperature", "precipitation",
     "humidity", "temperature_over_sea", "sea_temperature", "koppen_alpha", "elevation", "elevation_alpha",
     "landcover", "landcover_class", "landcover_year", "ndvi", "vegetation_alpha", "biomes", "biome_class",
-    "ecoregions", "realms", "realm_regions", "biome_alpha", "soil", "soil_class",
+    "ecoregions", "realms", "realm_regions", "biome_alpha", "geology", "geology_alpha", "soil", "soil_class",
     "soil_alpha", "soil_property", "soil_depth", "wind", "ice", "ice_year", "crop", "borders", "borders_source",
     "borders_alpha", "no_borders_names", "alliance", "ocean_depth", "ice_age", "currents", "plates", "earthquakes", "volcanoes", "rivers", "basins",
     "basins_alpha", "cyclones", "cyclones_et", "storms", "storm_pressure", "birds", "bird_max_mb", "bird_geolocators", "time_zones", "permafrost", "permafrost_alpha", "population", "population_alpha",
-    "livestock", "livestock_alpha", "malaria", "malaria_year", "malaria_alpha", "aedes", "species", "species_years", "iucn", "iucn_alpha", "cities", "cities_min", "indicator", "indicator_year", "indicator_alpha", "industry", "shipping", "shipping_alpha", "ports", "air_routes", "high_speed_rail", "high_speed_rail_schematic", "relief_units", "relief_alpha", "ro_admin", "ro_admin_alpha", "route", "route_legend",
+    "livestock", "livestock_alpha", "malaria", "malaria_year", "malaria_alpha", "aedes", "species", "species_years", "iucn", "iucn_alpha", "cities", "cities_min", "indicator", "indicator_year", "indicator_alpha", "industry", "shipping", "shipping_alpha", "ports", "air_routes", "high_speed_rail", "high_speed_rail_schematic", "relief_units", "relief_alpha", "ro_admin", "ro_admin_alpha", "ro_cultures", "route", "route_legend",
 ]
 
 LINE = {"type": "Feature", "properties": {"name": "A line"},

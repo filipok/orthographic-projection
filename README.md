@@ -37,6 +37,7 @@ The main script is [ortho.py](ortho.py).
 - [Historical Borders](#historical-borders)
 - [Relief Units of Romania](#relief-units-of-romania)
 - [Counties and UATs of Romania](#counties-and-uats-of-romania)
+- [Archaeological Cultures of Romania](#archaeological-cultures-of-romania)
 - [OpenStreetMap Drawn from Data](#openstreetmap-drawn-from-data)
 - [Europe and the World Drawn from Natural Earth](#europe-and-the-world-drawn-from-natural-earth)
 - [Ocean Depth and the Ice Age Coast](#ocean-depth-and-the-ice-age-coast)
@@ -60,6 +61,7 @@ The main script is [ortho.py](ortho.py).
 - [Elevation](#elevation)
 - [Vegetation](#vegetation)
 - [Biomes, Ecoregions and Realms](#biomes-ecoregions-and-realms)
+- [Geology](#geology)
 - [Soil Groups](#soil-groups)
 - [Soil Properties](#soil-properties)
 - [Crop Areas](#crop-areas)
@@ -136,6 +138,14 @@ The main script is [ortho.py](ortho.py).
 
 *Left: The steppe's dark grassland soils, Chernozems, Kastanozems and Phaeozems, centred on Kazakhstan (OSM, zoom 3, SoilGrids 2.0).*<br>
 *Right: Topsoil pH (0–5 cm): acid under the northern and tropical forests, alkaline under the deserts (OSM, zoom 3, SoilGrids 2.0).*
+
+<p align="center">
+  <img src="sample_world_geology.png" alt="Two globes side by side coloured by the age of the rocks: pink Precambrian shields in Canada, Scandinavia, India, Africa, Brazil and Western Australia, purple Triassic in Siberia and Tibet, green Cretaceous, and yellow Cenozoic across Central Asia and the Alpine and Himalayan belts" width="62%">
+  <img src="sample_carpathians_geology.png" alt="Disc around Romania coloured by the age of the rocks: the Miocene of Moldavia and Transylvania in yellow, the Paleogene and Cretaceous flysch arc of the Eastern Carpathians in orange and green, the Neogene Pannonian Basin, and the Triassic and Neoproterozoic of Dobrogea" width="34%">
+</p>
+
+*Left: The age of the rocks on both hemispheres (Natural Earth, Macrostrat from Chorlton 2007).*<br>
+*Right: The age of the rocks around the Carpathians, within 450 km (Natural Earth, Macrostrat from Asch 2003).*
 
 <p align="center">
   <img src="sample_africa_biomes.png" alt="Globe centred on Africa on a plain map, coloured by biome: the Congo rainforest in green ringed by orange savannas, the Sahara, Arabia and the Namib in desert pink, red Mediterranean scrub along the Maghreb, southern Europe and the Cape, temperate forests across Europe, steppe in Ukraine and Kazakhstan, with a key naming the biomes" width="48%">
@@ -293,6 +303,12 @@ The main script is [ortho.py](ortho.py).
 *Right: The municipalities, towns and communes around Cluj-Napoca (plain OSM, 100 km radius).*
 
 <p align="center">
+  <img src="sample_romania_cultures.png" alt="A disc 390 km around central Romania with dots for archaeological sites: Cucuteni in red across Moldavia, densest in Botoșani, Gumelnița in blue along the lower Danube, and Petrești and Wietenberg in Transylvania; filled where the site is known, hollow at its commune" width="48%">
+</p>
+
+*Sites of the Cucuteni, Gumelnița, Petrești and Wietenberg cultures (OpenStreetMap data, 390 km radius, RAN 2017): filled where the site is known, hollow at its commune.*
+
+<p align="center">
   <img src="sample_ndvi_seasons.png" alt="Two globes centred on the eastern Mediterranean showing vegetation greenness: in January 2026 northern Europe and Russia are bare or snow-covered while southern Africa is green; in July 2026 Europe and Russia are deep green and the Sahel has greened with the rains" width="97%">
 </p>
 
@@ -366,9 +382,11 @@ The main script is [ortho.py](ortho.py).
 - Night lights: NASA's Black Marble, the Earth at night, as a base map
 - Optional air routes: the airline network, or the routes from chosen airports or of chosen airlines, as great-circle arcs wider for routes more airlines fly
 - Optional relief units of Romania: its 820 geomorphological units (Posea & Badea), from the Carpathians to single depressions and plains such as Depresiunea Hațegului or Câmpia Ierului, filled in their major region's colour (depressions, corridors and floodplains paler) and named, or the 16 major regions alone
+- Optional archaeological cultures of Romania: the sites of chosen cultures from the national register (RAN), filled where known, hollow at their commune
 - Optional counties and UATs of Romania: the borders of its 41 counties and Bucharest with the county seats, and of its 3,181 municipalities, towns and communes, named where the names fit, with the counties optionally filled so no two neighbours look alike
 - Optional historical borders for any year from 3400 BCE to 2024 (Cliopatria), or any day from 1886 to 2019 with every colony in its ruler's colour (CShapes 2.0): states filled, outlined and named, with a key, or only outlined
 - Optional European Union and NATO of today: a thin gold line round the EU's 27 members with their outermost regions, NATO's 32 within the North Atlantic Treaty's area shaded pale blue, with a key
+- Optional geology: the age of the rocks, from one map of the world on a globe and regional maps closer in, or their kind (Macrostrat)
 - Optional soil overlay: the most probable of 30 World Reference Base soil groups (SoilGrids 2.0), for all groups or only chosen ones
 - Optional soil property overlay at a chosen depth: pH, organic carbon, clay, sand, silt, nitrogen and more (SoilGrids 2.0)
 - Optional prevailing winds for the year, a season or a month: arrows of the 1991–2020 mean surface wind, coloured by how steady it is
@@ -528,7 +546,7 @@ You will be prompted to choose:
 11. Whether to draw the prevailing winds, and for the year, a season or a month (see "Prevailing Winds")
 12. An optional soil overlay: soil groups and which ones (blank for all), or a soil property such as pH (see "Soil Groups" and "Soil Properties")
 13. Historical borders: a year (`1500`, `500 BC`) or a date (`1914-08-01`), blank for none (see "Historical Borders")
-14. More layers, comma-separated: `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `storms`, `storms:2010-2020`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `birds`, `birds:white stork+black kite`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `high-speed-rail`, `relief-units`, `relief-units:regions`, `ro-admin`, `ro-admin:uats` … (blank for none)
+14. More layers, comma-separated: `geology`, `geology:rock`, `ocean-depth`, `ice-age`, `currents`, `plates`, `earthquakes`, `volcanoes`, `rivers`, `basins`, `cyclones`, `storms`, `storms:2010-2020`, `time-zones`, `permafrost`, `population`, `malaria`, `aedes`, `livestock:cattle`, `malaria:pv`, `aedes:albopictus`, `species:red fox`, `iucn:lion`, `birds`, `birds:white stork+black kite`, `cities`, `cities:1975`, `indicator:life-expectancy`, `indicator:eurostat:unemployment`, `industry:petrochemical`, `shipping`, `shipping:fishing`, `ports`, `ports:container`, `air-routes`, `air-routes:LHR+JFK`, `high-speed-rail`, `relief-units`, `relief-units:regions`, `ro-admin`, `ro-admin:uats` … (blank for none)
 15. Whether to add polar ice at its winter maximum (see "Polar Ice")
 16. Crops to shade, comma-separated, e.g. `wheat, rice` (blank to skip, `?` to list them; see "Crop Areas")
 17. An optional GeoJSON route file to overlay (leave blank to skip)
@@ -667,6 +685,7 @@ python ortho.py --city Shanghai --realms
 python ortho.py --city Shanghai --realms holt --realm-regions
 
 # Soil groups, all or some: the steppe's black earths (see "Soil Groups")
+python ortho.py --lat 10 --lon 70 --geology
 python ortho.py --lat 35 --lon 40 --soil
 python ortho.py --lat 50 --lon 60 --soil-class Chernozems --soil-class Kastanozems
 
@@ -740,6 +759,8 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--realms [SOURCE]` | Colour biogeographic realms instead of the biomes: `wwf` for WWF's eight (with `--biome-class`, only in those biomes), or `holt` for Holt et al.'s 11 zoogeographic realms (not with `--biomes` or `--biome-class`); not with `--ecoregions` | off (`wwf` when given alone) |
 | `--realm-regions` | Outline Holt et al.'s 20 zoogeographic regions and name those on the map, over any layer | off |
 | `--biome-alpha ALPHA` | Opacity of the biome, ecoregion or realm layer (0–1) | `0.6` |
+| `--geology [MODE]` | Colour the land by its rocks: `age` (the default) or `rock`, their kind | off |
+| `--geology-alpha ALPHA` | Opacity of the geology (0–1) | `0.7` |
 | `--soil` | Colour the land by its most probable soil group, with a key | off |
 | `--soil-class GROUP` | Show only this soil group, by name (`Chernozems`) or WRB code (`CH`); repeat for several; implies `--soil` | all |
 | `--soil-alpha ALPHA` | Opacity of the soil overlay, groups or property (0–1) | `0.6` |
@@ -756,6 +777,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 | `--relief-units [LEVEL]` | Draw Romania's relief units, filled in their major region's colour and named: `units` (all 820) or `regions` (the 16 major ones) | off (`units` when given alone) |
 | `--relief-alpha ALPHA` | Opacity of the relief units' fill (0–1) | `0.55` |
 | `--ro-admin [LEVEL]` | Draw Romania's administrative borders and name them where they fit: `counties` (the 41 counties and Bucharest) or `uats` (the 3,181 municipalities, towns and communes too) | off (`counties` when given alone) |
+| `--ro-cultures NAMES` | Draw Romania's archaeological sites of these cultures, with commas between them (RAN, 2017) | off |
 | `--ro-admin-alpha ALPHA` | Fill the counties in pastel colours, no two neighbours alike, at this opacity (0–1; 0 draws borders only) | `0` |
 | `--ocean-depth` | Colour the sea floor by depth and shade it, with a key (opacity: `--elevation-alpha`) | off |
 | `--ice-age` | Draw the last ice age: the land it left dry (sea ~120 m lower), its coast, and its ice sheets | off |
@@ -820,7 +842,7 @@ python ortho.py --city lisbon --provider google_satellite --up-toward "New Delhi
 > One climate layer at a time: `--koppen`, `--trewartha`, `--temperature`, `--precipitation` and `--humidity` exclude each other. `--sea-temperature` colours the sea alongside any of them.
 
 `python ortho.py --help` lists the options in groups: Location, Imagery and
-output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Soil,
+output, Globe layout, Climate, Elevation, Vegetation, Biomes, ecoregions and realms, Geology, Soil,
 Historical borders, The European Union and NATO, Relief units of Romania, Plate tectonics, rivers, cyclones, storms, time zones, permafrost, People and livestock,
 Malaria and Aedes mosquitoes, Species records (GBIF), Bird tracks (Movebank Data Repository), Species ranges (IUCN Red List and BirdLife), Cities (GHSL urban centres), Statistics by country or region (World Bank, Eurostat), Industry (Climate TRACE), Shipping, ports, air routes and high-speed rail (World Bank and IMF, OpenFlights), Winds, Polar ice, Crops, Routes and areas, Recipes.
 
@@ -881,6 +903,9 @@ output = "orthographic_map_scandinavia_osm_z3_vikings_ice.png"
 | `himalaya_trewartha.toml` | The Trewartha climate classification across Asia |
 | `andes_elevation.toml` | Elevation, centred on South America |
 | `steppe_soils.toml` | The steppe soils, centred on Kazakhstan |
+| `romania_cultures.toml` | Four cultures of Romania's Copper and Bronze Ages |
+| `world_geology.toml` | The age of the rocks on both hemispheres |
+| `carpathians_geology.toml` | The age of the rocks around the Carpathians |
 | `topsoil_ph.toml` | Topsoil pH across Africa, Europe and western Asia |
 | `africa_biomes.toml` | Africa's biomes, on a plain map |
 | `madagascar_ecoregions.toml` | Madagascar's ecoregions, 1,200 km around the island |
@@ -1820,6 +1845,45 @@ python ortho.py --lat 45.9 --lon 25.2 --radius 390 --provider nasa --relief-unit
   and kept as one compact file (~1.7 MB). The boundaries are © EuroGeographics
   and SIRUTA is CC BY 4.0; neither is shipped here, and a map drawn with them
   carries their credit line.
+
+## Archaeological Cultures of Romania
+
+`--ro-cultures NAMES` (`ro_cultures=` in the API, `ro-cultures:NAMES` at the prompt)
+draws the archaeological sites of chosen cultures, up to eight, from Romania's
+national register (RAN):
+
+```bash
+python ortho.py --lat 45.9 --lon 25 --radius 390 --provider osm_local --ro-cultures "Cucuteni, Gumelnița"
+python ortho.py --lat 47.2 --lon 27 --radius 120 --provider osm_local --ro-cultures "cucuteni, noua" --language ro
+```
+
+- **Sites, not areas.** No outline of a culture is drawn: those found in open data
+  were wrong or named no source. A filled mark is a site whose place is known; a
+  hollow one stands for the sites of a culture in a commune, larger for more (1,
+  2-4, 5 and over). Cultures that share a place lie side by side.
+- **Why hollow marks.** Of the 6,580 sites with a culture, 2,940 have coordinates, and
+  very unevenly: 681 of 681 in Botoșani, 10 of 153 in Iași, none of 59 in Vrancea.
+  The others are placed at the commune of their locality, as is a site whose
+  coordinates lie over 10 km from its commune (98 of them; one is 386 km off). On
+  the sites whose place is known, the commune's point is 3 km off in the median, and
+  within 7 km for nine in ten.
+- **Names** are RAN's, with or without accents, capitals, spaces and hyphens. Spellings
+  that differ only so are one culture, written as RAN most often writes it, and so are
+  29 cultures' other spellings and slips (`Jamnaia`, `Yamnaja` … for Yamnaia, `Cututeni`
+  for Cucuteni; `JOINED` in [ro_cultures.py](ro_cultures.py)). Names that may be a phase
+  or a regional group are not joined: `Cucuteni` and `Cucuteni - Ariușd` are two. What
+  RAN writes for no culture is left out. A list (`Boian, Gumelnița`) is each of its cultures; `Glina/Tei` and
+  `Cucuteni (?)` are names of their own. A name RAN does not have stops the map and
+  lists those like it.
+- **An empty county is not an empty past.** The register shows where archaeologists
+  have surveyed and how fully it was filled in, as of June 2017; later releases leave
+  out the cultures and nearly all coordinates. No dates are given with a culture: the
+  register has none.
+- **Data.** RAN's table (21 MB, OGL-ROU 1.0) and SIRUTA are downloaded once into
+  `~/.cache/ortho_tiles/ro_cultures/` and kept as one compact file; the communes are
+  those of `--ro-admin`. The key is in Romanian with `--language ro`.
+
+The sample above is `python ortho.py --config recipes/romania_cultures.toml`.
 
 ## OpenStreetMap Drawn from Data
 
@@ -2873,6 +2937,44 @@ WWF has the Palearctic.
 - **Licence.** CC BY 4.0: keep the credit line (*Biomes: RESOLVE Ecoregions 2017
   (Dinerstein et al. 2017), CC BY 4.0*) when you share a map.
 
+## Geology
+
+Pass `--geology` (CLI) or `geology="age"` (API) to colour the land by the age of
+its rocks, or `--geology rock` by their kind, from
+[Macrostrat](https://macrostrat.org/)'s vector tiles:
+
+```bash
+python ortho.py --lat 10 --lon 70 --provider natural_earth --geology
+python ortho.py --lat 45.9 --lon 25 --radius 450 --provider natural_earth --geology rock
+```
+
+- **A globe is one map.** Globes are drawn from zoom 2 of the tiles, where they
+  hold a single map of the world (Chorlton 2007, Geological Survey of Canada), so
+  the continents compare; ~2 MB once. Closer maps (`--radius`) use zoom 3, 4 or 5,
+  the finest that needs at most 64 tiles, which join regional maps of different
+  detail; their joins can show. The credit names the maps on show.
+- **Age.** A unit is coloured by the shortest interval that holds its whole age: an
+  epoch of the Cenozoic, a period, an era or an eon, and before the Cambrian an era
+  or an eon, or else the Precambrian. A unit from the Pliocene to the Quaternary is
+  therefore Cenozoic, never the one or the other. Units that straddle the end of the
+  Precambrian, over 1% of the land (the Făgăraș among them), are "Neoproterozoic to
+  Paleozoic" or, if older, "Precambrian to Paleozoic". The colours are the
+  International Commission on Stratigraphy's, but for those two, which have none.
+  Ice, units without an age and the few that run past the Paleozoic stay clear.
+- **Rock.** Sedimentary, volcanic, plutonic, other igneous or metamorphic where a
+  unit gives one kind, and mixed where it gives several: the tiles list a unit's
+  kinds by the alphabet, not by how common they are. Many units give none and stay
+  clear.
+- **What the maps leave out.** Many draw the rocks under the young (Quaternary)
+  cover, so loess and river deposits are often missing. Europe's is at
+  1:5,000,000: it suits a country or more, not a valley. The tiles end at 85°, so
+  the South Pole has none.
+- `--geology-alpha` sets the opacity (default 0.7). The layer lies above the climate
+  colours and below the soil.
+
+The samples above are `python ortho.py --config recipes/world_geology.toml` and
+`python ortho.py --config recipes/carpathians_geology.toml`.
+
 ## Soil Groups
 
 Pass `--soil` (CLI) or `soil=True` (API) to colour the land by its most probable
@@ -3148,6 +3250,8 @@ to the attribution block.
 | Mapzen Terrain Tiles (Terrarium), from GMTED2010 and SRTM (USGS) and ETOPO1 (NOAA), used at zoom 4–5 for the elevation layer and the Trewartha highlands | Mapzen / Tilezen, AWS Open Data | Free to use; the sources must be credited ([attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | [registry.opendata.aws/terrain-tiles](https://registry.opendata.aws/terrain-tiles/) |
 | RESOLVE Ecoregions 2017: 846 ecoregions in 14 biomes and 8 realms, used at 0.05° (~5.5 km) | Dinerstein, E. et al. (2017), RESOLVE | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.1093/biosci/bix014](https://doi.org/10.1093/biosci/bix014), [ecoregions.appspot.com](https://ecoregions.appspot.com/) |
 | Zoogeographic realms (11) and regions (20), from 21,037 species of amphibians, birds and mammals; realms used at 0.05° | Holt, B. G. et al. (2013); GIS files from CMEC, University of Copenhagen | No licence given; any use must credit *Science*/AAAS. Downloaded by each user, not shipped | [doi:10.1126/science.1228282](https://doi.org/10.1126/science.1228282), [macroecology.ku.dk/resources/wallace](https://macroecology.ku.dk/resources/wallace) |
+| Repertoriul Arheologic Național (RAN), the table of 7 June 2017 | Institutul Național al Patrimoniului | Open Government Licence of Romania, OGL-ROU 1.0 | [data.gov.ro](https://data.gov.ro/dataset/6ec693fc-6676-4f31-b504-9bb61e7a4717) |
+| Macrostrat `carto` vector tiles, which join published geological maps, and its table of intervals | Peters, S. E., Husson, J. M. & Czaplewski, J. (2018); each map its own authors (the world: Chorlton 2007; Europe: Asch 2003) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), with credit to each map | [doi:10.1029/2018GC007467](https://doi.org/10.1029/2018GC007467), [tiles.macrostrat.org](https://tiles.macrostrat.org/) |
 | SoilGrids 2.0: most probable WRB Reference Soil Group, 250 m, used at 0.067° (~7 km); soil properties, 5 km aggregates, used at 0.05° | Poggio, L. et al. (2021), ISRIC World Soil Information | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | [doi:10.5194/soil-7-217-2021](https://doi.org/10.5194/soil-7-217-2021), [isric.org/explore/soilgrids](https://www.isric.org/explore/soilgrids) |
 | NCEP/NCAR Reanalysis 1, long-term monthly means 1991–2020 of the 10 m wind (u, v) and wind speed, and 1981–2010 of the 2 m air temperature (for `--temperature-over-sea`), T62 Gaussian grid (~1.9°) | Kalnay, E. et al. (1996); NOAA PSL | Public domain (US government); acknowledgement requested: "NCEP-NCAR Reanalysis 1 data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/1520-0477(1996)077<0437:TNYRP>2.0.CO;2](https://doi.org/10.1175/1520-0477(1996)077%3C0437:TNYRP%3E2.0.CO;2), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.ncep.reanalysis.derived.html) |
 | NOAA OI SST V2.1 High Resolution, long-term monthly means 1991–2020 of the sea surface temperature, 0.25° | Huang, B. et al. (2021); NOAA NCEI, via NOAA PSL | Public domain (US government); acknowledgement requested: "NOAA OI SST V2 High Resolution data provided by the NOAA PSL, Boulder, Colorado, USA" | [doi:10.1175/JCLI-D-20-0166.1](https://doi.org/10.1175/JCLI-D-20-0166.1), [psl.noaa.gov](https://psl.noaa.gov/data/gridded/data.noaa.oisst.v2.highres.html) |
@@ -3214,6 +3318,8 @@ the globe:
 | `--ecoregions` layer | *Ecoregions: RESOLVE Ecoregions 2017 (Dinerstein et al. 2017), CC BY 4.0* |
 | `--realms` (`wwf`) layer | *Realms: RESOLVE Ecoregions 2017 (Dinerstein et al. 2017), CC BY 4.0* |
 | `--realms holt`, `--realm-regions` | *Zoogeographic realms and regions: Holt et al. (2013), Science 339:74-78, credit Science/AAAS* |
+| `--ro-cultures` | *Archaeological sites: RAN, Institutul Național al Patrimoniului, 2017, OGL-ROU 1.0*, and the UATs' credit when sites are placed at communes |
+| `--geology` | *Geology: Generalized Geology of the World (Chorlton, L.B. 2007), via Macrostrat (Peters et al. 2018), CC BY 4.0* (the maps on show) |
 | `--soil` overlay | *Soil groups: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
 | `--soil-property` overlay | *Soil properties: SoilGrids 2.0, ISRIC (Poggio et al. 2021), CC BY 4.0* |
 | `--wind` layer | *Winds: NCEP/NCAR Reanalysis 1, 1991–2020 means, NOAA PSL* |
@@ -3338,8 +3444,10 @@ of exported imagery; check the Map Tiles API policies before publishing.
 - [relief.py](relief.py): Romania's relief units (Posea & Badea, geo-spatial.org): names restored from the legend, fills by region, names and key
 - [osm_local.py](osm_local.py): the `osm_local` base map: Romania's and Moldova's places, rivers and lakes from Geofabrik's OpenStreetMap extracts (read in parts), GISCO's land and borders, drawn and named for print
 - [ne_local.py](ne_local.py): the `natural_earth` base map: Natural Earth's land, water, borders, countries, seas and cities, named in English or in Romanian (Wikidata, CLDR), for maps of Europe and the world
+- [ro_cultures.py](ro_cultures.py): Romania's archaeological sites by culture (RAN), with the commune fallback
 - [ro_admin.py](ro_admin.py): Romania's counties and UATs (GISCO LAU 2024, INS SIRUTA): names and types joined by SIRUTA code, county borders from their UATs, fills, names and key
 - [zoogeography.py](zoogeography.py): Holt et al.'s zoogeographic realms (filled) and regions (outlined and named), and their key
+- [geology.py](geology.py): geology layer, the age or kind of the rocks (Macrostrat)
 - [soil.py](soil.py): soil group overlay and key (SoilGrids 2.0, reduced by majority vote)
 - [soil_properties.py](soil_properties.py): soil property overlay and key (SoilGrids 2.0, 5 km)
 - [wind.py](wind.py): prevailing-wind arrows and key (NCEP/NCAR Reanalysis 1991–2020 means)

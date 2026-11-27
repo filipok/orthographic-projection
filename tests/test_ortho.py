@@ -816,6 +816,14 @@ class TestCLIParser:
         with pytest.raises(SystemExit):
             self._parse(["--city", "nyc", "--alliance", "warsaw"])
 
+    def test_geology_flags(self):
+        assert self._parse(["--city", "nyc"]).geology is None
+        assert self._parse(["--city", "nyc", "--geology"]).geology == "age"
+        args = self._parse(["--city", "nyc", "--geology", "rock", "--geology-alpha", "0.5"])
+        assert (args.geology, args.geology_alpha) == ("rock", 0.5)
+        assert ortho.parse_extra_layers("geology") == {"geology": "age"}
+        assert ortho.parse_extra_layers("geology:rock") == {"geology": "rock"}
+
     def test_atlas_layer_flags(self):
         args = self._parse(["--city", "nyc"])
         assert args.earthquakes is None and args.cyclones is None and args.population is None and not args.plates
@@ -1084,7 +1092,7 @@ class TestRunCLIValidation:
             both_hemispheres=False, ice=False, ice_year=None, crop=None, no_cache=False,
             koppen_class=None, up=0.0, up_toward=None, circles_from=None, no_circles=False, no_key=False, beside=None, temperature_over_sea=False, sea_temperature=None,
             trewartha=False, trewartha_class=None,
-            elevation=False, elevation_alpha=0.8, soil=False, soil_class=None, soil_alpha=0.6,
+            elevation=False, elevation_alpha=0.8, geology=None, geology_alpha=0.7, soil=False, soil_class=None, soil_alpha=0.6,
             soil_property=None, soil_depth=None,
             landcover=False, landcover_class=None, landcover_year=None, ndvi=None, vegetation_alpha=0.7,
             biomes=False, biome_class=None, ecoregions=False, realms=None, realm_regions=False, biome_alpha=0.6,
@@ -1098,7 +1106,7 @@ class TestRunCLIValidation:
             iucn=None, iucn_data=None, iucn_alpha=0.45, cities=None, cities_min=None,
             indicator=None, indicator_year=None, indicator_alpha=0.75, industry=None,
             shipping=None, shipping_alpha=0.85, ports=None, air_routes=None, high_speed_rail=None, high_speed_rail_schematic=False, relief_units=None,
-            relief_alpha=0.55, ro_admin=None, ro_admin_alpha=0.0, text_scale=1.0, language="en",
+            relief_alpha=0.55, ro_admin=None, ro_admin_alpha=0.0, ro_cultures=None, text_scale=1.0, language="en",
             wind=None, radius=None, rectangle=None, temperature=None, precipitation=None, humidity=None,
         )
         defaults.update(overrides)
@@ -2162,6 +2170,101 @@ class TestGenerateOrthographicMapIntegration:
         if key:
             legend.assert_called_once()
         assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], getattr(ortho, credit)]
+
+    @pytest.mark.parametrize("radius, whole_globe", [(None, True), (450, False)])
+    def test_geology_drawn_with_key_and_credit(self, tmp_path, radius, whole_globe):
+        layers, shown = [mock.Mock(), mock.Mock()], mock.MagicMock()
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_geology", return_value=layers) as load, \
+                mock.patch.object(ortho, "add_geology_overlay") as draw, \
+                mock.patch.object(ortho, "visible_entries", return_value=shown), \
+                mock.patch.object(ortho, "add_geology_legend", return_value=None) as key, \
+                mock.patch.object(ortho, "geology_attribution", return_value="Geology: …") as credit, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1 if whole_globe else 5, dpi=20,
+                                            output_dir=str(tmp_path), beside=(10, 10), radius_km=radius,
+                                            geology="rock", geology_alpha=0.4)
+        assert load.call_args.args[1:] == ("rock",) and load.call_args.kwargs["whole_globe"] is whole_globe
+        assert [call.args[1] for call in draw.call_args_list] == layers          # one per globe
+        assert all(call.kwargs["alpha"] == 0.4 for call in draw.call_args_list)
+        assert key.call_args.args[1:] == (shown, "rock") and key.call_args.kwargs["alpha"] == 0.4
+        credit.assert_called_once_with(shown)
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], "Geology: …"]
+
+    def test_geology_failure_still_saves_map_without_key_or_credit(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_geology", side_effect=ortho.GeologyDataError("offline")), \
+                mock.patch.object(ortho, "add_geology_legend") as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            result = ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), geology="age")
+        assert os.path.exists(result)
+        key.assert_not_called()
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"]]
+
+    def test_cultures_drawn_with_key_and_credits(self, tmp_path):
+        sites = [mock.Mock(), mock.Mock()]
+        per_globe = [[ortho.CulturesShown(3, 4), ortho.CulturesShown(0, 0)], [ortho.CulturesShown(1, 1), ortho.CulturesShown(2, 0)]]
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_cultures", return_value=sites) as load, \
+                mock.patch.object(ortho, "draw_cultures", side_effect=per_globe) as draw, \
+                mock.patch.object(ortho, "add_cultures_legend", return_value=None) as key, \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), beside=(45, 26), ro_cultures="Cucuteni, Noua",
+                                            language="ro")
+        load.assert_called_once_with("Cucuteni, Noua")
+        assert draw.call_count == 2
+        # A site on both globes is one site: the most either globe shows
+        assert key.call_args.args[1:] == (sites, [(3, 4), (2, 0)], "ro")
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], ortho.CULTURES_ATTRIBUTION,
+                                                 ortho.ADMIN_ATTRIBUTION]
+
+    @pytest.mark.parametrize("shown, credits", [((3, 0), ["CULTURES_ATTRIBUTION"]), ((0, 0), [])])
+    def test_cultures_credit_only_what_shows(self, tmp_path, shown, credits):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_cultures", return_value=[mock.Mock()]), \
+                mock.patch.object(ortho, "draw_cultures", return_value=[ortho.CulturesShown(*shown)]), \
+                mock.patch.object(ortho, "add_cultures_legend", return_value=None), \
+                mock.patch.object(ortho, "_add_attribution") as attribution:
+            ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), ro_cultures="Cucuteni")
+        assert attribution.call_args.args[1] == [ortho.TILE_ATTRIBUTIONS["osm"], *(getattr(ortho, c) for c in credits)]
+
+    def test_cultures_unavailable_still_saves_map(self, tmp_path):
+        with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \
+                mock.patch.object(ortho, "load_cultures", side_effect=ortho.CulturesError("offline")), \
+                mock.patch.object(ortho, "add_cultures_legend") as key:
+            result = ortho.generate_orthographic_map(lat=46, lon=25, output_filename="m.png", zoom=1, dpi=20,
+                                                     output_dir=str(tmp_path), ro_cultures="Cucuteni")
+        assert os.path.exists(result)
+        key.assert_not_called()
+
+    def test_an_unknown_culture_stops_the_map_with_its_message(self, tmp_path, caplog):
+        args = ortho.build_cli_parser().parse_args(["--lat", "46", "--lon", "25", "--ro-cultures", "Cucutenni",
+                                                    "--output-dir", str(tmp_path)])
+        with mock.patch.object(ortho, "load_cultures", side_effect=ortho.UnknownCultureError("did you mean Cucuteni?")), \
+                pytest.raises(SystemExit):
+            ortho.run_cli(args)
+        assert "did you mean Cucuteni?" in caplog.text and os.listdir(tmp_path) == []
+
+    def test_help_prints_on_a_windows_console(self):
+        ortho.build_cli_parser().format_help().encode("cp1252")        # Romanian's ș and ț are not in it
+
+    def test_culture_flags(self):
+        args = ortho.build_cli_parser().parse_args(["--city", "nyc"])
+        assert args.ro_cultures is None
+        assert ortho.parse_extra_layers("ro-cultures:cucuteni+noua") == {"ro_cultures": "cucuteni, noua"}
+        with pytest.raises(ValueError, match="Name the cultures"):
+            ortho.parse_extra_layers("ro-cultures:")
+
+    @pytest.mark.parametrize("option, problem", [({"geology": "soil"}, "Unknown geology 'soil'"),
+                                                 ({"geology": "age", "geology_alpha": 1.5}, "geology_alpha must be")])
+    def test_bad_geology_fails_before_any_download(self, tmp_path, option, problem):
+        with mock.patch.object(ortho, "load_geology") as load, pytest.raises(ValueError, match=problem):
+            ortho.generate_orthographic_map(lat=0, lon=0, output_filename="m.png", zoom=1, dpi=20,
+                                            output_dir=str(tmp_path), **option)
+        load.assert_not_called()
 
     def test_storms_and_extratropical_stage_reach_the_layers(self, tmp_path):
         with mock.patch.object(ortho.GeoAxes, "add_image", return_value=None), \

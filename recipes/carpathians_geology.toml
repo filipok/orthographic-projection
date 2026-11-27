@@ -1,0 +1,9 @@
+# The age of the rocks around the Carpathians (Macrostrat, from Asch 2003, 1:5,000,000, which leaves out most of the
+# young cover): the flysch arc, the Transylvanian and Pannonian basins and the old rocks of Dobrogea.
+lat = 45.9
+lon = 25.0
+radius = 450
+provider = "natural_earth"
+no-circles = true
+geology = "age"
+output = "orthographic_map_carpathians_natural_earth_r450km_geology.png"

@@ -24,6 +24,25 @@ def test_levels(text, level):
     assert ra.resolve_admin_level(text) == level
 
 
+SIRUTA_LEVELS = """SIRUTA;DENLOC;CODP;JUD;SIRSUP;TIP;NIV
+10;JUDEŢUL ALBA;0;1;1;40;1
+1017;MUNICIPIUL ALBA IULIA;0;1;10;1;2
+1026;ALBA IULIA;510001;1;1017;9;3
+2130;ABRUD;0;1;10;2;2
+"""
+
+
+def test_uat_of_each_locality():
+    assert ra.read_uat_codes("\ufeff" + SIRUTA_LEVELS) == {1017: 1017, 1026: 1017, 2130: 2130}
+
+
+@pytest.mark.parametrize("text, problem", [("a;b\n1;2\n", "not as expected"), ("", "names no UATs"),
+                                           ("SIRUTA;NIV;SIRSUP\n10;1;1\n", "names no UATs")])
+def test_unexpected_siruta(text, problem):
+    with pytest.raises(ra.AdminError, match=problem):
+        ra.read_uat_codes(text)
+
+
 def test_bad_level():
     with pytest.raises(ValueError, match="Unknown level of Romania's administrative units 'villages'"):
         ra.resolve_admin_level("villages")

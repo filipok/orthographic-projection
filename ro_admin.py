@@ -211,6 +211,19 @@ def read_siruta(text: str) -> tuple[dict[int, str], dict[int, Entry]]:
     return counties, uats
 
 
+def read_uat_codes(text: str) -> dict[int, int]:
+    """The SIRUTA code of the UAT each UAT and locality belongs to, by its own code, from SIRUTA's CSV *text*."""
+    try:
+        rows = [(int(row["SIRUTA"]), row["NIV"].strip(), int(row["SIRSUP"]))
+                for row in csv.DictReader(io.StringIO(text.lstrip("\ufeff")), delimiter=";")]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise AdminError(f"SIRUTA's table is not as expected: {exc!r}") from exc
+    uats = {code for code, level, _ in rows if level == UAT_LEVEL}
+    if not uats:
+        raise AdminError("SIRUTA's table names no UATs")
+    return {code: code if code in uats else above for code, _, above in rows if code in uats or above in uats}
+
+
 def _without_slivers(outline: shapely.Geometry) -> shapely.Geometry:
     """*outline* without the holes and parts smaller than :data:`SLIVER`, the gaps where its pieces meet."""
     parts = [shapely.Polygon(p.exterior, [h for h in p.interiors if shapely.Polygon(h).area >= SLIVER])
@@ -342,6 +355,21 @@ def _uat_order(unit: Unit) -> tuple[int, int, int]:
     return ({"municipality": 0, "town": 1}.get(unit.kind, 2), not unit.seat, -unit.population)
 
 
+def _uats(table: dict[str, np.ndarray]) -> list[Unit]:
+    """Every UAT of the cached *table*, in its order."""
+    return [Unit(str(n), int(c), KINDS.get(int(k), "commune"), o, (float(x), float(y)), int(k) in SEATS, int(p),
+                 int(k) == CAPITAL)
+            for n, c, k, o, x, y, p in zip(table["names"], table["counties"], table["kinds"], _unpack(table),
+                                           table["label_lon"], table["label_lat"], table["population"])]
+
+
+def load_uats(cache_dir: str | None = None) -> dict[int, Unit]:
+    """Romania's UATs by their SIRUTA code."""
+    with np.load(ensure_admin_data(cache_dir)) as data:
+        table = {key: data[key] for key in data.files}
+    return dict(zip(table["codes"].tolist(), _uats(table)))
+
+
 def load_admin(level: str = DEFAULT_LEVEL, cache_dir: str | None = None) -> Admin:
     """Romania's counties, and at *level* ``"uats"`` its UATs too."""
     with np.load(ensure_admin_data(cache_dir)) as data:
@@ -353,10 +381,7 @@ def load_admin(level: str = DEFAULT_LEVEL, cache_dir: str | None = None) -> Admi
                                          table["county_label_lon"], table["county_label_lat"])]
     counties.sort(key=lambda u: float(shapely.area(u.outline)), reverse=True)
     colours = {int(c): int(k) for c, k in zip(table["county_codes"], table["county_colours"])}
-    every = [Unit(str(n), int(c), KINDS.get(int(k), "commune"), o, (float(x), float(y)), int(k) in SEATS, int(p),
-                  int(k) == CAPITAL)
-             for n, c, k, o, x, y, p in zip(table["names"], table["counties"], table["kinds"], _unpack(table),
-                                            table["label_lon"], table["label_lat"], table["population"])]
+    every = _uats(table)
     seats = sorted((u for u in every if u.seat), key=lambda u: (not u.capital, -u.population))
     uats = sorted(every, key=_uat_order) if level == "uats" else []
     return Admin(level, counties, uats, country, colours, len(table["codes"]), seats)

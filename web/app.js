@@ -131,6 +131,11 @@ function buildRequest() {
   }
   if (biomes) req.biome_alpha = changed("biome-alpha", options.alpha.biome);
   if ($("realm-regions").checked) req.realm_regions = true;
+  const geology = $("geology").value;
+  if (geology) {
+    req.geology = geology;
+    req.geology_alpha = changed("geology-alpha", options.alpha.geology);
+  }
   const soil = $("soil").value;
   if (soil === "groups") {
     const classes = list($("soil-classes").value);
@@ -235,6 +240,7 @@ function buildRequest() {
     req.ro_admin = $("ro-admin").value;
     req.ro_admin_alpha = changed("ro-admin-alpha", options.alpha.ro_admin);
   }
+  if ($("ro-cultures").value.trim()) req.ro_cultures = $("ro-cultures").value.trim();
   const routes = selectedRoutes();
   if (routes.length) {
     req.route = routes;
@@ -361,6 +367,8 @@ function fillForm(req) {
   $("biome-classes").value = (req.biome_class || []).join(", ");
   set("biome-alpha", req.biome_alpha);
   $("realm-regions").checked = Boolean(req.realm_regions);
+  if (req.geology) pick("geology", req.geology, "geology");
+  set("geology-alpha", req.geology_alpha);
   if (req.soil || req.soil_class) {
     $("soil").value = "groups";
     $("soil-classes").value = (req.soil_class || []).join(", ");
@@ -425,6 +433,7 @@ function fillForm(req) {
   set("relief-alpha", req.relief_alpha);
   if (req.ro_admin) pick("ro-admin", req.ro_admin, "level of Romania's administrative units");
   set("ro-admin-alpha", req.ro_admin_alpha);
+  $("ro-cultures").value = req.ro_cultures || "";
   const routes = req.route || [];
   for (const name of routes) {
     if (!routeFiles.some((f) => f.name === name)) missing.push(`route file ${name}`);
@@ -863,6 +872,7 @@ async function init() {
     y === 2030 ? "2030 (projected)" : String(y))));
   $("livestock").append(...options.livestock.map((name) => option(name, name[0].toUpperCase() + name.slice(1))));
   $("aedes").append(...options.aedes.map((name) => option(name, name === "both" ? "Both species" : `Aedes ${name}`)));
+  $("geology-alpha").value = options.alpha.geology;
   $("soil-alpha").value = options.alpha.soil;
   $("crops").title = `${options.crops.length} crops, e.g. ${options.crops.slice(0, 8).join(", ")}…`;
   for (const el of document.querySelectorAll(".editable")) el.hidden = !options.editable;

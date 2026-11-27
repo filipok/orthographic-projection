@@ -1,0 +1,9 @@
+# Four cultures of Romania's Copper and Bronze Ages (RAN, 2017): Cucuteni in Moldavia, Gumelnița on the lower Danube,
+# Petrești and Wietenberg in Transylvania; filled where the site is known, hollow at its commune.
+lat = 45.9
+lon = 25.0
+radius = 390
+provider = "osm_local"
+no-circles = true
+ro-cultures = "Cucuteni, Gumelnița, Petrești, Wietenberg"
+output = "orthographic_map_romania_osm_local_r390km_cultures.png"
